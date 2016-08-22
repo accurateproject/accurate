@@ -1,7 +1,6 @@
-
 package console
 
-import "github.com/cgrates/cgrates/apier/v2"
+import "github.com/accurateproject/accurate/apier/v2"
 
 func init() {
 	c := &CmdAddAccount{

@@ -1,4 +1,3 @@
-
 package config
 
 import (
@@ -7,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/utils"
 )
 
 var dfCgrJsonCfg *CgrJsonCfg

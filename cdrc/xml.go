@@ -1,4 +1,3 @@
-
 package cdrc
 
 import (
@@ -15,9 +14,9 @@ import (
 	"github.com/ChrisTrenkamp/goxpath"
 	"github.com/ChrisTrenkamp/goxpath/tree"
 	"github.com/ChrisTrenkamp/goxpath/tree/xmltree"
-	"github.com/cgrates/cgrates/config"
-	"github.com/cgrates/cgrates/engine"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/engine"
+	"github.com/accurateproject/accurate/utils"
 )
 
 // getElementText will process the node to extract the elementName's text out of it (only first one found)

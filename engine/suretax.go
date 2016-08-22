@@ -1,4 +1,3 @@
-
 package engine
 
 import (
@@ -12,8 +11,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cgrates/cgrates/config"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/utils"
 )
 
 var sureTaxClient *http.Client // Cache the client here if in use

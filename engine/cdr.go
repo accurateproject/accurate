@@ -1,4 +1,3 @@
-
 package engine
 
 import (
@@ -10,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cgrates/cgrates/config"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/utils"
 )
 
 func NewCDRFromExternalCDR(extCdr *ExternalCDR, timezone string) (*CDR, error) {

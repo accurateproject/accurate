@@ -1,11 +1,10 @@
-
 package sessionmanager
 
 import (
 	"sync"
 	"time"
 
-	"github.com/cgrates/cgrates/engine"
+	"github.com/accurateproject/accurate/engine"
 )
 
 func NewSessions() *Sessions {

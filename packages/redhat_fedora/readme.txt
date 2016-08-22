@@ -17,7 +17,7 @@ BUILD
     - Make directories
     # mkdir -p $HOME/cgr_build/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
     - Download source file
-    # wget -P $HOME/cgr_build/SOURCES https://github.com/cgrates/cgrates/archive/[GIT_COMMIT].tar.gz
+    # wget -P $HOME/cgr_build/SOURCES https://github.com/accurateproject/accurate/archive/[GIT_COMMIT].tar.gz
     - Place cgrates.spec file into $HOME/cgr_build/SPECS
 2. Build:
     # cd $HOME/cgr_build

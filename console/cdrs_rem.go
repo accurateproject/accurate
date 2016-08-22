@@ -1,7 +1,6 @@
-
 package console
 
-import "github.com/cgrates/cgrates/utils"
+import "github.com/accurateproject/accurate/utils"
 
 func init() {
 	c := &CmdRemCdrs{

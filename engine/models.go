@@ -1,4 +1,3 @@
-
 package engine
 
 import (
@@ -6,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/utils"
 )
 
 // Structs here are one to one mapping of the tables and fields

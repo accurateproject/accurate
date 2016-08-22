@@ -1,10 +1,9 @@
-
 package sessionmanager
 
 import (
 	"time"
 
-	"github.com/cgrates/cgrates/engine"
+	"github.com/accurateproject/accurate/engine"
 	"github.com/cgrates/rpcclient"
 )
 

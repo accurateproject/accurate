@@ -1,4 +1,3 @@
-
 package engine
 
 import (
@@ -12,7 +11,7 @@ import (
 	"path"
 	"unicode/utf8"
 
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/utils"
 )
 
 var (

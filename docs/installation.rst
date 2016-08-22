@@ -28,21 +28,21 @@ After *post-install* actions are performed, CGRateS will be configured in **/etc
 3.2. Using source
 -----------------
 
-For developing CGRateS and switching between its versions, we are using the **new vendor directory feature** introduced in go 1.6. 
+For developing CGRateS and switching between its versions, we are using the **new vendor directory feature** introduced in go 1.6.
 In a nutshell all the dependencies are installed and used from a folder named *vendor* placed in the root of the project.
 
-To manage this *vendor* folder we use a tool named `glide`_ which will download specific versions of the external packages used by CGRateS. 
+To manage this *vendor* folder we use a tool named `glide`_ which will download specific versions of the external packages used by CGRateS.
 To configure the project with `glide`_ use the following commands:
 
 ::
 
    go get github.com/Masterminds/glide
-   go get github.com/cgrates/cgrates
-   cd $GOPATH/src/github.com/cgrates/cgrates
+   go get github.com/accurateproject/accurate
+   cd $GOPATH/src/github.com/accurateproject/accurate
    glide install
    ./build.sh
 
-The **glide install** command will install the external dependencies versions, specified in the **glide.lock** file, in the vendor folder. 
+The **glide install** command will install the external dependencies versions, specified in the **glide.lock** file, in the vendor folder.
 There are different versions for each CGRateS branch, versions that are recorded in the **lock** file when the GCRateS releases are made (using **glide update** command).
 
 .. note:: The *vendor* folder **should not** be registered with the VCS we are using.
@@ -111,7 +111,7 @@ Once MongoDB is installed, CGRateS database needs to be set-up out of provided s
 3.3.2.Git
 ~~~~~~~~~
 
-The **historys** (History Service) component will use `Git`_ to archive *tariff plan changes* in a local repository, 
+The **historys** (History Service) component will use `Git`_ to archive *tariff plan changes* in a local repository,
 hence `Git`_ installation is necessary if you want to use this service.
 
 .. _Git: http://git-scm.com

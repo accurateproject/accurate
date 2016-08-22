@@ -1,4 +1,3 @@
-
 package main
 
 import (
@@ -12,18 +11,18 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/cgrates/cgrates/agents"
-	"github.com/cgrates/cgrates/apier/v1"
-	"github.com/cgrates/cgrates/apier/v2"
-	"github.com/cgrates/cgrates/balancer2go"
-	"github.com/cgrates/cgrates/cache2go"
-	"github.com/cgrates/cgrates/cdrc"
-	"github.com/cgrates/cgrates/config"
-	"github.com/cgrates/cgrates/engine"
-	"github.com/cgrates/cgrates/history"
-	"github.com/cgrates/cgrates/scheduler"
-	"github.com/cgrates/cgrates/sessionmanager"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/agents"
+	"github.com/accurateproject/accurate/apier/v1"
+	"github.com/accurateproject/accurate/apier/v2"
+	"github.com/accurateproject/accurate/balancer2go"
+	"github.com/accurateproject/accurate/cache2go"
+	"github.com/accurateproject/accurate/cdrc"
+	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/engine"
+	"github.com/accurateproject/accurate/history"
+	"github.com/accurateproject/accurate/scheduler"
+	"github.com/accurateproject/accurate/sessionmanager"
+	"github.com/accurateproject/accurate/utils"
 	"github.com/cgrates/rpcclient"
 )
 

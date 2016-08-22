@@ -1,4 +1,3 @@
-
 package engine
 
 import (
@@ -7,7 +6,7 @@ import (
 	"encoding/json"
 	"reflect"
 
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/utils"
 	"github.com/ugorji/go/codec"
 	"gopkg.in/mgo.v2/bson"
 )

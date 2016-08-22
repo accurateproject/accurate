@@ -7,8 +7,8 @@ import (
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 
-	"github.com/cgrates/cgrates/engine"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/engine"
+	"github.com/accurateproject/accurate/utils"
 )
 
 type MongoMigrator struct {

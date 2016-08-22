@@ -1,7 +1,6 @@
-
 package console
 
-import "github.com/cgrates/cgrates/apier/v1"
+import "github.com/accurateproject/accurate/apier/v1"
 
 func init() {
 	c := &CmdRemoveTriggers{

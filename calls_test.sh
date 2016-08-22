@@ -2,8 +2,8 @@
 
 ./local_test.sh
 lcl=$?
-echo 'go test github.com/cgrates/cgrates/general_tests -calls'
-go test github.com/cgrates/cgrates/general_tests -calls
+echo 'go test github.com/accurateproject/accurate/general_tests -calls'
+go test github.com/accurateproject/accurate/general_tests -calls
 gnr=$?
 
 exit $gen && $gnr

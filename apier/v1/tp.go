@@ -1,4 +1,3 @@
-
 package v1
 
 // Tariff plan related APIs
@@ -8,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/cgrates/cgrates/engine"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/engine"
+	"github.com/accurateproject/accurate/utils"
 )
 
 type AttrGetTPIds struct {

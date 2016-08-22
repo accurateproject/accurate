@@ -1,4 +1,3 @@
-
 package v2
 
 import (
@@ -9,10 +8,10 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/cgrates/cgrates/apier/v1"
-	"github.com/cgrates/cgrates/config"
-	"github.com/cgrates/cgrates/engine"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/apier/v1"
+	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/engine"
+	"github.com/accurateproject/accurate/utils"
 )
 
 var testTP = flag.Bool("tp", false, "Perform the tests for TariffPlans, not by default.") // Separate from integration so we can run on multiple DBs without involving all other tests on each run

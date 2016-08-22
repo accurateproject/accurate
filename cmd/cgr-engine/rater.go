@@ -1,28 +1,27 @@
-
 package main
 
 import (
 	"fmt"
 	"time"
 
-	"github.com/cgrates/cgrates/apier/v1"
-	"github.com/cgrates/cgrates/apier/v2"
-	"github.com/cgrates/cgrates/balancer2go"
-	"github.com/cgrates/cgrates/engine"
-	"github.com/cgrates/cgrates/history"
-	"github.com/cgrates/cgrates/scheduler"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/apier/v1"
+	"github.com/accurateproject/accurate/apier/v2"
+	"github.com/accurateproject/accurate/balancer2go"
+	"github.com/accurateproject/accurate/engine"
+	"github.com/accurateproject/accurate/history"
+	"github.com/accurateproject/accurate/scheduler"
+	"github.com/accurateproject/accurate/utils"
 	"github.com/cgrates/rpcclient"
 )
 
 /*func init() {
 	gob.Register(map[interface{}]struct{}{})
 	gob.Register(engine.Actions{})
-	gob.RegisterName("github.com/cgrates/cgrates/engine.ActionPlan", &engine.ActionPlan{})
+	gob.RegisterName("github.com/accurateproject/accurate/engine.ActionPlan", &engine.ActionPlan{})
 	gob.Register([]*utils.LoadInstance{})
-	gob.RegisterName("github.com/cgrates/cgrates/engine.RatingPlan", &engine.RatingPlan{})
-	gob.RegisterName("github.com/cgrates/cgrates/engine.RatingProfile", &engine.RatingProfile{})
-	gob.RegisterName("github.com/cgrates/cgrates/utils.DerivedChargers", &utils.DerivedChargers{})
+	gob.RegisterName("github.com/accurateproject/accurate/engine.RatingPlan", &engine.RatingPlan{})
+	gob.RegisterName("github.com/accurateproject/accurate/engine.RatingProfile", &engine.RatingProfile{})
+	gob.RegisterName("github.com/accurateproject/accurate/utils.DerivedChargers", &utils.DerivedChargers{})
 	gob.Register(engine.AliasValues{})
 }*/
 

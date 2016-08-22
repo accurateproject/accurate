@@ -1,7 +1,6 @@
-
 package console
 
-import "github.com/cgrates/cgrates/engine"
+import "github.com/accurateproject/accurate/engine"
 
 func init() {
 	c := &CmdDebit{

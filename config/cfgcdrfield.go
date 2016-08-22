@@ -1,8 +1,7 @@
-
 package config
 
 import (
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/utils"
 )
 
 func NewCfgCdrFieldFromCdrFieldJsonCfg(jsnCfgFld *CdrFieldJsonCfg) (*CfgCdrField, error) {

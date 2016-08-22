@@ -1,8 +1,7 @@
-
 package console
 
 import (
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/utils"
 )
 
 func init() {

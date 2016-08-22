@@ -1,4 +1,3 @@
-
 package config
 
 import (
@@ -6,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/utils"
 )
 
 var cfg *CGRConfig

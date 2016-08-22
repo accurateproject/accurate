@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cgrates/cgrates/apier/v1"
-	"github.com/cgrates/cgrates/apier/v2"
-	"github.com/cgrates/cgrates/config"
-	"github.com/cgrates/cgrates/engine"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/apier/v1"
+	"github.com/accurateproject/accurate/apier/v2"
+	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/engine"
+	"github.com/accurateproject/accurate/utils"
 )
 
 var tpCfgPath string

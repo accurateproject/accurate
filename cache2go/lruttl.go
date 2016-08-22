@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/utils"
 )
 
 // Cache is an LRU cache. It is not safe for concurrent access.

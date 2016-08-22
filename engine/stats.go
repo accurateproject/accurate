@@ -1,4 +1,3 @@
-
 package engine
 
 import (
@@ -8,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/utils"
 )
 
 type StatsInterface interface {
@@ -38,7 +37,7 @@ type queueSaver struct {
 	stopper      chan bool
 	save         func(*queueSaver)
 	sq           *StatsQueue
-	ratingDb	 RatingStorage
+	ratingDb     RatingStorage
 	accountingDb AccountingStorage
 }
 

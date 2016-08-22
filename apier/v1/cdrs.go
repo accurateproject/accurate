@@ -1,12 +1,11 @@
-
 package v1
 
 import (
 	"errors"
 	"fmt"
 
-	"github.com/cgrates/cgrates/engine"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/engine"
+	"github.com/accurateproject/accurate/utils"
 )
 
 // Retrieves the callCost out of CGR logDb

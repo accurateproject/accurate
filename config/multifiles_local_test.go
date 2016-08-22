@@ -1,10 +1,10 @@
-
 package config
 
 import (
 	"flag"
-	"github.com/cgrates/cgrates/utils"
 	"testing"
+
+	"github.com/accurateproject/accurate/utils"
 )
 
 var testLocal = flag.Bool("local", false, "Perform the tests only on local test environment, disabled by default.") // This flag will be passed here via "go test -local" args

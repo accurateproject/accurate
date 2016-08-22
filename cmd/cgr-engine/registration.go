@@ -1,4 +1,3 @@
-
 package main
 
 import (
@@ -8,10 +7,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/cgrates/cgrates/balancer2go"
-	"github.com/cgrates/cgrates/engine"
-	"github.com/cgrates/cgrates/scheduler"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/balancer2go"
+	"github.com/accurateproject/accurate/engine"
+	"github.com/accurateproject/accurate/scheduler"
+	"github.com/accurateproject/accurate/utils"
 	"github.com/cgrates/rpcclient"
 )
 

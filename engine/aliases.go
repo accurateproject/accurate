@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/utils"
 	"github.com/cgrates/rpcclient"
 )
 

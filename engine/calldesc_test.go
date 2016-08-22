@@ -1,4 +1,3 @@
-
 package engine
 
 import (
@@ -7,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cgrates/cgrates/history"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/history"
+	"github.com/accurateproject/accurate/utils"
 )
 
 var (

@@ -1,10 +1,10 @@
-
 package engine
 
 import (
-	"github.com/cgrates/cgrates/utils"
 	"net/http"
 	"strconv"
+
+	"github.com/accurateproject/accurate/utils"
 )
 
 func NewCgrCdrFromHttpReq(req *http.Request, timezone string) (CgrCdr, error) {

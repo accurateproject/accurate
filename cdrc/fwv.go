@@ -1,4 +1,3 @@
-
 package cdrc
 
 import (
@@ -12,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cgrates/cgrates/config"
-	"github.com/cgrates/cgrates/engine"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/engine"
+	"github.com/accurateproject/accurate/utils"
 )
 
 func fwvValue(cdrLine string, indexStart, width int, padding string) string {

@@ -8,7 +8,7 @@ export GOPATH=$(CURDIR)
 export GO15VENDOREXPERIMENT=1
 
 PKGDIR=debian/cgrates
-SRCDIR=src/github.com/cgrates/cgrates
+SRCDIR=src/github.com/accurateproject/accurate
 
 %:
 	dh $@

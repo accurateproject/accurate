@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/utils"
 )
 
 func CheckVersion(acntDB AccountingStorage) error {

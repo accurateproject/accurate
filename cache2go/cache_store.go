@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cgrates/cgrates/config"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/utils"
 	lru "github.com/hashicorp/golang-lru"
 )
 

@@ -1,4 +1,3 @@
-
 package engine
 
 import (
@@ -7,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cgrates/cgrates/cache2go"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/cache2go"
+	"github.com/accurateproject/accurate/utils"
 )
 
 var (

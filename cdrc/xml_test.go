@@ -1,4 +1,3 @@
-
 package cdrc
 
 import (
@@ -10,9 +9,9 @@ import (
 
 	"github.com/ChrisTrenkamp/goxpath"
 	"github.com/ChrisTrenkamp/goxpath/tree/xmltree"
-	"github.com/cgrates/cgrates/config"
-	"github.com/cgrates/cgrates/engine"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/engine"
+	"github.com/accurateproject/accurate/utils"
 )
 
 var cdrXmlBroadsoft = `<?xml version="1.0" encoding="ISO-8859-1"?>

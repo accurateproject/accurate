@@ -1,10 +1,10 @@
-
 package config
 
 import (
-	"github.com/cgrates/cgrates/utils"
 	"strings"
 	"time"
+
+	"github.com/accurateproject/accurate/utils"
 )
 
 // Creates a new SureTaxCfg with defaults pre-populated out of config_defaults.json

@@ -1,11 +1,10 @@
-
 package v2
 
 import (
 	"encoding/base64"
 
-	"github.com/cgrates/cgrates/engine"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/engine"
+	"github.com/accurateproject/accurate/utils"
 )
 
 type AttrRemTp struct {

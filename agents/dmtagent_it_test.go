@@ -1,4 +1,3 @@
-
 package agents
 
 import (
@@ -12,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cgrates/cgrates/config"
-	"github.com/cgrates/cgrates/engine"
-	"github.com/cgrates/cgrates/sessionmanager"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/engine"
+	"github.com/accurateproject/accurate/sessionmanager"
+	"github.com/accurateproject/accurate/utils"
 	"github.com/fiorix/go-diameter/diam"
 	"github.com/fiorix/go-diameter/diam/avp"
 	"github.com/fiorix/go-diameter/diam/datatype"

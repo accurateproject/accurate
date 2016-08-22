@@ -1,4 +1,3 @@
-
 package engine
 
 import (
@@ -9,9 +8,9 @@ import (
 	"io/ioutil"
 	"strings"
 
-	"github.com/cgrates/cgrates/cache2go"
-	"github.com/cgrates/cgrates/config"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/cache2go"
+	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/utils"
 	"github.com/mediocregopher/radix.v2/pool"
 	"github.com/mediocregopher/radix.v2/redis"
 )

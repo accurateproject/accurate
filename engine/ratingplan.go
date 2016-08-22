@@ -1,11 +1,10 @@
-
 package engine
 
 import (
 	"encoding/json"
 	"math"
 
-	"github.com/cgrates/cgrates/history"
+	"github.com/accurateproject/accurate/history"
 )
 
 /*

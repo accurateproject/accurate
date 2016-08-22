@@ -59,7 +59,7 @@
       become: yes
 
     - name: create a link to data dir
-      file: src=/home/vagrant/code/src/github.com/cgrates/cgrates/data dest=/usr/share/cgrates state=link
+      file: src=/home/vagrant/code/src/github.com/accurateproject/accurate/data dest=/usr/share/cgrates state=link
       become: yes
 
     #- name: expand freeswitch json conf
@@ -77,7 +77,7 @@
       mongodb_user: database=admin name=cgrates password={{root_db_password}} roles='userAdminAnyDatabase' state=present
 
     - name: create link to cgrates dir
-      file: src=~/code/src/github.com/cgrates/cgrates dest=~/cgr state=link
+      file: src=~/code/src/github.com/accurateproject/accurate dest=~/cgr state=link
 
     - name: create var folder
       file: path=/var/log/cgrates state=directory owner=vagrant

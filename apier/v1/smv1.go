@@ -1,9 +1,8 @@
-
 package v1
 
 import (
-	"github.com/cgrates/cgrates/sessionmanager"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/sessionmanager"
+	"github.com/accurateproject/accurate/utils"
 )
 
 // Interact with SessionManager

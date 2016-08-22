@@ -1,4 +1,3 @@
-
 package console
 
 import (
@@ -9,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/utils"
 )
 
 var (

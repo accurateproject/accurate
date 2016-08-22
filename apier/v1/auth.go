@@ -1,12 +1,11 @@
-
 package v1
 
 import (
 	"strconv"
 	"time"
 
-	"github.com/cgrates/cgrates/engine"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/engine"
+	"github.com/accurateproject/accurate/utils"
 )
 
 // Returns MaxUsage (for calls in seconds), -1 for no limit

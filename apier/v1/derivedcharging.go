@@ -1,12 +1,11 @@
-
 package v1
 
 import (
 	"fmt"
 	"strings"
 
-	"github.com/cgrates/cgrates/engine"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/engine"
+	"github.com/accurateproject/accurate/utils"
 )
 
 // Get DerivedChargers applying to our call, appends general configured to account specific ones if that is configured

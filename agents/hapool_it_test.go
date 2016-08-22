@@ -1,4 +1,3 @@
-
 package agents
 
 /*
@@ -7,8 +6,8 @@ import (
 	"path"
 	"testing"
 
-	"github.com/cgrates/cgrates/config"
-	"github.com/cgrates/cgrates/engine"
+	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/engine"
 )
 
 var cgrRater1Cmd, cgrSmg1Cmd *exec.Cmd

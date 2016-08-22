@@ -1,10 +1,9 @@
-
 package engine
 
 import (
 	"time"
 
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/utils"
 )
 
 type Metric interface {

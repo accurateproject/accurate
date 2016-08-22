@@ -1,7 +1,6 @@
-
 package engine
 
-import "github.com/cgrates/cgrates/utils"
+import "github.com/accurateproject/accurate/utils"
 
 // Amount of a trafic of a certain type
 type UnitCounter struct {

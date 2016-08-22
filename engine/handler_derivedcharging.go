@@ -1,7 +1,6 @@
-
 package engine
 
-import "github.com/cgrates/cgrates/utils"
+import "github.com/accurateproject/accurate/utils"
 
 // Handles retrieving of DerivedChargers profile based on longest match from AccountingDb
 func HandleGetDerivedChargers(ratingStorage RatingStorage, attrs *utils.AttrDerivedChargers) (*utils.DerivedChargers, error) {

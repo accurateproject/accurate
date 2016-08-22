@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/utils"
 )
 
 var ErrNotFound = errors.New("NOT_FOUND")

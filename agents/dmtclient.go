@@ -1,11 +1,10 @@
-
 package agents
 
 import (
 	"fmt"
 	"time"
 
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/utils"
 	"github.com/fiorix/go-diameter/diam"
 	"github.com/fiorix/go-diameter/diam/avp"
 	"github.com/fiorix/go-diameter/diam/datatype"

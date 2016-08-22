@@ -1,10 +1,10 @@
-
 package config
 
 import (
 	"fmt"
-	"github.com/cgrates/cgrates/utils"
 	"net/url"
+
+	"github.com/accurateproject/accurate/utils"
 )
 
 type CdrReplicationCfg struct {

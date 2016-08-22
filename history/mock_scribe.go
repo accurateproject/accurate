@@ -1,4 +1,3 @@
-
 package history
 
 import (
@@ -8,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/utils"
 )
 
 type MockScribe struct {

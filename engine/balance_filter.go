@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/utils"
 )
 
 type BalanceFilter struct {

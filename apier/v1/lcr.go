@@ -3,8 +3,8 @@ package v1
 import (
 	"fmt"
 
-	"github.com/cgrates/cgrates/engine"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/engine"
+	"github.com/accurateproject/accurate/utils"
 )
 
 // Computes the LCR for a specific request emulating a call

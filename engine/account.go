@@ -1,4 +1,3 @@
-
 package engine
 
 import (
@@ -7,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cgrates/cgrates/structmatcher"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/structmatcher"
+	"github.com/accurateproject/accurate/utils"
 
 	"strings"
 )

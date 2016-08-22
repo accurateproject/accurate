@@ -7,7 +7,7 @@ export DH_VERBOSE=1
 export GOPATH=$(CURDIR)
 
 PKGDIR=debian/cgrates
-SRCDIR=src/github.com/cgrates/cgrates
+SRCDIR=src/github.com/accurateproject/accurate
 
 %:
 	dh $@

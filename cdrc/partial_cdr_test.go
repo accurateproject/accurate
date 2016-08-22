@@ -1,4 +1,3 @@
-
 package cdrc
 
 import (
@@ -7,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cgrates/cgrates/engine"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/engine"
+	"github.com/accurateproject/accurate/utils"
 )
 
 func TestPartialCDRRecordSort(t *testing.T) {

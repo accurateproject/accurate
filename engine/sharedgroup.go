@@ -1,4 +1,3 @@
-
 package engine
 
 import (
@@ -7,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/utils"
 )
 
 const (

@@ -1,4 +1,3 @@
-
 package cdrc
 
 import (
@@ -10,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cgrates/cgrates/config"
-	"github.com/cgrates/cgrates/engine"
+	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/engine"
 )
 
 var fwvCfgPath string
@@ -19,7 +18,7 @@ var fwvCfg *config.CGRConfig
 var fwvRpc *rpc.Client
 var fwvCdrcCfg *config.CdrcConfig
 
-var FW_CDR_FILE1 = `HDR0001DDB     ABC                                     Some Connect A.B.                       DDB-Some-10022-20120711-309.CDR         00030920120711100255                                                                    
+var FW_CDR_FILE1 = `HDR0001DDB     ABC                                     Some Connect A.B.                       DDB-Some-10022-20120711-309.CDR         00030920120711100255
 CDR0000010  0 20120708181506000123451234         0040123123120                  004                                            000018009980010001ISDN  ABC   10Buiten uw regio                         EHV 00000009190000000009
 CDR0000020  0 20120708190945000123451234         0040123123120                  004                                            000016009980010001ISDN  ABC   10Buiten uw regio                         EHV 00000009190000000009
 CDR0000030  0 20120708191009000123451234         0040123123120                  004                                            000020009980010001ISDN  ABC   10Buiten uw regio                         EHV 00000009190000000009
@@ -53,7 +52,7 @@ CDR0000300  0 20120709073707000123123459         0040123234531                  
 CDR0000310  0 20120709085451000123451237         0040012323453100               001                                            000744009980030001ISDN  ABD   20Internationaal                          NLB 00000000190000000000
 CDR0000320  0 20120709091756000123451237         0040012323453100               001                                            000050009980030001ISDN  ABD   20Internationaal                          NLB 00000000190000000000
 CDR0000330  0 20120710070434000123123458         0040123232350                  004                                            000012002760000001PSTN  276   10Buiten uw regio                         TB  00000009190000000009
-TRL0001DDB     ABC                                     Some Connect A.B.                       DDB-Some-10022-20120711-309.CDR         0003090000003300000030550000000001000000000100Y                                         
+TRL0001DDB     ABC                                     Some Connect A.B.                       DDB-Some-10022-20120711-309.CDR         0003090000003300000030550000000001000000000100Y
 `
 
 func TestFwvLclInitCfg(t *testing.T) {

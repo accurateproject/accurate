@@ -1,11 +1,10 @@
-
 package v1
 
 // This file deals with tp_destrates_timing management over APIs
 
 import (
-	"github.com/cgrates/cgrates/engine"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/engine"
+	"github.com/accurateproject/accurate/utils"
 )
 
 // Creates a new DestinationRateTiming profile within a tariff plan

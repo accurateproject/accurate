@@ -1,11 +1,10 @@
-
 package v1
 
 // This file deals with tp_rates management over APIs
 
 import (
-	"github.com/cgrates/cgrates/engine"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/engine"
+	"github.com/accurateproject/accurate/utils"
 )
 
 // Creates a new rate within a tariff plan

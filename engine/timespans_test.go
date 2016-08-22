@@ -1,11 +1,10 @@
-
 package engine
 
 import (
 	"testing"
 	"time"
 
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/utils"
 )
 
 func TestTSRightMargin(t *testing.T) {

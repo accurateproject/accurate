@@ -1,10 +1,9 @@
-
 package config
 
 import (
 	"time"
 
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/utils"
 )
 
 type CdrcConfig struct {

@@ -1,4 +1,3 @@
-
 package engine
 
 import (
@@ -7,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cgrates/cgrates/config"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/utils"
 )
 
 /*

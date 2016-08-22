@@ -1,9 +1,8 @@
-
 package v1
 
 import (
-	"github.com/cgrates/cgrates/engine"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/engine"
+	"github.com/accurateproject/accurate/utils"
 )
 
 // Receive CDRs via RPC methods

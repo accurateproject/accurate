@@ -1,4 +1,3 @@
-
 package engine
 
 import (
@@ -7,7 +6,7 @@ import (
 	"log"
 	"path"
 
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/utils"
 )
 
 // Import tariff plan from csv into storDb

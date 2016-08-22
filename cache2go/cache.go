@@ -4,7 +4,7 @@ package cache2go
 import (
 	"sync"
 
-	"github.com/cgrates/cgrates/config"
+	"github.com/accurateproject/accurate/config"
 )
 
 const (

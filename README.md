@@ -8,7 +8,7 @@
 + High accuracy rating: configurable to milliseconds
 + Handles volume discount
 + Received calls bonus
-+ Fully/Easy configurable 
++ Fully/Easy configurable
 + Very fast (5000+ req/sec on a single machine)
 + Good documentation
 + Commercial support available
@@ -24,7 +24,6 @@ Browsable HTML docs http://readthedocs.org/docs/cgrates/
 
 PDF, Epub, Manpage http://readthedocs.org/projects/cgrates/downloads/
 
-API reference [godoc](http://godoc.org/github.com/cgrates/cgrates/apier)
+API reference [godoc](http://godoc.org/github.com/accurateproject/accurate/apier)
 
 Also check [irc.freenode.net #cgrates](irc://irc.freenode.net:6667/cgrates)  ([Webchat](http://webchat.freenode.net?randomnick=1&channels=%23cgrates)) and [Google group](https://groups.google.com/forum/#!forum/cgrates) for a more real-time support.
-

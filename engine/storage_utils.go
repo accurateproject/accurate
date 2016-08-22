@@ -1,4 +1,3 @@
-
 package engine
 
 import (
@@ -6,8 +5,8 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/cgrates/cgrates/config"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/utils"
 )
 
 // Various helpers to deal with database

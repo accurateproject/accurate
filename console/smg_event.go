@@ -1,10 +1,9 @@
-
 package console
 
 import (
 	"strings"
 
-	"github.com/cgrates/cgrates/sessionmanager"
+	"github.com/accurateproject/accurate/sessionmanager"
 )
 
 type AttrSmgEvent struct {

@@ -1,4 +1,3 @@
-
 package sessionmanager
 
 import (
@@ -6,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cgrates/cgrates/config"
-	"github.com/cgrates/cgrates/engine"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/engine"
+	"github.com/accurateproject/accurate/utils"
 )
 
 var kamEv = KamEvent{KAM_TR_INDEX: "29223", KAM_TR_LABEL: "698469260", "callid": "ODVkMDI2Mzc2MDY5N2EzODhjNTAzNTdlODhiZjRlYWQ", "from_tag": "eb082607", "to_tag": "4ea9687f", "cgr_account": "dan",
@@ -25,7 +24,7 @@ func TestNewKamEvent(t *testing.T) {
 		"from_tag":"bf71ad59",
 		"to_tag":"7351fecf",
 		"cgr_reqtype":"*postpaid",
-		"cgr_account":"1001", 
+		"cgr_account":"1001",
 		"cgr_destination":"1002",
 		"cgr_answertime":"1419839310",
 		"cgr_duration":"3",

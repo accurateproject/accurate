@@ -1,11 +1,11 @@
-
 package engine
 
 import (
-	"github.com/cgrates/cgrates/utils"
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/accurateproject/accurate/utils"
 )
 
 /*

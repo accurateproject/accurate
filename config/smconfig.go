@@ -1,10 +1,9 @@
-
 package config
 
 import (
 	"time"
 
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/utils"
 )
 
 // Returns the first cached default value for a SM-FreeSWITCH connection

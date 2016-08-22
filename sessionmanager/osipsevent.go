@@ -1,4 +1,3 @@
-
 package sessionmanager
 
 import (
@@ -7,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cgrates/cgrates/config"
-	"github.com/cgrates/cgrates/engine"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/engine"
+	"github.com/accurateproject/accurate/utils"
 	"github.com/cgrates/osipsdagram"
 )
 
@@ -233,7 +232,7 @@ func (osipsev *OsipsEvent) PassesFieldFilter(*utils.RSRField) (bool, string) {
 }
 func (osipsev *OsipsEvent) GetExtraFields() map[string]string {
 	primaryFields := []string{TO_TAG, SETUP_DURATION, OSIPS_SETUP_TIME, "method", "callid", "sip_reason", OSIPS_EVENT_TIME, "sip_code", "duration", "from_tag", "dialog_id",
-		CGR_TENANT, CGR_CATEGORY, CGR_REQTYPE, CGR_ACCOUNT, CGR_SUBJECT, CGR_DESTINATION, utils.CGR_SUPPLIER, CGR_PDD,CGR_ANSWERTIME}
+		CGR_TENANT, CGR_CATEGORY, CGR_REQTYPE, CGR_ACCOUNT, CGR_SUBJECT, CGR_DESTINATION, utils.CGR_SUPPLIER, CGR_PDD, CGR_ANSWERTIME}
 	extraFields := make(map[string]string)
 	for field, val := range osipsev.osipsEvent.AttrValues {
 		if !utils.IsSliceMember(primaryFields, field) {

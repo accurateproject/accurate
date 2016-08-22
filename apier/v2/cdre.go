@@ -1,4 +1,3 @@
-
 package v2
 
 import (
@@ -9,8 +8,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/cgrates/cgrates/cdre"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/cdre"
+	"github.com/accurateproject/accurate/utils"
 )
 
 // Export Cdrs to file

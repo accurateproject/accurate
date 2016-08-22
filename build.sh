@@ -1,14 +1,14 @@
 #! /usr/bin/env sh
 
-echo "Building CGRateS..."
+echo "Building accuRate..."
 
-go install github.com/cgrates/cgrates/cmd/cgr-engine
+go install github.com/accurateproject/accurate/cmd/cgr-engine
 cr=$?
-go install github.com/cgrates/cgrates/cmd/cgr-loader
+go install github.com/accurateproject/accurate/cmd/cgr-loader
 cl=$?
-go install github.com/cgrates/cgrates/cmd/cgr-console
+go install github.com/accurateproject/accurate/cmd/cgr-console
 cc=$?
-go install github.com/cgrates/cgrates/cmd/cgr-tester
+go install github.com/accurateproject/accurate/cmd/cgr-tester
 ct=$?
 
 exit $cr || $cl || $cc || $ct

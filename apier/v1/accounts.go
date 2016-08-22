@@ -1,4 +1,3 @@
-
 package v1
 
 import (
@@ -7,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cgrates/cgrates/cache2go"
-	"github.com/cgrates/cgrates/engine"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/cache2go"
+	"github.com/accurateproject/accurate/engine"
+	"github.com/accurateproject/accurate/utils"
 )
 
 type AttrAcntAction struct {

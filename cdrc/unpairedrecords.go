@@ -1,4 +1,3 @@
-
 package cdrc
 
 import (
@@ -10,8 +9,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/cgrates/cgrates/engine"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/engine"
+	"github.com/accurateproject/accurate/utils"
 )
 
 func NewUnpairedRecordsCache(ttl time.Duration, cdrOutDir string, csvSep rune) (*UnpairedRecordsCache, error) {

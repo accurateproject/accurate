@@ -1,11 +1,10 @@
-
 package engine
 
 import (
 	"reflect"
 	"testing"
 
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/utils"
 )
 
 func TestSharedSetGet(t *testing.T) {

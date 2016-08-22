@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/utils"
 )
 
 // The output structure that will be returned with the call cost information.

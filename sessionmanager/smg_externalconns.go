@@ -1,12 +1,11 @@
-
 package sessionmanager
 
 import (
 	"errors"
 	"sync"
 
+	"github.com/accurateproject/accurate/utils"
 	"github.com/cenkalti/rpc2"
-	"github.com/cgrates/cgrates/utils"
 )
 
 const CGR_CONNUUID = "cgr_connid"

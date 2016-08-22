@@ -1,11 +1,10 @@
-
 package engine
 
 import (
 	"strings"
 	"testing"
 
-	"github.com/cgrates/cgrates/history"
+	"github.com/accurateproject/accurate/history"
 )
 
 func TestHistoryRatinPlans(t *testing.T) {

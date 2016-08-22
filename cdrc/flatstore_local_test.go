@@ -1,4 +1,3 @@
-
 package cdrc
 
 import (
@@ -10,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cgrates/cgrates/config"
-	"github.com/cgrates/cgrates/engine"
+	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/engine"
 )
 
 var flatstoreCfgPath string

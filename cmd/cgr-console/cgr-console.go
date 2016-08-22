@@ -1,4 +1,3 @@
-
 package main
 
 import (
@@ -11,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cgrates/cgrates/console"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/console"
+	"github.com/accurateproject/accurate/utils"
 	"github.com/cgrates/rpcclient"
 	"github.com/peterh/liner"
 )

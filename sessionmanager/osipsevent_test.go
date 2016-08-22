@@ -1,4 +1,3 @@
-
 package sessionmanager
 
 import (
@@ -7,16 +6,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cgrates/cgrates/config"
-	"github.com/cgrates/cgrates/engine"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/engine"
+	"github.com/accurateproject/accurate/utils"
 	"github.com/cgrates/osipsdagram"
 )
 
 var addr, _ = net.ResolveUDPAddr("udp", "172.16.254.77:42574")
 var osipsEv = &OsipsEvent{osipsEvent: &osipsdagram.OsipsEvent{Name: "E_ACC_CDR",
 	AttrValues: map[string]string{"to_tag": "4ea9687f", "cgr_account": "dan", "setuptime": "7", "created": "1406370492", "method": "INVITE", "callid": "ODVkMDI2Mzc2MDY5N2EzODhjNTAzNTdlODhiZjRlYWQ",
-		"sip_reason": "OK", "cgr_answertime": "1406370499" ,"time": "1406370499", "cgr_reqtype": utils.META_PREPAID, "cgr_subject": "dan", "cgr_destination": "+4986517174963", "cgr_tenant": "itsyscom.com", "sip_code": "200",
+		"sip_reason": "OK", "cgr_answertime": "1406370499", "time": "1406370499", "cgr_reqtype": utils.META_PREPAID, "cgr_subject": "dan", "cgr_destination": "+4986517174963", "cgr_tenant": "itsyscom.com", "sip_code": "200",
 		"duration": "20", CGR_PDD: "3s", "from_tag": "eb082607", "extra1": "val1", "extra2": "val2", "cgr_supplier": "supplier3"}, OriginatorAddress: addr}}
 
 func TestOsipsEventInterface(t *testing.T) {

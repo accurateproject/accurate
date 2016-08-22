@@ -1,10 +1,10 @@
-
 package config
 
 import (
-	"github.com/cgrates/cgrates/utils"
 	"reflect"
 	"testing"
+
+	"github.com/accurateproject/accurate/utils"
 )
 
 func TesSmFsConfigLoadFromJsonCfg(t *testing.T) {

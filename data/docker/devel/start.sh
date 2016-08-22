@@ -10,9 +10,9 @@ echo 'host    all             all             0.0.0.0/32            md5'>>/etc/p
 /etc/init.d/mongod start
 
 # create a link to data dir
-ln -s /root/code/src/github.com/cgrates/cgrates/data /usr/share/cgrates
+ln -s /root/code/src/github.com/accurateproject/accurate/data /usr/share/cgrates
 # create link to cgrates dir
-ln -s /root/code/src/github.com/cgrates/cgrates /root/cgr
+ln -s /root/code/src/github.com/accurateproject/accurate /root/cgr
 
 #setup mysql
 cd /usr/share/cgrates/storage/mysql && ./setup_cgr_db.sh root CGRateS.org

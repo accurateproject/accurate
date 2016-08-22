@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/utils"
 )
 
 func csvLoad(s interface{}, values []string) (interface{}, error) {

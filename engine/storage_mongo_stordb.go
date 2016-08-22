@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/utils"
 	"gopkg.in/mgo.v2/bson"
 )
 

@@ -41,4 +41,4 @@ RUN chsh -s /usr/bin/zsh
 RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # set start command
-CMD /root/code/src/github.com/cgrates/cgrates/data/docker/devel/start.sh
+CMD /root/code/src/github.com/accurateproject/accurate/data/docker/devel/start.sh

@@ -1,12 +1,11 @@
-
 package v1
 
 import (
 	"time"
 
+	"github.com/accurateproject/accurate/sessionmanager"
+	"github.com/accurateproject/accurate/utils"
 	"github.com/cenkalti/rpc2"
-	"github.com/cgrates/cgrates/sessionmanager"
-	"github.com/cgrates/cgrates/utils"
 )
 
 func NewSMGenericBiRpcV1(sm *sessionmanager.SMGeneric) *SMGenericBiRpcV1 {

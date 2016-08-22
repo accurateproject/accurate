@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/utils"
 )
 
 func TestCdreCfgClone(t *testing.T) {

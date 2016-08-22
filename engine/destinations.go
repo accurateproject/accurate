@@ -1,13 +1,12 @@
-
 package engine
 
 import (
 	"encoding/json"
 	"strings"
 
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/utils"
 
-	"github.com/cgrates/cgrates/history"
+	"github.com/accurateproject/accurate/history"
 )
 
 /*

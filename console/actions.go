@@ -1,9 +1,8 @@
-
 package console
 
 import (
-	"github.com/cgrates/cgrates/apier/v2"
-	"github.com/cgrates/cgrates/engine"
+	"github.com/accurateproject/accurate/apier/v2"
+	"github.com/accurateproject/accurate/engine"
 )
 
 func init() {

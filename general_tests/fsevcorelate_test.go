@@ -1,12 +1,11 @@
-
 package general_tests
 
 import (
 	"testing"
 
-	"github.com/cgrates/cgrates/config"
-	"github.com/cgrates/cgrates/engine"
-	"github.com/cgrates/cgrates/sessionmanager"
+	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/engine"
+	"github.com/accurateproject/accurate/sessionmanager"
 )
 
 var answerEvent = `Event-Name: CHANNEL_ANSWER

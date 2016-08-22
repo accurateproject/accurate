@@ -1,9 +1,8 @@
-
 package v1
 
 import (
-	"github.com/cgrates/cgrates/engine"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/engine"
+	"github.com/accurateproject/accurate/utils"
 )
 
 // Creates a new SharedGroups profile within a tariff plan

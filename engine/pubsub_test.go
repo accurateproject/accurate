@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/utils"
 )
 
 func TestSubscribe(t *testing.T) {

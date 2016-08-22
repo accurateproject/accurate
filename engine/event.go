@@ -1,9 +1,9 @@
-
 package engine
 
 import (
-	"github.com/cgrates/cgrates/utils"
 	"time"
+
+	"github.com/accurateproject/accurate/utils"
 )
 
 type Event interface {

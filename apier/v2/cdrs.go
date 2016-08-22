@@ -1,11 +1,10 @@
-
 package v2
 
 import (
-	"github.com/cgrates/cgrates/apier/v1"
+	"github.com/accurateproject/accurate/apier/v1"
 
-	"github.com/cgrates/cgrates/engine"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/engine"
+	"github.com/accurateproject/accurate/utils"
 )
 
 // Retrieves CDRs based on the filters

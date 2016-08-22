@@ -12,8 +12,8 @@ Version:        %{version}.%{git_short_commit}
 Release:        1%{dist}
 Summary:        Carrier Grade Real-time Charging System
 License:        GPLv3
-URL:            https://github.com/cgrates/cgrates
-Source0:        https://github.com/cgrates/cgrates/archive/%{git_commit}.tar.gz
+URL:            https://github.com/accurateproject/accurate
+Source0:        https://github.com/accurateproject/accurate/archive/%{git_commit}.tar.gz
 
 %if 0%{?fedora} > 16 || 0%{?rhel} > 6
 Requires(pre): shadow-utils
@@ -32,7 +32,7 @@ CGRateS is a very fast and easy scalable real-time charging system for Telecom e
 %prep
 %setup -q -n %{name}-%{version} -c
 mkdir -p src/github.com/cgrates
-ln -sf ../../../%{name}-%{git_commit} src/github.com/cgrates/cgrates
+ln -sf ../../../%{name}-%{git_commit} src/github.com/accurateproject/accurate
 
 %pre
 getent group %{name} >/dev/null || groupadd -r %{name}
@@ -70,7 +70,7 @@ fi
 %build
 export GO15VENDOREXPERIMENT=1
 export GOPATH=$RPM_BUILD_DIR/%{name}-%{version}
-cd $RPM_BUILD_DIR/%{name}-%{version}/src/github.com/cgrates/cgrates
+cd $RPM_BUILD_DIR/%{name}-%{version}/src/github.com/accurateproject/accurate
 go get -v github.com/Masterminds/glide
 $GOPATH/bin/glide install
 ./build.sh
@@ -78,8 +78,8 @@ $GOPATH/bin/glide install
 %install
 rm -rf $RPM_BUILD_ROOT
 mkdir -p $RPM_BUILD_ROOT%{_datarootdir}/%{name}
-cp -rpf src/github.com/cgrates/cgrates/data/* $RPM_BUILD_ROOT%{_datarootdir}/%{name}
-install -D -m 0644 -p src/github.com/cgrates/cgrates/data/conf/%{name}/%{name}.json $RPM_BUILD_ROOT%{_sysconfdir}/%{name}/%{name}.json
+cp -rpf src/github.com/accurateproject/accurate/data/* $RPM_BUILD_ROOT%{_datarootdir}/%{name}
+install -D -m 0644 -p src/github.com/accurateproject/accurate/data/conf/%{name}/%{name}.json $RPM_BUILD_ROOT%{_sysconfdir}/%{name}/%{name}.json
 install -D -m 0755 -p bin/cgr-console $RPM_BUILD_ROOT%{_bindir}/cgr-console
 install -D -m 0755 -p bin/cgr-engine $RPM_BUILD_ROOT%{_bindir}/cgr-engine
 install -D -m 0755 -p bin/cgr-loader $RPM_BUILD_ROOT%{_bindir}/cgr-loader
@@ -90,11 +90,11 @@ mkdir -p $RPM_BUILD_ROOT%{_logdir}/cdre/csv
 mkdir -p $RPM_BUILD_ROOT%{_logdir}/cdre/fwv
 mkdir -p $RPM_BUILD_ROOT%{_libdir}/history
 mkdir -p $RPM_BUILD_ROOT%{_libdir}/cache_dump
-install -D -m 0644 -p src/github.com/cgrates/cgrates/packages/redhat_fedora/%{name}.options $RPM_BUILD_ROOT%{_sysconfdir}/sysconfig/%{name}
+install -D -m 0644 -p src/github.com/accurateproject/accurate/packages/redhat_fedora/%{name}.options $RPM_BUILD_ROOT%{_sysconfdir}/sysconfig/%{name}
 %if 0%{?fedora} > 16 || 0%{?rhel} > 6
-	install -D -m 0644 -p src/github.com/cgrates/cgrates/packages/redhat_fedora/%{name}.service $RPM_BUILD_ROOT%{_unitdir}/%{name}.service
+	install -D -m 0644 -p src/github.com/accurateproject/accurate/packages/redhat_fedora/%{name}.service $RPM_BUILD_ROOT%{_unitdir}/%{name}.service
 %else
-	install -D -m 0755 -p src/github.com/cgrates/cgrates/packages/redhat_fedora/%{name}.init $RPM_BUILD_ROOT%{_initrddir}/%{name}
+	install -D -m 0755 -p src/github.com/accurateproject/accurate/packages/redhat_fedora/%{name}.init $RPM_BUILD_ROOT%{_initrddir}/%{name}
 %endif
 
 %files

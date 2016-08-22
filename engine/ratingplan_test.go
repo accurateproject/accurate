@@ -1,10 +1,9 @@
-
 package engine
 
 import (
 	"encoding/json"
 
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/utils"
 
 	"reflect"
 	"testing"

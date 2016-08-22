@@ -1,4 +1,3 @@
-
 package v1
 
 import (
@@ -16,9 +15,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/cgrates/cgrates/cdre"
-	"github.com/cgrates/cgrates/config"
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/cdre"
+	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/utils"
 )
 
 func (self *ApierV1) ExportCdrsToZipString(attr utils.AttrExpFileCdrs, reply *string) error {

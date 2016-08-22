@@ -1,4 +1,3 @@
-
 package history
 
 import (
@@ -16,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cgrates/cgrates/utils"
+	"github.com/accurateproject/accurate/utils"
 )
 
 type FileScribe struct {

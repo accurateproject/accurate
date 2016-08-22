@@ -12,7 +12,7 @@ import (
 
 	"github.com/accurateproject/accurate/console"
 	"github.com/accurateproject/accurate/utils"
-	"github.com/cgrates/rpcclient"
+	"github.com/accurateproject/rpcclient"
 	"github.com/peterh/liner"
 )
 

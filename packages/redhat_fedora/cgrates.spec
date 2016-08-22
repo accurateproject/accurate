@@ -31,7 +31,7 @@ CGRateS is a very fast and easy scalable real-time charging system for Telecom e
 
 %prep
 %setup -q -n %{name}-%{version} -c
-mkdir -p src/github.com/cgrates
+mkdir -p src/github.com/accurateproject
 ln -sf ../../../%{name}-%{git_commit} src/github.com/accurateproject/accurate
 
 %pre

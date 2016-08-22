@@ -49,7 +49,7 @@
 
   tasks:
     - name: create cgrates path
-      file: path=/home/vagrant/code/src/github.com/cgrates state=directory
+      file: path=/home/vagrant/code/src/github.com/accurateproject state=directory
 
     - name: get golang
       unarchive: src=https://storage.googleapis.com/golang/go{{ go_version }}.linux-amd64.tar.gz dest=~/ creates=~/go copy=no

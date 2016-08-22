@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/accurateproject/accurate/utils"
-	"github.com/cgrates/rpcclient"
+	"github.com/accurateproject/rpcclient"
 )
 
 const (

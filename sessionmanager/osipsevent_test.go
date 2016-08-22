@@ -9,7 +9,7 @@ import (
 	"github.com/accurateproject/accurate/config"
 	"github.com/accurateproject/accurate/engine"
 	"github.com/accurateproject/accurate/utils"
-	"github.com/cgrates/osipsdagram"
+	"github.com/accurateproject/osipsdagram"
 )
 
 var addr, _ = net.ResolveUDPAddr("udp", "172.16.254.77:42574")

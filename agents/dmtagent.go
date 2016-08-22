@@ -9,7 +9,7 @@ import (
 	"github.com/accurateproject/accurate/config"
 	"github.com/accurateproject/accurate/engine"
 	"github.com/accurateproject/accurate/utils"
-	"github.com/cgrates/rpcclient"
+	"github.com/accurateproject/rpcclient"
 	"github.com/fiorix/go-diameter/diam"
 	"github.com/fiorix/go-diameter/diam/datatype"
 	"github.com/fiorix/go-diameter/diam/sm"

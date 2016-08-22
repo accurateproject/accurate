@@ -12,8 +12,8 @@ import (
 	"github.com/accurateproject/accurate/config"
 	"github.com/accurateproject/accurate/engine"
 	"github.com/accurateproject/accurate/utils"
-	"github.com/cgrates/fsock"
-	"github.com/cgrates/rpcclient"
+	"github.com/accurateproject/fsock"
+	"github.com/accurateproject/rpcclient"
 )
 
 func NewFSSessionManager(smFsConfig *config.SmFsConfig, rater, cdrs, rls rpcclient.RpcClientConnection, timezone string) *FSSessionManager {

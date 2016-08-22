@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/accurateproject/accurate/utils"
-	"github.com/cgrates/rpcclient"
+	"github.com/accurateproject/rpcclient"
 )
 
 type SubscribeInfo struct {

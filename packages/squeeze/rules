@@ -21,8 +21,8 @@ clean:
 binary-arch: clean
 	dh_prep
 	dh_installdirs
-	mkdir -p src/github.com/cgrates
-	ln -sf $(CURDIR) src/github.com/cgrates
+	mkdir -p src/github.com/accurateproject
+	ln -sf $(CURDIR) src/github.com/accurateproject
 	go get -u -v github.com/Masterminds/glide
 	$(GOPATH)/bin/glide install --force
 	exec $(CURDIR)/build.sh

@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/accurateproject/accurate/engine"
-	"github.com/cgrates/rpcclient"
+	"github.com/accurateproject/rpcclient"
 )
 
 type SessionManager interface {

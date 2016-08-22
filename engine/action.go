@@ -16,7 +16,7 @@ import (
 
 	"github.com/accurateproject/accurate/config"
 	"github.com/accurateproject/accurate/utils"
-	"github.com/cgrates/rpcclient"
+	"github.com/accurateproject/rpcclient"
 	"github.com/mitchellh/mapstructure"
 )
 

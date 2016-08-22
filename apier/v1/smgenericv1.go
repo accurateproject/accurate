@@ -5,7 +5,7 @@ import (
 
 	"github.com/accurateproject/accurate/sessionmanager"
 	"github.com/accurateproject/accurate/utils"
-	"github.com/cgrates/rpcclient"
+	"github.com/accurateproject/rpcclient"
 )
 
 func NewSMGenericV1(sm *sessionmanager.SMGeneric) *SMGenericV1 {

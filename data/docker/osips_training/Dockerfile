@@ -26,7 +26,7 @@ RUN chsh -s /usr/bin/zsh
 RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # get cgrates from github
-RUN mkdir -p /root/code/src/github.com/cgrates; cd /root/code/src/github.com/cgrates; git clone https://github.com/accurateproject/accurate.git
+RUN mkdir -p /root/code/src/github.com/accurateproject; cd /root/code/src/github.com/accurateproject; git clone https://github.com/accurateproject/accurate.git
 
 # create link to cgrates dir
 RUN ln -s /root/code/src/github.com/accurateproject/accurate /root/cgr

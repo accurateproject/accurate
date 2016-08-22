@@ -12,7 +12,7 @@ import (
 	"github.com/accurateproject/accurate/engine"
 	"github.com/accurateproject/accurate/sessionmanager"
 	"github.com/accurateproject/accurate/utils"
-	"github.com/cgrates/rpcclient"
+	"github.com/accurateproject/rpcclient"
 )
 
 var rpcITCfgPath1, rpcITCfgPath2 string

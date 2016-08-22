@@ -2,10 +2,10 @@ import:
 - package: github.com/DisposaBoy/JsonConfigReader
 - package: github.com/cenk/hub
 - package: github.com/cenkalti/rpc2
-- package: github.com/cgrates/fsock
-- package: github.com/cgrates/kamevapi
-- package: github.com/cgrates/osipsdagram
-- package: github.com/cgrates/rpcclient
+- package: github.com/accurateproject/fsock
+- package: github.com/accurateproject/kamevapi
+- package: github.com/accurateproject/osipsdagram
+- package: github.com/accurateproject/rpcclient
 - package: github.com/fiorix/go-diameter
   subpackages:
   - diam

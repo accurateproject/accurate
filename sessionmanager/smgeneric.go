@@ -10,8 +10,8 @@ import (
 	"github.com/accurateproject/accurate/config"
 	"github.com/accurateproject/accurate/engine"
 	"github.com/accurateproject/accurate/utils"
+	"github.com/accurateproject/rpcclient"
 	"github.com/cenkalti/rpc2"
-	"github.com/cgrates/rpcclient"
 )
 
 var ErrPartiallyExecuted = errors.New("Partially executed")

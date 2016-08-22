@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	"github.com/accurateproject/accurate/utils"
-	"github.com/cgrates/rpcclient"
+	"github.com/accurateproject/rpcclient"
 )
 
 // Temporary export AliasService for the ApierV1 to be able to emulate old APIs

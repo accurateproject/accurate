@@ -13,7 +13,7 @@ import (
 	"github.com/accurateproject/accurate/cache2go"
 	"github.com/accurateproject/accurate/config"
 	"github.com/accurateproject/accurate/utils"
-	"github.com/cgrates/rpcclient"
+	"github.com/accurateproject/rpcclient"
 )
 
 var cdrServer *CdrServer // Share the server so we can use it in http handlers

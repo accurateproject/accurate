@@ -11,7 +11,7 @@ import (
 	"github.com/accurateproject/accurate/history"
 	"github.com/accurateproject/accurate/scheduler"
 	"github.com/accurateproject/accurate/utils"
-	"github.com/cgrates/rpcclient"
+	"github.com/accurateproject/rpcclient"
 )
 
 /*func init() {

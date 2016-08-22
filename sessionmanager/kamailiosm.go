@@ -10,8 +10,8 @@ import (
 	"github.com/accurateproject/accurate/config"
 	"github.com/accurateproject/accurate/engine"
 	"github.com/accurateproject/accurate/utils"
-	"github.com/cgrates/kamevapi"
-	"github.com/cgrates/rpcclient"
+	"github.com/accurateproject/kamevapi"
+	"github.com/accurateproject/rpcclient"
 )
 
 func NewKamailioSessionManager(smKamCfg *config.SmKamConfig, rater, cdrsrv rpcclient.RpcClientConnection, timezone string) (*KamailioSessionManager, error) {

@@ -10,7 +10,7 @@ import (
 	"github.com/accurateproject/accurate/config"
 	"github.com/accurateproject/accurate/engine"
 	"github.com/accurateproject/accurate/utils"
-	"github.com/cgrates/rpcclient"
+	"github.com/accurateproject/rpcclient"
 )
 
 var dataDir = flag.String("data_dir", "/usr/share/cgrates", "CGR data dir path here")

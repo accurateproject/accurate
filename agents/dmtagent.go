@@ -76,6 +76,7 @@ func (self DiameterAgent) processCCR(ccr *CCR, reqProcessor *config.DARequestPro
 	for _, fldFilter := range reqProcessor.RequestFilter {
 		if passes, _ := passesFieldFilter(ccr.diamMessage, fldFilter, nil); !passes {
 			passesAllFilters = false
+			break
 		}
 	}
 	if !passesAllFilters { // Not going with this processor further

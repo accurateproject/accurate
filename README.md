@@ -1,29 +1,39 @@
-## Real-time Charging System for Telecom & ISP environments ##
+## Real-time Accounting and Rating System for Telecom & ISP environments ##
 
-[![Build Status](https://secure.travis-ci.org/cgrates/cgrates.png)](http://travis-ci.org/cgrates/cgrates)
+[![Build Status](https://secure.travis-ci.org/accurate/accurate.png)](http://travis-ci.org/accurate/accurate)
 
 ### Features ###
 + Rates for prepaid and for postpaid
-+ The budget expressed in money and/or minutes (seconds)
++ Rating for voice/data/sms
++ Fraud detection
++ Least Cost Routing (LCR)
++ Realtime statistics
 + High accuracy rating: configurable to milliseconds
 + Handles volume discount
 + Received calls bonus
 + Fully/Easy configurable
-+ Very fast (5000+ req/sec on a single machine)
-+ Good documentation
++ Very fast
 + Commercial support available
 
-### Documentation ###
-[Step by steps tutorials](https://cgrates.readthedocs.org/en/latest/tut_freeswitch.html)
+### Roadmap ###
 
-[Debian apt-get repository](https://cgrates.readthedocs.org/en/latest/tut_freeswitch_installs.html#cgrates)
+As we are near to a stable long term release we plan the folowing actions:
+
++ API stabilisation
++ perfomance and precision for the engine
++ administrative web user interface
+
+### Documentation ###
+[Step by steps tutorials](https://accurate.readthedocs.org/en/latest/tut_freeswitch.html)
+
+[Debian apt-get repository](https://accurate.readthedocs.org/en/latest/tut_freeswitch_installs.html#accurate)
 
 [Installing CGRateS from sources on minimal debian](https://asciinema.org/a/0lwlputceg52xssqgra7wjza0) (for devel or testing)
 
-Browsable HTML docs http://readthedocs.org/docs/cgrates/
+Browsable HTML docs http://readthedocs.org/docs/accurate/
 
-PDF, Epub, Manpage http://readthedocs.org/projects/cgrates/downloads/
+PDF, Epub, Manpage http://readthedocs.org/projects/accurate/downloads/
 
 API reference [godoc](http://godoc.org/github.com/accurateproject/accurate/apier)
 
-Also check [irc.freenode.net #cgrates](irc://irc.freenode.net:6667/cgrates)  ([Webchat](http://webchat.freenode.net?randomnick=1&channels=%23cgrates)) and [Google group](https://groups.google.com/forum/#!forum/cgrates) for a more real-time support.
+Also check [Google group](https://groups.google.com/forum/#!forum/accurate) for a more real-time support.

@@ -62,7 +62,7 @@ func TestLRUandExpire(t *testing.T) {
 	if last != 99968 {
 		t.Error("error dicarding least recently used entry: ", last)
 	}
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(30 * time.Millisecond)
 	if cache.Len() != 0 {
 		t.Error("error dicarding expired entries: ", cache.Len())
 	}

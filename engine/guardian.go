@@ -23,30 +23,40 @@ import (
 	"time"
 )
 
+var lockPool = &sync.Pool{New: func() interface{} { return &lockItem{c: make(chan struct{}, 1), i: 0} }}
+
 // global package variable
-var Guardian = &GuardianLock{locksMap: make(map[string]chan bool)}
+var Guardian = &GuardianLock{locksMap: make(map[string]*lockItem)}
+
+type lockItem struct {
+	c chan struct{}
+	i int // how many are qeued to hold the lock
+}
 
 type GuardianLock struct {
-	locksMap map[string]chan bool
+	locksMap map[string]*lockItem
 	mu       sync.Mutex
 }
 
 func (cm *GuardianLock) Guard(handler func() (interface{}, error), timeout time.Duration, names ...string) (reply interface{}, err error) {
-	var locks []chan bool // take existing locks out of the mutex
+	var locks []*lockItem // take existing locks out of the mutex
 	cm.mu.Lock()
 	for _, name := range names {
-		if lock, exists := Guardian.locksMap[name]; !exists {
-			lock = make(chan bool, 1)
+		var lock *lockItem
+		var found bool
+		if lock, found = Guardian.locksMap[name]; !found {
+			lock = lockPool.Get().(*lockItem)
 			Guardian.locksMap[name] = lock
-			lock <- true
+			lock.c <- struct{}{}
 		} else {
 			locks = append(locks, lock)
 		}
+		lock.i++
 	}
 	cm.mu.Unlock()
 
 	for _, lock := range locks {
-		lock <- true // will block here if already locked
+		lock.c <- struct{}{} // will block here if already locked
 	}
 
 	funcWaiter := make(chan bool)
@@ -67,8 +77,13 @@ func (cm *GuardianLock) Guard(handler func() (interface{}, error), timeout time.
 	// release
 	cm.mu.Lock()
 	for _, name := range names {
-		<-Guardian.locksMap[name]
-		delete(Guardian.locksMap, name)
+		lock := Guardian.locksMap[name]
+		<-lock.c
+		lock.i--
+		if lock.i == 0 {
+			delete(Guardian.locksMap, name)
+			lockPool.Put(lock)
+		}
 	}
 	cm.mu.Unlock()
 	return

@@ -1,6 +1,6 @@
 ## Real-time Accounting and Rating System for Telecom & ISP environments ##
 
-[![Build Status](https://secure.travis-ci.org/accurate/accurate.png)](http://travis-ci.org/accurate/accurate)
+[![Build Status](https://secure.travis-ci.org/accurateproject/accurate.png)](http://travis-ci.org/accurateproject/accurate)
 
 ### Features ###
 + Rates for prepaid and for postpaid
@@ -28,7 +28,7 @@ As we are near to a stable long term release we plan the folowing actions:
 
 [Debian apt-get repository](https://accurate.readthedocs.org/en/latest/tut_freeswitch_installs.html#accurate)
 
-[Installing CGRateS from sources on minimal debian](https://asciinema.org/a/0lwlputceg52xssqgra7wjza0) (for devel or testing)
+[Installing accuRate from sources on minimal debian](https://asciinema.org/a/0lwlputceg52xssqgra7wjza0) (for devel or testing)
 
 Browsable HTML docs http://readthedocs.org/docs/accurate/
 

@@ -8,7 +8,7 @@ service redis-server start
 /root/code/bin/cgr-engine -config_dir /root/cgr/data/conf/samples/osips_training
 
 # setup mysql
-cd /usr/share/cgrates/storage/mysql && ./setup_cgr_db.sh root CGRateS.org
+cd /usr/share/accurate/storage/mysql && ./setup_cgr_db.sh root accuRate
 
 # load tariff plan data
 #cd /root/cgr/data/tariffplans/osips_training; cgr-loader

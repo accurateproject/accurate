@@ -5,7 +5,7 @@ From the project root:
 
 ``` bash
 # build the image
-docker build -t cgrates data/docker/devel
-# create the container from the cgrates project roor
+docker build -t accurate data/docker/devel
+# create the container from the accurate project roor
 ./data/docker/devel/run.sh
 ```

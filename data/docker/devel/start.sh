@@ -10,23 +10,23 @@ echo 'host    all             all             0.0.0.0/32            md5'>>/etc/p
 /etc/init.d/mongod start
 
 # create a link to data dir
-ln -s /root/code/src/github.com/accurateproject/accurate/data /usr/share/cgrates
-# create link to cgrates dir
+ln -s /root/code/src/github.com/accurateproject/accurate/data /usr/share/accurate
+# create link to accurate dir
 ln -s /root/code/src/github.com/accurateproject/accurate /root/cgr
 
 #setup mysql
-cd /usr/share/cgrates/storage/mysql && ./setup_cgr_db.sh root CGRateS.org
+cd /usr/share/accurate/storage/mysql && ./setup_cgr_db.sh root accuRate
 
 # setup postgres
-cd /usr/share/cgrates/storage/postgres && ./setup_cgr_db.sh
+cd /usr/share/accurate/storage/postgres && ./setup_cgr_db.sh
 
-# create cgrates user for mongo
-mongo --eval 'db.createUser({"user":"cgrates", "pwd":"CGRateS.org", "roles":[{role: "userAdminAnyDatabase", db: "admin"}]})' admin
+# create accurate user for mongo
+mongo --eval 'db.createUser({"user":"accurate", "pwd":"accuRate", "roles":[{role: "userAdminAnyDatabase", db: "admin"}]})' admin
 
 #env vars
 export GOROOT=/root/go; export GOPATH=/root/code; export PATH=$GOROOT/bin:$GOPATH/bin:$PATH
 
-# build and install cgrates
+# build and install accurate
 cd /root/cgr
 #glide -y devel.yaml install
 ./build.sh
@@ -36,7 +36,7 @@ ln -s /root/code/bin/cgr-engine /usr/bin/
 ln -s /root/code/bin/cgr-loader /usr/bin/
 
 # expand freeswitch conf
-cd /usr/share/cgrates/tutorials/fs_evsock/freeswitch/etc/ && tar xzf freeswitch_conf.tar.gz
+cd /usr/share/accurate/tutorials/fs_evsock/freeswitch/etc/ && tar xzf freeswitch_conf.tar.gz
 
 #cd /root/.oh-my-zsh; git pull
 

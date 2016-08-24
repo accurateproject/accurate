@@ -1,8 +1,8 @@
 FROM debian:latest
-MAINTAINER Radu Fericean, rif@cgrates.org
+MAINTAINER Radu Fericean, radu@fericean.ro
 
 # set mysql password
-RUN echo 'mysql-server mysql-server/root_password password CGRateS.org' | debconf-set-selections && echo 'mysql-server mysql-server/root_password_again password CGRateS.org' | debconf-set-selections
+RUN echo 'mysql-server mysql-server/root_password password accuRate' | debconf-set-selections && echo 'mysql-server mysql-server/root_password_again password accuRate' | debconf-set-selections
 
 # add freeswitch gpg key
 RUN gpg --keyserver pool.sks-keyservers.net --recv-key D76EDC7725E010CF && gpg -a --export D76EDC7725E010CF | apt-key add -
@@ -22,8 +22,8 @@ RUN apt-get -y update && apt-get -y install git redis-server mysql-server python
 # add mongo conf
 COPY mongod.conf /etc/mongod.conf
 
-# add cgrates user
-RUN useradd -c CGRateS -d /var/run/cgrates -s /bin/false -r cgrates
+# add accurate user
+RUN useradd -c accuRate -d /var/run/accurate -s /bin/false -r accurate
 
 # install golang
 RUN wget -qO- https://storage.googleapis.com/golang/go1.7.linux-amd64.tar.gz | tar xzf - -C /root/

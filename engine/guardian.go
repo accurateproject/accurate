@@ -30,7 +30,7 @@ var Guardian = &GuardianLock{locksMap: make(map[string]*lockItem)}
 
 type lockItem struct {
 	c chan struct{}
-	i int // how many are qeued to hold the lock
+	i int // how many are queued to hold the lock
 }
 
 type GuardianLock struct {

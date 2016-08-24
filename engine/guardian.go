@@ -6,12 +6,16 @@ import (
 	"time"
 )
 
+var lockPool = &sync.Pool{New: func() interface{} {
+	return make(chan bool, 1)
+}}
+
 // global package variable
 var Guardian = &GuardianLock{locksMap: make(map[string]chan bool)}
 
 type GuardianLock struct {
 	locksMap map[string]chan bool
-	mu       sync.RWMutex
+	mu       sync.Mutex
 }
 
 func (cm *GuardianLock) Guard(handler func() (interface{}, error), timeout time.Duration, names ...string) (reply interface{}, err error) {
@@ -19,7 +23,7 @@ func (cm *GuardianLock) Guard(handler func() (interface{}, error), timeout time.
 	cm.mu.Lock()
 	for _, name := range names {
 		if lock, exists := Guardian.locksMap[name]; !exists {
-			lock = make(chan bool, 1)
+			lock = lockPool.Get().(chan bool)
 			Guardian.locksMap[name] = lock
 			lock <- true
 		} else {
@@ -29,7 +33,7 @@ func (cm *GuardianLock) Guard(handler func() (interface{}, error), timeout time.
 	cm.mu.Unlock()
 
 	for _, lock := range locks {
-		lock <- true
+		lock <- true // will block here if already locked
 	}
 
 	funcWaiter := make(chan bool)
@@ -48,10 +52,13 @@ func (cm *GuardianLock) Guard(handler func() (interface{}, error), timeout time.
 		<-funcWaiter
 	}
 	// release
-	cm.mu.RLock()
+	cm.mu.Lock()
 	for _, name := range names {
-		<-Guardian.locksMap[name]
+		lock := Guardian.locksMap[name]
+		<-lock
+		delete(Guardian.locksMap, name)
+		lockPool.Put(lock)
 	}
-	cm.mu.RUnlock()
+	cm.mu.Unlock()
 	return
 }

@@ -29,7 +29,7 @@ RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 RUN mkdir -p /root/code/src/github.com/accurateproject; cd /root/code/src/github.com/accurateproject; git clone https://github.com/accurateproject/accurate.git
 
 # create link to accurate dir
-RUN ln -s /root/code/src/github.com/accurateproject/accurate /root/cgr
+RUN ln -s /root/code/src/github.com/accurateproject/accurate /root/cc
 
 # get deps
 RUN cd /root/cgr; GOROOT=/root/go GOPATH=/root/code PATH=$GOROOT/bin:$GOPATH/bin:$PATH glide install

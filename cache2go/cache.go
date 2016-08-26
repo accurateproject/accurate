@@ -5,14 +5,15 @@ import (
 	"sync"
 
 	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/utils"
 )
 
 const (
-	PREFIX_LEN   = 4
-	KIND_ADD     = "ADD"
-	KIND_REM     = "REM"
-	KIND_PRF     = "PRF"
-	DOUBLE_CACHE = true
+	PREFIX_LEN = 4
+	KIND_ADD   = "ADD"
+	KIND_REM   = "REM"
+	KIND_PRF   = "PRF"
+	COMMIT     = "commit"
 )
 
 var (
@@ -20,10 +21,8 @@ var (
 	cache cacheStore
 	cfg   *config.CacheConfig
 	// transaction stuff
-	transactionBuffer []*transactionItem
+	transactionBuffer map[string][]*transactionItem
 	transactionMux    sync.Mutex
-	transactionON     = false
-	transactionLock   = false
 )
 
 type transactionItem struct {
@@ -41,50 +40,72 @@ func NewCache(cacheCfg *config.CacheConfig) {
 	cache = newLruStore()
 }
 
-func BeginTransaction() {
+func BeginTransaction() string {
+	transID := utils.GenUUID()
 	transactionMux.Lock()
-	transactionLock = true
-	transactionON = true
+	defer transactionMux.Unlock()
+	if transactionBuffer == nil {
+		transactionBuffer = make(map[string][]*transactionItem)
+	}
+	transactionBuffer[transID] = make([]*transactionItem, 0)
+	return transID
 }
 
-func RollbackTransaction() {
-	transactionBuffer = nil
-	transactionLock = false
-	transactionON = false
-	transactionMux.Unlock()
+func RollbackTransaction(transID string) {
+	transactionMux.Lock()
+	defer transactionMux.Unlock()
+	if transactionBuffer != nil {
+		delete(transactionBuffer, transID)
+	}
 }
 
-func CommitTransaction() {
-	transactionON = false
+func CommitTransaction(transID string) {
+	transactionMux.Lock()
+	defer transactionMux.Unlock()
+	if transactionBuffer == nil {
+		return
+	}
+	var items []*transactionItem
+	if itm, transOK := transactionBuffer[transID]; transOK {
+		items = itm
+	} else {
+		return
+	}
 	// apply all transactioned items
 	mux.Lock()
-	for _, item := range transactionBuffer {
+	for _, item := range items {
 		switch item.kind {
 		case KIND_REM:
-			RemKey(item.key)
+			RemKey(item.key, COMMIT)
 		case KIND_PRF:
-			RemPrefixKey(item.key)
+			RemPrefixKey(item.key, COMMIT)
 		case KIND_ADD:
-			Set(item.key, item.value)
+			Set(item.key, item.value, COMMIT)
 		}
 	}
 	mux.Unlock()
-	transactionBuffer = nil
-	transactionLock = false
-	transactionMux.Unlock()
+	delete(transactionBuffer, transID)
 }
 
 // The function to be used to cache a key/value pair when expiration is not needed
-func Set(key string, value interface{}) {
-	if !transactionLock {
-		mux.Lock()
-		defer mux.Unlock()
-	}
-	if !transactionON {
+func Set(key string, value interface{}, transID string) {
+	if transID == "" || transID == COMMIT {
+		if transID == "" {
+			mux.Lock()
+			defer mux.Unlock()
+		}
 		cache.Put(key, value)
-		//log.Println("ADD: ", key)
 	} else {
-		transactionBuffer = append(transactionBuffer, &transactionItem{key: key, value: value, kind: KIND_ADD})
+		transactionMux.Lock()
+		defer transactionMux.Unlock()
+		if transactionBuffer == nil {
+			return
+		}
+		items, trasOK := transactionBuffer[transID]
+		if !trasOK {
+			return
+		}
+		transactionBuffer[transID] = append(items, &transactionItem{key: key, value: value, kind: KIND_ADD})
 	}
 }
 
@@ -95,27 +116,45 @@ func Get(key string) (interface{}, bool) {
 	return cache.Get(key)
 }
 
-func RemKey(key string) {
-	if !transactionLock {
-		mux.Lock()
-		defer mux.Unlock()
-	}
-	if !transactionON {
+func RemKey(key, transID string) {
+	if transID == "" || transID == COMMIT {
+		if transID == "" {
+			mux.Lock()
+			defer mux.Unlock()
+		}
 		cache.Delete(key)
 	} else {
-		transactionBuffer = append(transactionBuffer, &transactionItem{key: key, kind: KIND_REM})
+		transactionMux.Lock()
+		defer transactionMux.Unlock()
+		if transactionBuffer == nil {
+			return
+		}
+		items, trasOK := transactionBuffer[transID]
+		if !trasOK {
+			return
+		}
+		transactionBuffer[transID] = append(items, &transactionItem{key: key, kind: KIND_REM})
 	}
 }
 
-func RemPrefixKey(prefix string) {
-	if !transactionLock {
-		mux.Lock()
-		defer mux.Unlock()
-	}
-	if !transactionON {
+func RemPrefixKey(prefix, transID string) {
+	if transID == "" || transID == COMMIT {
+		if transID == "" {
+			mux.Lock()
+			defer mux.Unlock()
+		}
 		cache.DeletePrefix(prefix)
 	} else {
-		transactionBuffer = append(transactionBuffer, &transactionItem{key: prefix, kind: KIND_PRF})
+		transactionMux.Lock()
+		defer transactionMux.Unlock()
+		if transactionBuffer == nil {
+			return
+		}
+		items, trasOK := transactionBuffer[transID]
+		if !trasOK {
+			return
+		}
+		transactionBuffer[transID] = append(items, &transactionItem{key: prefix, kind: KIND_PRF})
 	}
 }
 

@@ -208,7 +208,7 @@ func TestAliasesLoadAlias(t *testing.T) {
 
 func TestAliasesCache(t *testing.T) {
 	key := "*out:cgrates.org:call:remo:remo:*rating"
-	_, err := accountingStorage.GetAlias(key, false)
+	_, err := accountingStorage.GetAlias(key, utils.CACHED)
 	if err != nil {
 		t.Error("Error getting alias: ", err)
 	}
@@ -218,7 +218,7 @@ func TestAliasesCache(t *testing.T) {
 		t.Error("Error getting alias from cache: ", err, a)
 	}
 	rKey1 := "minuAccount*rating"
-	_, err = accountingStorage.GetReverseAlias(rKey1, false)
+	_, err = accountingStorage.GetReverseAlias(rKey1, utils.CACHED)
 	if err != nil {
 		t.Error("Error getting reverse alias: ", err)
 	}
@@ -227,7 +227,7 @@ func TestAliasesCache(t *testing.T) {
 		t.Error("Error getting reverse alias 1: ", ra1)
 	}
 	rKey2 := "minuSubject*rating"
-	_, err = accountingStorage.GetReverseAlias(rKey2, false)
+	_, err = accountingStorage.GetReverseAlias(rKey2, utils.CACHED)
 	if err != nil {
 		t.Error("Error getting reverse alias: ", err)
 	}
@@ -240,7 +240,7 @@ func TestAliasesCache(t *testing.T) {
 	if found {
 		t.Error("Error getting alias from cache: ", found)
 	}
-	_, err = accountingStorage.GetReverseAlias(rKey1, false)
+	_, err = accountingStorage.GetReverseAlias(rKey1, utils.CACHED)
 	if err != nil {
 		t.Error("Error getting reverse alias: ", err)
 	}
@@ -248,7 +248,7 @@ func TestAliasesCache(t *testing.T) {
 	if !found || len(ra1.([]string)) != 1 {
 		t.Error("Error getting reverse alias 1: ", ra1)
 	}
-	_, err = accountingStorage.GetReverseAlias(rKey2, false)
+	_, err = accountingStorage.GetReverseAlias(rKey2, utils.CACHED)
 	if err != nil {
 		t.Error("Error getting reverse alias: ", err)
 	}

@@ -20,11 +20,11 @@ func TestSharedSetGet(t *testing.T) {
 	if err != nil {
 		t.Error("Error storing Shared groudp: ", err)
 	}
-	received, err := ratingStorage.GetSharedGroup(id, true)
+	received, err := ratingStorage.GetSharedGroup(id, utils.CACHE_SKIP)
 	if err != nil || received == nil || !reflect.DeepEqual(sg, received) {
 		t.Error("Error getting shared group: ", err, received)
 	}
-	received, err = ratingStorage.GetSharedGroup(id, false)
+	received, err = ratingStorage.GetSharedGroup(id, utils.CACHED)
 	if err != nil || received == nil || !reflect.DeepEqual(sg, received) {
 		t.Error("Error getting cached shared group: ", err, received)
 	}

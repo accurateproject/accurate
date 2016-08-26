@@ -53,7 +53,7 @@ func (self *ApierV1) AddAccountActionTriggers(attr AttrAddAccountActionTriggers,
 				account.ActionTriggers = make(engine.ActionTriggers, 0)
 			}
 			for _, actionTriggerID := range *attr.ActionTriggerIDs {
-				atrs, err := self.RatingDb.GetActionTriggers(actionTriggerID, false)
+				atrs, err := self.RatingDb.GetActionTriggers(actionTriggerID, utils.CACHED)
 				if err != nil {
 
 					return 0, err
@@ -336,7 +336,7 @@ func (self *ApierV1) RemoveActionTrigger(attr AttrRemoveActionTrigger, reply *st
 		}
 		return err
 	} else {
-		atrs, err := self.RatingDb.GetActionTriggers(attr.GroupID, false)
+		atrs, err := self.RatingDb.GetActionTriggers(attr.GroupID, utils.CACHED)
 		if err != nil {
 			*reply = err.Error()
 			return err
@@ -390,7 +390,7 @@ func (self *ApierV1) SetActionTrigger(attr AttrSetActionTrigger, reply *string) 
 		return utils.NewErrMandatoryIeMissing(missing...)
 	}
 
-	atrs, _ := self.RatingDb.GetActionTriggers(attr.GroupID, false)
+	atrs, _ := self.RatingDb.GetActionTriggers(attr.GroupID, utils.CACHED)
 	var newAtr *engine.ActionTrigger
 	if attr.UniqueID != "" {
 		//search for exiting one
@@ -512,7 +512,7 @@ func (self *ApierV1) GetActionTriggers(attr AttrGetActionTriggers, atrs *engine.
 	var allAttrs engine.ActionTriggers
 	if len(attr.GroupIDs) > 0 {
 		for _, key := range attr.GroupIDs {
-			getAttrs, err := self.RatingDb.GetActionTriggers(key, false)
+			getAttrs, err := self.RatingDb.GetActionTriggers(key, utils.CACHED)
 			if err != nil {
 				return err
 			}
@@ -525,7 +525,7 @@ func (self *ApierV1) GetActionTriggers(attr AttrGetActionTriggers, atrs *engine.
 			return err
 		}
 		for _, key := range keys {
-			getAttrs, err := self.RatingDb.GetActionTriggers(key[len(utils.ACTION_TRIGGER_PREFIX):], false)
+			getAttrs, err := self.RatingDb.GetActionTriggers(key[len(utils.ACTION_TRIGGER_PREFIX):], utils.CACHED)
 			if err != nil {
 				return err
 			}

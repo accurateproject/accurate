@@ -209,7 +209,7 @@ func (self *ApierV2) LoadTariffPlanFromFolder(attrs utils.AttrLoadTpFromFolder, 
 			return err
 		}
 	}
-	loadHistList, err := self.AccountDb.GetLoadHistory(1, true)
+	loadHistList, err := self.AccountDb.GetLoadHistory(1, utils.CACHE_SKIP)
 	if err != nil {
 		return err
 	}
@@ -260,7 +260,7 @@ func (self *ApierV2) GetActions(attr AttrGetActions, reply *map[string]engine.Ac
 	retActions := make(map[string]engine.Actions)
 	for _, accKey := range limitedActions {
 		key := accKey[len(utils.ACTION_PREFIX):]
-		acts, err := self.RatingDb.GetActions(key, false)
+		acts, err := self.RatingDb.GetActions(key, utils.CACHED)
 		if err != nil {
 			return utils.NewErrServerError(err)
 		}
@@ -294,7 +294,7 @@ func (self *ApierV2) GetDestinations(attr AttrGetDestinations, reply *[]*engine.
 		}
 	}
 	for _, destID := range attr.DestinationIDs {
-		dst, err := self.RatingDb.GetDestination(destID, false)
+		dst, err := self.RatingDb.GetDestination(destID, utils.CACHED)
 		if err != nil {
 			return err
 		}

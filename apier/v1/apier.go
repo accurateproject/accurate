@@ -35,7 +35,7 @@ type ApierV1 struct {
 }
 
 func (self *ApierV1) GetDestination(dstId string, reply *engine.Destination) error {
-	if dst, err := self.RatingDb.GetDestination(dstId, false); err != nil {
+	if dst, err := self.RatingDb.GetDestination(dstId, utils.CACHED); err != nil {
 		return utils.ErrNotFound
 	} else {
 		*reply = *dst
@@ -70,7 +70,7 @@ func (self *ApierV1) RemoveDestination(attr AttrRemoveDestination, reply *string
 }
 
 func (apier *ApierV1) GetSharedGroup(sgId string, reply *engine.SharedGroup) error {
-	if sg, err := apier.RatingDb.GetSharedGroup(sgId, false); err != nil && err != utils.ErrNotFound { // Not found is not an error here
+	if sg, err := apier.RatingDb.GetSharedGroup(sgId, utils.CACHED); err != nil && err != utils.ErrNotFound { // Not found is not an error here
 		return err
 	} else {
 		if sg != nil {
@@ -101,7 +101,7 @@ func (self *ApierV1) SetDestination(attrs utils.AttrSetDestination, reply *strin
 }
 
 func (self *ApierV1) GetRatingPlan(rplnId string, reply *engine.RatingPlan) error {
-	if rpln, err := self.RatingDb.GetRatingPlan(rplnId, false); err != nil {
+	if rpln, err := self.RatingDb.GetRatingPlan(rplnId, utils.CACHED); err != nil {
 		return utils.ErrNotFound
 	} else {
 		*reply = *rpln
@@ -394,7 +394,7 @@ func (self *ApierV1) SetRatingProfile(attrs AttrSetRatingProfile, reply *string)
 			return utils.NewErrServerError(err)
 		} else if exists {
 			var err error
-			if rpfl, err = self.RatingDb.GetRatingProfile(keyId, false); err != nil {
+			if rpfl, err = self.RatingDb.GetRatingProfile(keyId, utils.CACHED); err != nil {
 				return utils.NewErrServerError(err)
 			}
 		}
@@ -418,7 +418,7 @@ func (self *ApierV1) SetRatingProfile(attrs AttrSetRatingProfile, reply *string)
 	if err := self.RatingDb.SetRatingProfile(rpfl); err != nil {
 		return utils.NewErrServerError(err)
 	}
-	cache2go.RemPrefixKey(utils.RATING_PLAN_PREFIX)
+	cache2go.RemPrefixKey(utils.RATING_PLAN_PREFIX, utils.CACHE_SKIP)
 	self.RatingDb.PreloadCacheForPrefix(utils.RATING_PLAN_PREFIX)
 	*reply = OK
 	return nil
@@ -498,7 +498,7 @@ func (self *ApierV1) GetActions(actsId string, reply *[]*utils.TPAction) error {
 		return fmt.Errorf("%s ActionsId: %s", utils.ErrMandatoryIeMissing.Error(), actsId)
 	}
 	acts := make([]*utils.TPAction, 0)
-	engActs, err := self.RatingDb.GetActions(actsId, false)
+	engActs, err := self.RatingDb.GetActions(actsId, utils.CACHED)
 	if err != nil {
 		return utils.NewErrServerError(err)
 	}
@@ -615,7 +615,7 @@ func (self *ApierV1) GetActionPlan(attr AttrGetActionPlan, reply *[]*engine.Acti
 			result = append(result, apls)
 		}
 	} else {
-		apls, err := self.RatingDb.GetActionPlan(attr.Id, false)
+		apls, err := self.RatingDb.GetActionPlan(attr.Id, utils.CACHED)
 		if err != nil {
 			return err
 		}
@@ -751,7 +751,7 @@ func (self *ApierV1) GetCacheStats(attrs utils.AttrCacheStats, reply *utils.Cach
 		}
 		cs.Users = len(ups)
 	}
-	if loadHistInsts, err := self.AccountDb.GetLoadHistory(1, false); err != nil || len(loadHistInsts) == 0 {
+	if loadHistInsts, err := self.AccountDb.GetLoadHistory(1, utils.CACHED); err != nil || len(loadHistInsts) == 0 {
 		if err != nil { // Not really an error here since we only count in cache
 			utils.Logger.Warning(fmt.Sprintf("ApierV1.GetCacheStats, error on GetLoadHistory: %s", err.Error()))
 		}
@@ -961,7 +961,7 @@ func (self *ApierV1) GetLoadHistory(attrs utils.Paginator, reply *[]*utils.LoadI
 	} else if attrs.Limit != nil {
 		nrItems = *attrs.Limit
 	}
-	loadHist, err := self.AccountDb.GetLoadHistory(nrItems, true)
+	loadHist, err := self.AccountDb.GetLoadHistory(nrItems, utils.CACHE_SKIP)
 	if err != nil {
 		return utils.NewErrServerError(err)
 	}

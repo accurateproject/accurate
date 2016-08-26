@@ -3,25 +3,25 @@ package cache2go
 import "testing"
 
 func TestRemKey(t *testing.T) {
-	Set("t11_mm", "test")
-	if t1, ok := Get("t11_mm"); !ok || t1 != "test" {
+	Set("t01_mm", "test", "")
+	if t1, ok := Get("t01_mm"); !ok || t1 != "test" {
 		t.Error("Error setting cache: ", ok, t1)
 	}
-	RemKey("t11_mm")
-	if t1, ok := Get("t11_mm"); ok || t1 == "test" {
+	RemKey("t01_mm", "")
+	if t1, ok := Get("t01_mm"); ok || t1 == "test" {
 		t.Error("Error removing cached key")
 	}
 }
 
 func TestTransaction(t *testing.T) {
-	BeginTransaction()
-	Set("t11_mm", "test")
+	transID := BeginTransaction()
+	Set("t11_mm", "test", transID)
 	if t1, ok := Get("t11_mm"); ok || t1 == "test" {
 		t.Error("Error in transaction cache")
 	}
-	Set("t12_mm", "test")
-	RemKey("t11_mm")
-	CommitTransaction()
+	Set("t12_mm", "test", transID)
+	RemKey("t11_mm", transID)
+	CommitTransaction(transID)
 	if t1, ok := Get("t12_mm"); !ok || t1 != "test" {
 		t.Error("Error commiting transaction")
 	}
@@ -31,11 +31,11 @@ func TestTransaction(t *testing.T) {
 }
 
 func TestTransactionRem(t *testing.T) {
-	BeginTransaction()
-	Set("t21_mm", "test")
-	Set("t21_nn", "test")
-	RemPrefixKey("t21_")
-	CommitTransaction()
+	transID := BeginTransaction()
+	Set("t21_mm", "test", transID)
+	Set("t21_nn", "test", transID)
+	RemPrefixKey("t21_", transID)
+	CommitTransaction(transID)
 	if t1, ok := Get("t21_mm"); ok || t1 == "test" {
 		t.Error("Error commiting transaction")
 	}
@@ -45,13 +45,13 @@ func TestTransactionRem(t *testing.T) {
 }
 
 func TestTransactionRollback(t *testing.T) {
-	BeginTransaction()
-	Set("t31_mm", "test")
+	transID := BeginTransaction()
+	Set("t31_mm", "test", transID)
 	if t1, ok := Get("t31_mm"); ok || t1 == "test" {
 		t.Error("Error in transaction cache")
 	}
-	Set("t32_mm", "test")
-	RollbackTransaction()
+	Set("t32_mm", "test", transID)
+	RollbackTransaction(transID)
 	if t1, ok := Get("t32_mm"); ok || t1 == "test" {
 		t.Error("Error commiting transaction")
 	}
@@ -61,11 +61,11 @@ func TestTransactionRollback(t *testing.T) {
 }
 
 func TestTransactionRemBefore(t *testing.T) {
-	BeginTransaction()
-	RemPrefixKey("t41_")
-	Set("t41_mm", "test")
-	Set("t41_nn", "test")
-	CommitTransaction()
+	transID := BeginTransaction()
+	RemPrefixKey("t41_", transID)
+	Set("t41_mm", "test", transID)
+	Set("t41_nn", "test", transID)
+	CommitTransaction(transID)
 	if t1, ok := Get("t41_mm"); !ok || t1 != "test" {
 		t.Error("Error commiting transaction")
 	}
@@ -75,13 +75,36 @@ func TestTransactionRemBefore(t *testing.T) {
 }
 
 func TestRemPrefixKey(t *testing.T) {
-	Set("xxx_t1", "test")
-	Set("yyy_t1", "test")
-	RemPrefixKey("xxx_")
+	Set("xxx_t1", "test", "")
+	Set("yyy_t1", "test", "")
+	RemPrefixKey("xxx_", "")
 	_, okX := Get("xxx_t1")
 	_, okY := Get("yyy_t1")
 	if okX || !okY {
 		t.Error("Error removing prefix: ", okX, okY)
+	}
+}
+
+func TestTransactionMultiple(t *testing.T) {
+	transID1 := BeginTransaction()
+	transID2 := BeginTransaction()
+	Set("t51_mm", "test", transID1)
+	if t5, ok := Get("t51_mm"); ok || t5 == "test" {
+		t.Error("Error in transaction cache")
+	}
+	Set("t52_mm", "test", transID1)
+	RemKey("t51_mm", transID1)
+	RemKey("t52_mm", transID2)
+	CommitTransaction(transID1)
+	if t5, ok := Get("t52_mm"); !ok || t5 != "test" {
+		t.Error("Error commiting transaction")
+	}
+	if t5, ok := Get("t51_mm"); ok || t5 == "test" {
+		t.Error("Error in transaction cache")
+	}
+	CommitTransaction(transID2)
+	if t5, ok := Get("t52_mm"); ok || t5 == "test" {
+		t.Error("Error commiting transaction")
 	}
 }
 

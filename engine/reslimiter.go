@@ -309,7 +309,7 @@ func (rls *ResourceLimiterService) V1InitiateResourceUsage(attrs utils.AttrRLsRe
 		return utils.ErrResourceUnavailable
 	}
 	for _, rl := range matchingRLForEv {
-		cache2go.Set(utils.ResourceLimitsPrefix+rl.ID, rl)
+		cache2go.Set(utils.ResourceLimitsPrefix+rl.ID, rl, "")
 	}
 	*reply = utils.OK
 	return nil

@@ -155,7 +155,7 @@ func (self *ApierV2) SetAccount(attr AttrSetAccount, reply *string) error {
 				ub.ActionTriggers = make(engine.ActionTriggers, 0)
 			}
 			for _, actionTriggerID := range *attr.ActionTriggerIDs {
-				atrs, err := self.RatingDb.GetActionTriggers(actionTriggerID, false)
+				atrs, err := self.RatingDb.GetActionTriggers(actionTriggerID, utils.CACHED)
 				if err != nil {
 					return 0, err
 				}

@@ -72,7 +72,7 @@ func (self *ApierV1) RemActionTiming(attrs AttrRemActionTiming, reply *string) e
 		}
 	}
 	_, err := engine.Guardian.Guard(func() (interface{}, error) {
-		ap, err := self.RatingDb.GetActionPlan(attrs.ActionPlanId, false)
+		ap, err := self.RatingDb.GetActionPlan(attrs.ActionPlanId, utils.CACHED)
 		if err != nil {
 			return 0, err
 		} else if ap == nil {
@@ -140,7 +140,7 @@ func (self *ApierV1) SetAccount(attr utils.AttrSetAccount, reply *string) error 
 
 			_, err := engine.Guardian.Guard(func() (interface{}, error) {
 				var ap *engine.ActionPlan
-				ap, err := self.RatingDb.GetActionPlan(attr.ActionPlanId, false)
+				ap, err := self.RatingDb.GetActionPlan(attr.ActionPlanId, utils.CACHED)
 				if err != nil {
 					return 0, err
 				}
@@ -183,7 +183,7 @@ func (self *ApierV1) SetAccount(attr utils.AttrSetAccount, reply *string) error 
 					if _, exists := ap.AccountIDs[accID]; exists {
 						delete(ap.AccountIDs, accID)
 						// clean from cache
-						cache2go.RemKey(utils.ACTION_PLAN_PREFIX + actionPlanID)
+						cache2go.RemKey(utils.ACTION_PLAN_PREFIX+actionPlanID, utils.CACHE_SKIP)
 					}
 				}
 
@@ -195,7 +195,7 @@ func (self *ApierV1) SetAccount(attr utils.AttrSetAccount, reply *string) error 
 		}
 
 		if len(attr.ActionTriggersId) != 0 {
-			atrs, err := self.RatingDb.GetActionTriggers(attr.ActionTriggersId, false)
+			atrs, err := self.RatingDb.GetActionTriggers(attr.ActionTriggersId, utils.CACHED)
 			if err != nil {
 				return 0, err
 			}

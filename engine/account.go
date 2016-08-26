@@ -37,7 +37,7 @@ func (ub *Account) getCreditForPrefix(cd *CallDescriptor) (duration time.Duratio
 	for _, cb := range creditBalances {
 		if len(cb.SharedGroups) > 0 {
 			for sg := range cb.SharedGroups {
-				if sharedGroup, _ := ratingStorage.GetSharedGroup(sg, false); sharedGroup != nil {
+				if sharedGroup, _ := ratingStorage.GetSharedGroup(sg, utils.CACHED); sharedGroup != nil {
 					sgb := sharedGroup.GetBalances(cd.Destination, cd.Category, cd.Direction, utils.MONETARY, ub)
 					sgb = sharedGroup.SortBalancesByStrategy(cb, sgb)
 					extendedCreditBalances = append(extendedCreditBalances, sgb...)
@@ -51,7 +51,7 @@ func (ub *Account) getCreditForPrefix(cd *CallDescriptor) (duration time.Duratio
 	for _, mb := range unitBalances {
 		if len(mb.SharedGroups) > 0 {
 			for sg := range mb.SharedGroups {
-				if sharedGroup, _ := ratingStorage.GetSharedGroup(sg, false); sharedGroup != nil {
+				if sharedGroup, _ := ratingStorage.GetSharedGroup(sg, utils.CACHED); sharedGroup != nil {
 					sgb := sharedGroup.GetBalances(cd.Destination, cd.Category, cd.Direction, cd.TOR, ub)
 					sgb = sharedGroup.SortBalancesByStrategy(mb, sgb)
 					extendedMinuteBalances = append(extendedMinuteBalances, sgb...)
@@ -119,7 +119,7 @@ func (acc *Account) setBalanceAction(a *Action) error {
 		_, err := Guardian.Guard(func() (interface{}, error) {
 			for sgID := range balance.SharedGroups {
 				// add shared group member
-				sg, err := ratingStorage.GetSharedGroup(sgID, false)
+				sg, err := ratingStorage.GetSharedGroup(sgID, utils.CACHED)
 				if err != nil || sg == nil {
 					//than is problem
 					utils.Logger.Warning(fmt.Sprintf("Could not get shared group: %v", sgID))
@@ -207,7 +207,7 @@ func (ub *Account) debitBalanceAction(a *Action, reset bool) error {
 		_, err := Guardian.Guard(func() (interface{}, error) {
 			for sgId := range bClone.SharedGroups {
 				// add shared group member
-				sg, err := ratingStorage.GetSharedGroup(sgId, false)
+				sg, err := ratingStorage.GetSharedGroup(sgId, utils.CACHED)
 				if err != nil || sg == nil {
 					//than is problem
 					utils.Logger.Warning(fmt.Sprintf("Could not get shared group: %v", sgId))
@@ -288,7 +288,7 @@ func (ub *Account) getBalancesForPrefix(prefix, category, direction, tor string,
 
 		if len(b.DestinationIDs) > 0 && b.DestinationIDs[utils.ANY] == false {
 			for _, p := range utils.SplitPrefix(prefix, MIN_PREFIX_MATCH) {
-				if destIDs, err := ratingStorage.GetReverseDestination(p, false); err == nil {
+				if destIDs, err := ratingStorage.GetReverseDestination(p, utils.CACHED); err == nil {
 					foundResult := false
 					allInclude := true // whether it is excluded or included
 					for _, dId := range destIDs {
@@ -338,7 +338,7 @@ func (account *Account) getAlldBalancesForPrefix(destination, category, directio
 	for _, b := range balances {
 		if len(b.SharedGroups) > 0 {
 			for sgId := range b.SharedGroups {
-				sharedGroup, err := ratingStorage.GetSharedGroup(sgId, false)
+				sharedGroup, err := ratingStorage.GetSharedGroup(sgId, utils.CACHED)
 				if err != nil || sharedGroup == nil {
 					utils.Logger.Warning(fmt.Sprintf("Could not get shared group: %v", sgId))
 					continue
@@ -757,7 +757,7 @@ func (account *Account) GetUniqueSharedGroupMembers(cd *CallDescriptor) (utils.S
 	}
 	memberIds := make(utils.StringMap)
 	for _, sgID := range sharedGroupIds {
-		sharedGroup, err := ratingStorage.GetSharedGroup(sgID, false)
+		sharedGroup, err := ratingStorage.GetSharedGroup(sgID, utils.CACHED)
 		if err != nil {
 			utils.Logger.Warning(fmt.Sprintf("Could not get shared group: %v", sgID))
 			return nil, err

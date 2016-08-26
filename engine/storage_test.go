@@ -57,7 +57,7 @@ func TestMsgpackTime(t *testing.T) {
 }
 
 func TestStorageDestinationContainsPrefixShort(t *testing.T) {
-	dest, err := ratingStorage.GetDestination("NAT", true)
+	dest, err := ratingStorage.GetDestination("NAT", utils.CACHE_SKIP)
 	precision := dest.containsPrefix("0723")
 	if err != nil || precision != 4 {
 		t.Error("Error finding prefix: ", err, precision)
@@ -65,7 +65,7 @@ func TestStorageDestinationContainsPrefixShort(t *testing.T) {
 }
 
 func TestStorageDestinationContainsPrefixLong(t *testing.T) {
-	dest, err := ratingStorage.GetDestination("NAT", true)
+	dest, err := ratingStorage.GetDestination("NAT", utils.CACHE_SKIP)
 	precision := dest.containsPrefix("0723045326")
 	if err != nil || precision != 4 {
 		t.Error("Error finding prefix: ", err, precision)
@@ -73,7 +73,7 @@ func TestStorageDestinationContainsPrefixLong(t *testing.T) {
 }
 
 func TestStorageDestinationContainsPrefixNotExisting(t *testing.T) {
-	dest, err := ratingStorage.GetDestination("NAT", true)
+	dest, err := ratingStorage.GetDestination("NAT", utils.CACHE_SKIP)
 	precision := dest.containsPrefix("072")
 	if err != nil || precision != 0 {
 		t.Error("Error finding prefix: ", err, precision)
@@ -82,14 +82,14 @@ func TestStorageDestinationContainsPrefixNotExisting(t *testing.T) {
 
 func TestStorageCacheRefresh(t *testing.T) {
 	ratingStorage.SetDestination(&Destination{"T11", []string{"0"}})
-	ratingStorage.GetDestination("T11", false)
+	ratingStorage.GetDestination("T11", utils.CACHED)
 	ratingStorage.SetDestination(&Destination{"T11", []string{"1"}})
 	t.Log("Test cache refresh")
 	err := ratingStorage.PreloadRatingCache()
 	if err != nil {
 		t.Error("Error cache rating: ", err)
 	}
-	d, err := ratingStorage.GetDestination("T11", false)
+	d, err := ratingStorage.GetDestination("T11", utils.CACHED)
 	p := d.containsPrefix("1")
 	if err != nil || p == 0 {
 		t.Error("Error refreshing cache:", d)
@@ -131,19 +131,19 @@ func TestStorageGetAliases(t *testing.T) {
 	accountingStorage.SetReverseAlias(ala)
 	accountingStorage.SetAlias(alb)
 	accountingStorage.SetReverseAlias(alb)
-	foundAlias, err := accountingStorage.GetAlias(ala.GetId(), true)
+	foundAlias, err := accountingStorage.GetAlias(ala.GetId(), utils.CACHE_SKIP)
 	if err != nil || len(foundAlias.Values) != 1 {
 		t.Errorf("Alias get error %+v, %v: ", foundAlias, err)
 	}
-	foundAlias, err = accountingStorage.GetAlias(alb.GetId(), true)
+	foundAlias, err = accountingStorage.GetAlias(alb.GetId(), utils.CACHE_SKIP)
 	if err != nil || len(foundAlias.Values) != 1 {
 		t.Errorf("Alias get error %+v, %v: ", foundAlias, err)
 	}
-	foundAlias, err = accountingStorage.GetAlias(ala.GetId(), false)
+	foundAlias, err = accountingStorage.GetAlias(ala.GetId(), utils.CACHED)
 	if err != nil || len(foundAlias.Values) != 1 {
 		t.Errorf("Alias get error %+v, %v: ", foundAlias, err)
 	}
-	foundAlias, err = accountingStorage.GetAlias(alb.GetId(), false)
+	foundAlias, err = accountingStorage.GetAlias(alb.GetId(), utils.CACHED)
 	if err != nil || len(foundAlias.Values) != 1 {
 		t.Errorf("Alias get error %+v, %v: ", foundAlias, err)
 	}
@@ -166,7 +166,7 @@ func TestStorageCacheGetReverseAliases(t *testing.T) {
 		Subject:   "b1",
 		Context:   "*other",
 	}
-	accountingStorage.GetReverseAlias("aaa"+"Subject"+utils.ALIAS_CONTEXT_RATING, false)
+	accountingStorage.GetReverseAlias("aaa"+"Subject"+utils.ALIAS_CONTEXT_RATING, utils.CACHED)
 	if x, ok := cache2go.Get(utils.REVERSE_ALIASES_PREFIX + "aaa" + "Subject" + utils.ALIAS_CONTEXT_RATING); ok {
 		aliasKeys := x.([]string)
 		if len(aliasKeys) != 1 {
@@ -175,7 +175,7 @@ func TestStorageCacheGetReverseAliases(t *testing.T) {
 	} else {
 		t.Error("Error getting reverse alias: ", err)
 	}
-	accountingStorage.GetReverseAlias("aaa"+"Account"+"*other", false)
+	accountingStorage.GetReverseAlias("aaa"+"Account"+"*other", utils.CACHED)
 	if x, ok := cache2go.Get(utils.REVERSE_ALIASES_PREFIX + "aaa" + "Account" + "*other"); ok {
 		aliasKeys := x.([]string)
 		if len(aliasKeys) != 1 {

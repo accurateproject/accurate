@@ -161,7 +161,7 @@ type AttrsExecuteScheduledActions struct {
 
 func (self *ApierV1) ExecuteScheduledActions(attr AttrsExecuteScheduledActions, reply *string) error {
 	if attr.ActionPlanID != "" { // execute by ActionPlanID
-		apl, err := self.RatingDb.GetActionPlan(attr.ActionPlanID, false)
+		apl, err := self.RatingDb.GetActionPlan(attr.ActionPlanID, utils.CACHED)
 		if err != nil {
 			*reply = err.Error()
 			return err

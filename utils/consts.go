@@ -274,6 +274,8 @@ const (
 	CGR_SESSION_UPDATE            = "CgrSessionUpdate"
 	CGR_SESSION_END               = "CgrSessionEnd"
 	CGR_LCR_REQUEST               = "CgrLcrRequest"
+	CACHED                        = "*cached"
+	CACHE_SKIP                    = ""
 	// action trigger threshold types
 	TRIGGER_MIN_EVENT_COUNTER   = "*min_event_counter"
 	TRIGGER_MIN_BALANCE_COUNTER = "*min_balance_counter"

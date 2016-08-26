@@ -500,7 +500,7 @@ func setddestinations(ub *Account, sq *StatsQueueTriggered, a *Action, acs Actio
 			i++
 		}
 		newDest := &Destination{Id: ddcDestId, Prefixes: prefixes}
-		oldDest, err := ratingStorage.GetDestination(ddcDestId, false)
+		oldDest, err := ratingStorage.GetDestination(ddcDestId, utils.CACHED)
 		// update destid in storage
 		ratingStorage.SetDestination(newDest)
 

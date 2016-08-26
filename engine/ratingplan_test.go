@@ -434,6 +434,6 @@ func BenchmarkRatingPlanRestore(b *testing.B) {
 	ratingStorage.SetRatingPlan(rp)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		ratingStorage.GetRatingPlan(rp.Id, true)
+		ratingStorage.GetRatingPlan(rp.Id, utils.CACHE_SKIP)
 	}
 }

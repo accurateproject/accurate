@@ -1,4 +1,3 @@
-[logo]: https://github.com/accurateproject/accurate/blob/master/docs/images/logo.png "AccuRate"
 <img src="https://github.com/accurateproject/accurate/blob/master/docs/images/accurate.png" alt="AccuRate" height="30px"/>
 ## Real-time Accounting and Rating System for Telecom & ISP environments ##
 

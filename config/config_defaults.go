@@ -1,4 +1,3 @@
-
 package config
 
 const CGRATES_CFG_JSON = `
@@ -79,9 +78,9 @@ const CGRATES_CFG_JSON = `
 	"db_type": "mysql",						// stor database type to use: <mongo|mysql|postgres>
 	"db_host": "127.0.0.1",					// the host to connect to
 	"db_port": 3306,						// the port to reach the stordb
-	"db_name": "cgrates",					// stor database name
-	"db_user": "cgrates",					// username to use when connecting to stordb
-	"db_password": "CGRateS.org",			// password to use when connecting to stordb
+	"db_name": "accurate",					// stor database name
+	"db_user": "accurate",					// username to use when connecting to stordb
+	"db_password": "accuRate",			// password to use when connecting to stordb
 	"max_open_conns": 100,					// maximum database connections opened
 	"max_idle_conns": 10,					// maximum database connections idle
 	"cdrs_indexes": [],						// indexes on cdrs table to speed up queries, used only in case of mongo
@@ -392,7 +391,7 @@ const CGRATES_CFG_JSON = `
 "mailer": {
 	"server": "localhost",								// the server to use when sending emails out
 	"auth_user": "cgrates",								// authenticate to email server using this user
-	"auth_password": "CGRateS.org",						// authenticate to email server with this password
+	"auth_password": "accuRate",						// authenticate to email server with this password
 	"from_address": "cgr-mailer@localhost.localdomain"	// from address used when sending emails out
 },
 

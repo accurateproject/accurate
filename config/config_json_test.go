@@ -113,7 +113,7 @@ func TestDfDbJsonCfg(t *testing.T) {
 		Db_port:        utils.IntPointer(3306),
 		Db_name:        utils.StringPointer("cgrates"),
 		Db_user:        utils.StringPointer("cgrates"),
-		Db_password:    utils.StringPointer("CGRateS.org"),
+		Db_password:    utils.StringPointer("accuRate"),
 		Max_open_conns: utils.IntPointer(100),
 		Max_idle_conns: utils.IntPointer(10),
 		Cdrs_indexes:   utils.StringSlicePointer([]string{}),
@@ -632,7 +632,7 @@ func TestDfMailerJsonCfg(t *testing.T) {
 	eCfg := &MailerJsonCfg{
 		Server:        utils.StringPointer("localhost"),
 		Auth_user:     utils.StringPointer("cgrates"),
-		Auth_password: utils.StringPointer("CGRateS.org"),
+		Auth_password: utils.StringPointer("accuRate"),
 		From_address:  utils.StringPointer("cgr-mailer@localhost.localdomain"),
 	}
 	if cfg, err := dfCgrJsonCfg.MailerJsonCfg(); err != nil {

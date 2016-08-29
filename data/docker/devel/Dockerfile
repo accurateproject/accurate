@@ -1,15 +1,6 @@
 FROM debian:latest
 MAINTAINER Radu Fericean, radu@fericean.ro
 
-# set mysql password
-RUN echo 'mysql-server mysql-server/root_password password accuRate' | debconf-set-selections && echo 'mysql-server mysql-server/root_password_again password accuRate' | debconf-set-selections
-
-# add freeswitch gpg key
-RUN gpg --keyserver pool.sks-keyservers.net --recv-key D76EDC7725E010CF && gpg -a --export D76EDC7725E010CF | apt-key add -
-
-# add freeswitch apt repo
-RUN echo 'deb http://files.freeswitch.org/repo/deb/debian/ jessie main' > /etc/apt/sources.list.d/freeswitch.list
-
 # add mongo repo keys
 RUN apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv EA312927
 
@@ -17,7 +8,7 @@ RUN apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv EA312927
 RUN echo 'deb http://repo.mongodb.org/apt/debian wheezy/mongodb-org/3.2 main' | tee '/etc/apt/sources.list.d/mongodb-org-3.2.list'
 
 # install dependencies
-RUN apt-get -y update && apt-get -y install git redis-server mysql-server python-pycurl python-mysqldb postgresql postgresql-client sudo wget freeswitch-meta-vanilla vim zsh mongodb-org tmux rsyslog ngrep curl
+RUN apt-get -y update && apt-get -y install git redis-server python-pycurl sudo wget vim zsh mongodb-org tmux rsyslog ngrep curl
 
 # add mongo conf
 COPY mongod.conf /etc/mongod.conf

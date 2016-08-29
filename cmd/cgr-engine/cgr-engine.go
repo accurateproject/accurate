@@ -570,7 +570,6 @@ func main() {
 		cdrDb = storDb.(engine.CdrStorage)
 		engine.SetCdrStorage(cdrDb)
 	}
-
 	engine.SetRoundingDecimals(cfg.RoundingDecimals)
 	engine.SetRpSubjectPrefixMatching(cfg.RpSubjectPrefixMatching)
 	engine.SetLcrSubjectPrefixMatching(cfg.LcrSubjectPrefixMatching)

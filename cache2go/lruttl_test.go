@@ -22,14 +22,14 @@ func TestCache(t *testing.T) {
 }
 
 func TestCacheExpire(t *testing.T) {
-	cache := NewLRUTTL(0, 5*time.Millisecond)
+	cache := NewLRUTTL(0, 1*time.Millisecond)
 	a := &myStruct{data: "mama are mere"}
 	cache.Set("mama", a)
 	b, ok := cache.Get("mama")
 	if !ok || b == nil || b != a {
 		t.Error("Error retriving data from cache", b)
 	}
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(20 * time.Millisecond)
 	b, ok = cache.Get("mama")
 	if ok || b != nil {
 		t.Error("Error expiring data from cache", b)

@@ -18,11 +18,16 @@
 
 ### Roadmap ###
 
-As we are near to a stable long term release we plan the folowing actions:
+The top priority at this moment is releasing a 1.0 release:
 
-+ API stabilisation
-+ perfomance and precision for the engine
-+ administrative web user interface
+- [x] stop adding new features
+- [ ] fix and refactor the engine (using the accumulated experience and feedback) 
+- [ ] make consistent API
+- [ ] write propper documentation
+- [ ] unify installation packages (variants: static zip distribution and docker container)
+- [ ] create web administrative interface
+
+NOTE: most of these changes are done on a private branch and will be merged as they are complete.
 
 ### Documentation ###
 [Step by steps tutorials](https://accurate.readthedocs.org/en/latest/tut_freeswitch.html)

@@ -3,9 +3,7 @@
 accuRate is Licensed under the GPL license version 3
 (http://www.gnu.org/licenses/gpl.html)
 
-Copyrighted(c) by:
-Radu Ioan Fericean and ITsysCOM GmbH (2012-2016)
-Radu Ioan Fericean (2016-)
+Copyrighted(c) by: Radu Ioan Fericean
 
                        GNU GENERAL PUBLIC LICENSE
                        Version 3, 29 June 2007

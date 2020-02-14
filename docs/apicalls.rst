@@ -1,6 +1,6 @@
 API Calls
 =========
-The general API usage of the CGRateS involves creating a CallDescriptor structure sending it to the balancer via JSON/GOB RPC and getting a response from the balancer in form of a CallCost structure or a numeric value for requested information.
+The general API usage of the AccuRate involves creating a CallDescriptor structure sending it to the balancer via JSON/GOB RPC and getting a response from the balancer in form of a CallCost structure or a numeric value for requested information.
 
 CallDescriptor structure
 ------------------------
@@ -52,7 +52,7 @@ Timespans
 
 As stated before the balancer (or the rater directly) can be accesed via json rpc. 
 
-The smallest python snippet to acces the CGRateS balancer is this:
+The smallest python snippet to acces the AccuRate balancer is this:
 
 ::
 

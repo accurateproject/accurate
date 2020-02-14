@@ -1,9 +1,4 @@
 {
-
-// Real-time Charging System for Telecom & ISP environments
-// Copyright (C) ITsysCOM GmbH
-
-
  "rals": {
  	"enabled": true
  },
@@ -17,7 +12,7 @@
  "cdrc": [
  	{
  		"id": "XMLit1",
- 		"enabled": true,	
+ 		"enabled": true,
  		"cdr_format": "xml",
  		"cdr_in_dir": "/tmp/cdrctests/xmlit1/in",
  		"cdr_out_dir": "/tmp/cdrctests/xmlit1/out",

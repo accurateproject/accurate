@@ -1,0 +1,17 @@
+version: '3'
+services:
+  mongo:
+    image: "mongo:latest"
+    container_name: db
+    ports:
+     - "27017:27017"
+  accurate:
+    image: accurate
+    container_name: cc
+    build: data/docker/devel
+    ports:
+     - "2012:2012"
+     - "2013:2013"
+     - "2080:2080"
+    volumes:
+     - ../../../:/go/src/github.com/accurateproject/accurate

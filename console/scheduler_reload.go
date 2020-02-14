@@ -1,10 +1,9 @@
-
 package console
 
 func init() {
 	c := &CmdReloadScheduler{
 		name:      "scheduler_reload",
-		rpcMethod: "ApierV1.ReloadScheduler",
+		rpcMethod: "ApiV1.ReloadScheduler",
 	}
 	commands[c.Name()] = c
 	c.CommandExecuter = &CommandExecuter{c}

@@ -5,7 +5,21 @@ import (
 	"testing"
 )
 
-func TestStructMapStruct(t *testing.T) {
+func TestMissingStructFieldsCorrect(t *testing.T) {
+	var attr = struct {
+		Tenant          string
+		Direction       string
+		Account         string
+		Type            string
+		ActionTimingsId string
+	}{"bevoip.eu", "OUT", "danconns0001", META_PREPAID, "mama"}
+	if missing := MissingStructFields(&attr,
+		[]string{"Tenant", "Direction", "Account", "Type", "ActionTimingsId"}); len(missing) != 0 {
+		t.Error("Found missing field on correct struct", missing)
+	}
+}
+
+func TestStructFieldByName(t *testing.T) {
 	type TestStruct struct {
 		Name    string
 		Surname string
@@ -18,70 +32,18 @@ func TestStructMapStruct(t *testing.T) {
 		Address: "3",
 		Other:   "",
 	}
-	nts := &TestStruct{
-		Name:    "1",
-		Surname: "2",
-		Address: "3",
-		Other:   "",
+	m := FieldByName(ts, NewStringMap("Surname"))
+	if m["Surname"] != "2" {
+		t.Errorf("expected %v got %v", ts.Surname, m)
 	}
-	m := ToMapStringString(ts)
+	m = FieldByName(*ts, NewStringMap("Address"))
+	if m["Address"] != "3" {
+		t.Errorf("expected %v got %v", ts.Surname, m)
+	}
 
-	FromMapStringString(m, ts)
-	if !reflect.DeepEqual(ts, nts) {
-		t.Log(m)
-		t.Errorf("Expected: %+v got: %+v", ts, nts)
-	}
-}
-
-func TestMapStructAddStructs(t *testing.T) {
-	type TestStruct struct {
-		Name    string
-		Surname string
-		Address string
-		Other   string
-	}
-	ts := &TestStruct{
-		Name:    "1",
-		Surname: "2",
-		Address: "3",
-		Other:   "",
-	}
-	nts := &TestStruct{
-		Name:    "1",
-		Surname: "2",
-		Address: "3",
-		Other:   "",
-	}
-	m := ToMapStringString(ts)
-	m["Test"] = "4"
-	FromMapStringString(m, ts)
-
-	if !reflect.DeepEqual(ts, nts) {
-		t.Log(m)
-		t.Errorf("Expected: %+v got: %+v", ts, nts)
-	}
-}
-
-func TestStructExtraFields(t *testing.T) {
-	ts := struct {
-		Name        string
-		Surname     string
-		Address     string
-		ExtraFields map[string]string
-	}{
-		Name:    "1",
-		Surname: "2",
-		Address: "3",
-		ExtraFields: map[string]string{
-			"k1": "v1",
-			"k2": "v2",
-			"k3": "v3",
-		},
-	}
-	efMap := GetMapExtraFields(ts, "ExtraFields")
-
-	if !reflect.DeepEqual(efMap, ts.ExtraFields) {
-		t.Errorf("expected: %v got: %v", ts.ExtraFields, efMap)
+	m = FieldByName(*ts, NewStringMap("Nonexisting"))
+	if len(m) != 0 {
+		t.Errorf("expected %v got %v", ts.Surname, m)
 	}
 }
 
@@ -135,5 +97,94 @@ func TestStructFromMapStringInterfaceValue(t *testing.T) {
 		*rt.Disabled != true ||
 		!reflect.DeepEqual(rt.Members, []string{"1", "2", "3"}) {
 		t.Errorf("error converting structure value: %s", ToIJSON(rt))
+	}
+}
+
+func TestStructMerge(t *testing.T) {
+	type MergeTest struct {
+		ID    *string
+		Flag  *bool
+		Slice []string
+		Map   map[string]int
+	}
+	a := &MergeTest{
+		ID:    StringPointer("orig id"),
+		Slice: []string{"orig1", "orig2"},
+		Map:   map[string]int{"o": 1},
+	}
+	b := &MergeTest{
+		ID:    StringPointer("other id"),
+		Flag:  BoolPointer(true),
+		Slice: []string{"orig3"},
+		Map:   map[string]int{"x": 2},
+	}
+	err := Merge(a, b, false)
+	if err != nil {
+		t.Error("Error merging structs: ", err)
+	}
+	expected := MergeTest{
+		ID:    StringPointer("other id"),
+		Flag:  BoolPointer(true),
+		Slice: []string{"orig1", "orig2", "orig3"},
+		Map:   map[string]int{"o": 1, "x": 2},
+	}
+	if *a.ID != *expected.ID ||
+		*a.Flag != *expected.Flag ||
+		!reflect.DeepEqual(a.Slice, expected.Slice) ||
+		!reflect.DeepEqual(a.Map, expected.Map) {
+		t.Error("Unexpected merge result: ", ToIJSON(a))
+	}
+}
+
+func TestStructMergeNilDest(t *testing.T) {
+	type MergeTest struct {
+		ID    *string
+		Flag  *bool
+		Slice []string
+		Map   map[string]int
+	}
+	a := &MergeTest{}
+	b := &MergeTest{
+		ID:    StringPointer("other id"),
+		Flag:  BoolPointer(true),
+		Slice: []string{"orig3"},
+		Map:   map[string]int{"x": 2},
+	}
+	err := Merge(a, b, false)
+	if err != nil {
+		t.Error("Error merging structs: ", err)
+	}
+	expected := b
+	if *a.ID != *expected.ID ||
+		*a.Flag != *expected.Flag ||
+		!reflect.DeepEqual(a.Slice, expected.Slice) ||
+		!reflect.DeepEqual(a.Map, expected.Map) {
+		t.Error("Unexpected merge result: ", ToIJSON(a))
+	}
+}
+
+func TestStructMergeNilOther(t *testing.T) {
+	type MergeTest struct {
+		ID    *string
+		Flag  *bool
+		Slice []string
+		Map   map[string]int
+	}
+	a := &MergeTest{
+		ID:    StringPointer("orig id"),
+		Slice: []string{"orig1", "orig2"},
+		Map:   map[string]int{"o": 1},
+	}
+	b := &MergeTest{}
+	err := Merge(a, b, true)
+	if err != nil {
+		t.Error("Error merging structs: ", err)
+	}
+	expected := a
+	if *a.ID != *expected.ID ||
+		a.Flag != expected.Flag ||
+		!reflect.DeepEqual(a.Slice, expected.Slice) ||
+		!reflect.DeepEqual(a.Map, expected.Map) {
+		t.Error("Unexpected merge result: ", ToIJSON(a))
 	}
 }

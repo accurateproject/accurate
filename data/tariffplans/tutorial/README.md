@@ -1,4 +1,4 @@
-CGRateS Tutorial
+AccuRate Tutorial
 ================
 
 Scenario:

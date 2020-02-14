@@ -12,8 +12,10 @@ import (
 	"time"
 
 	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/dec"
 	"github.com/accurateproject/accurate/engine"
 	"github.com/accurateproject/accurate/utils"
+	"go.uber.org/zap"
 )
 
 func fwvValue(cdrLine string, indexStart, width int, padding string) string {
@@ -31,14 +33,14 @@ func fwvValue(cdrLine string, indexStart, width int, padding string) string {
 	return rawVal
 }
 
-func NewFwvRecordsProcessor(file *os.File, dfltCfg *config.CdrcConfig, cdrcCfgs []*config.CdrcConfig, httpClient *http.Client, httpSkipTlsCheck bool, timezone string) *FwvRecordsProcessor {
+func NewFwvRecordsProcessor(file *os.File, dfltCfg *config.Cdrc, cdrcCfgs []*config.Cdrc, httpClient *http.Client, httpSkipTlsCheck bool, timezone string) *FwvRecordsProcessor {
 	return &FwvRecordsProcessor{file: file, cdrcCfgs: cdrcCfgs, dfltCfg: dfltCfg, httpSkipTlsCheck: httpSkipTlsCheck, timezone: timezone}
 }
 
 type FwvRecordsProcessor struct {
 	file               *os.File
-	dfltCfg            *config.CdrcConfig // General parameters
-	cdrcCfgs           []*config.CdrcConfig
+	dfltCfg            *config.Cdrc // General parameters
+	cdrcCfgs           []*config.Cdrc
 	httpClient         *http.Client
 	httpSkipTlsCheck   bool
 	timezone           string
@@ -71,12 +73,12 @@ func (self *FwvRecordsProcessor) ProcessNextRecord() ([]*engine.CDR, error) {
 	defer func() { self.offset += self.lineLen }() // Schedule increasing the offset once we are out from processing the record
 	if self.offset == 0 {                          // First time, set the necessary offsets
 		if err := self.setLineLen(); err != nil {
-			utils.Logger.Err(fmt.Sprintf("<Cdrc> Row 0, error: cannot set lineLen: %s", err.Error()))
+			utils.Logger.Error("<Cdrc> Row 0, error: cannot set lineLen:", zap.Error(err))
 			return nil, io.EOF
 		}
 		if len(self.dfltCfg.TrailerFields) != 0 {
 			if fi, err := self.file.Stat(); err != nil {
-				utils.Logger.Err(fmt.Sprintf("<Cdrc> Row 0, error: cannot get file stats: %s", err.Error()))
+				utils.Logger.Error("<Cdrc> Row 0, error: cannot get file stats:", zap.Error(err))
 				return nil, err
 			} else {
 				self.trailerOffset = fi.Size() - self.lineLen
@@ -84,7 +86,7 @@ func (self *FwvRecordsProcessor) ProcessNextRecord() ([]*engine.CDR, error) {
 		}
 		if len(self.dfltCfg.HeaderFields) != 0 { // ToDo: Process here the header fields
 			if err := self.processHeader(); err != nil {
-				utils.Logger.Err(fmt.Sprintf("<Cdrc> Row 0, error reading header: %s", err.Error()))
+				utils.Logger.Error("<Cdrc> Row 0, error reading header:", zap.Error(err))
 				return nil, io.EOF
 			}
 			return nil, nil
@@ -93,7 +95,7 @@ func (self *FwvRecordsProcessor) ProcessNextRecord() ([]*engine.CDR, error) {
 	recordCdrs := make([]*engine.CDR, 0) // More CDRs based on the number of filters and field templates
 	if self.trailerOffset != 0 && self.offset >= self.trailerOffset {
 		if err := self.processTrailer(); err != nil && err != io.EOF {
-			utils.Logger.Err(fmt.Sprintf("<Cdrc> Read trailer error: %s ", err.Error()))
+			utils.Logger.Error("<Cdrc> Read trailer error:", zap.Error(err))
 		}
 		return nil, io.EOF
 	}
@@ -102,7 +104,7 @@ func (self *FwvRecordsProcessor) ProcessNextRecord() ([]*engine.CDR, error) {
 	if err != nil {
 		return nil, err
 	} else if nRead != len(buf) {
-		utils.Logger.Err(fmt.Sprintf("<Cdrc> Could not read complete line, have instead: %s", string(buf)))
+		utils.Logger.Error("<Cdrc> Could not read complete line, have instead:", zap.String("buf", string(buf)))
 		return nil, io.EOF
 	}
 	self.processedRecordsNr += 1
@@ -111,26 +113,26 @@ func (self *FwvRecordsProcessor) ProcessNextRecord() ([]*engine.CDR, error) {
 		if passes := self.recordPassesCfgFilter(record, cdrcCfg); !passes {
 			continue
 		}
-		if storedCdr, err := self.recordToStoredCdr(record, cdrcCfg, cdrcCfg.ID); err != nil {
+		if storedCdr, err := self.recordToStoredCdr(record, cdrcCfg, *cdrcCfg.ID); err != nil {
 			return nil, fmt.Errorf("Failed converting to StoredCdr, error: %s", err.Error())
 		} else {
 			recordCdrs = append(recordCdrs, storedCdr)
 		}
-		if !cdrcCfg.ContinueOnSuccess { // Successfully executed one config, do not continue for next one
+		if !*cdrcCfg.ContinueOnSuccess { // Successfully executed one config, do not continue for next one
 			break
 		}
 	}
 	return recordCdrs, nil
 }
 
-func (self *FwvRecordsProcessor) recordPassesCfgFilter(record string, cdrcCfg *config.CdrcConfig) bool {
+func (self *FwvRecordsProcessor) recordPassesCfgFilter(record string, cdrcCfg *config.Cdrc) bool {
 	filterPasses := true
 	for _, rsrFilter := range cdrcCfg.CdrFilter {
 		if rsrFilter == nil { // Nil filter does not need to match anything
 			continue
 		}
 		if cfgFieldIdx, _ := strconv.Atoi(rsrFilter.Id); len(record) <= cfgFieldIdx {
-			fmt.Errorf("Ignoring record: %v - cannot compile filter %+v", record, rsrFilter)
+			utils.Logger.Warn("ignoring cannot compile:", zap.String("record", record), zap.Any("filter", rsrFilter))
 			return false
 		} else if !rsrFilter.FilterPasses(record[cfgFieldIdx:]) {
 			filterPasses = false
@@ -141,25 +143,25 @@ func (self *FwvRecordsProcessor) recordPassesCfgFilter(record string, cdrcCfg *c
 }
 
 // Converts a record (header or normal) to CDR
-func (self *FwvRecordsProcessor) recordToStoredCdr(record string, cdrcCfg *config.CdrcConfig, cfgKey string) (*engine.CDR, error) {
+func (self *FwvRecordsProcessor) recordToStoredCdr(record string, cdrcCfg *config.Cdrc, cfgKey string) (*engine.CDR, error) {
 	var err error
-	var lazyHttpFields []*config.CfgCdrField
-	var cfgFields []*config.CfgCdrField
+	var lazyHttpFields []*config.CdrField
+	var cfgFields []*config.CdrField
 	var duMultiplyFactor float64
 	var storedCdr *engine.CDR
 	if self.headerCdr != nil { // Clone the header CDR so we can use it as base to future processing (inherit fields defined there)
 		storedCdr = self.headerCdr.Clone()
 	} else {
-		storedCdr = &engine.CDR{OriginHost: "0.0.0.0", ExtraFields: make(map[string]string), Cost: -1}
+		storedCdr = &engine.CDR{OriginHost: "0.0.0.0", ExtraFields: make(map[string]string), Cost: dec.NewVal(-1, 0)}
 	}
 	if cfgKey == "*header" {
 		cfgFields = cdrcCfg.HeaderFields
-		storedCdr.Source = cdrcCfg.CdrSourceId
-		duMultiplyFactor = cdrcCfg.DataUsageMultiplyFactor
+		storedCdr.Source = *cdrcCfg.CdrSourceID
+		duMultiplyFactor = *cdrcCfg.DataUsageMultiplyFactor
 	} else {
 		cfgFields = cdrcCfg.ContentFields
-		storedCdr.Source = cdrcCfg.CdrSourceId
-		duMultiplyFactor = cdrcCfg.DataUsageMultiplyFactor
+		storedCdr.Source = *cdrcCfg.CdrSourceID
+		duMultiplyFactor = *cdrcCfg.DataUsageMultiplyFactor
 	}
 	for _, cdrFldCfg := range cfgFields {
 		var fieldVal string
@@ -182,12 +184,12 @@ func (self *FwvRecordsProcessor) recordToStoredCdr(record string, cdrcCfg *confi
 			//return nil, fmt.Errorf("Unsupported field type: %s", cdrFldCfg.Type)
 			continue // Don't do anything for unsupported fields
 		}
-		if err := storedCdr.ParseFieldValue(cdrFldCfg.FieldId, fieldVal, self.timezone); err != nil {
+		if err := storedCdr.ParseFieldValue(cdrFldCfg.FieldID, fieldVal, self.timezone); err != nil {
 			return nil, err
 		}
 	}
-	if storedCdr.CGRID == "" && storedCdr.OriginID != "" && cfgKey != "*header" {
-		storedCdr.CGRID = utils.Sha1(storedCdr.OriginID, storedCdr.SetupTime.UTC().String())
+	if storedCdr.UniqueID == "" && storedCdr.OriginID != "" && cfgKey != "*header" {
+		storedCdr.UniqueID = utils.Sha1(storedCdr.OriginID, storedCdr.SetupTime.UTC().String())
 	}
 	if storedCdr.ToR == utils.DATA && duMultiplyFactor != 0 {
 		storedCdr.Usage = time.Duration(float64(storedCdr.Usage.Nanoseconds()) * duMultiplyFactor)
@@ -210,7 +212,7 @@ func (self *FwvRecordsProcessor) recordToStoredCdr(record string, cdrcCfg *confi
 			if len(fieldVal) == 0 && httpFieldCfg.Mandatory {
 				return nil, fmt.Errorf("MandatoryIeMissing: Empty result for http_post field: %s", httpFieldCfg.Tag)
 			}
-			if err := storedCdr.ParseFieldValue(httpFieldCfg.FieldId, fieldVal, self.timezone); err != nil {
+			if err := storedCdr.ParseFieldValue(httpFieldCfg.FieldID, fieldVal, self.timezone); err != nil {
 				return nil, err
 			}
 		}

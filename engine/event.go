@@ -8,7 +8,7 @@ import (
 
 type Event interface {
 	GetName() string
-	GetCgrId(timezone string) string
+	GetUniqueID(timezone string) string
 	GetUUID() string
 	GetSessionIds() []string // Returns identifiers needed to control a session (eg disconnect)
 	GetDirection(string) string
@@ -34,4 +34,5 @@ type Event interface {
 	String() string
 	AsEvent(string) Event
 	ComputeLcr() bool
+	AsMapStringIface() (map[string]interface{}, error)
 }

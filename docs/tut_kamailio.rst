@@ -1,7 +1,7 @@
 Kamailio_ Integration Tutorials
 ===============================
 
-In these tutorials we exemplify few cases of integration between Kamailio_ and CGRateS_. We start with common steps, installation and postinstall processes then we dive into particular configurations, depending on the case we run.
+In these tutorials we exemplify few cases of integration between Kamailio_ and AccuRate_. We start with common steps, installation and postinstall processes then we dive into particular configurations, depending on the case we run.
 
 
 .. toctree::
@@ -14,5 +14,5 @@ In these tutorials we exemplify few cases of integration between Kamailio_ and C
    tut_cgrates_usage
 
 .. _Kamailio: http://www.kamailio.org/
-.. _CGRateS: http://www.cgrates.org/
+.. _AccuRate: http://accurateproject.github.io/
 

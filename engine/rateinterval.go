@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/accurateproject/accurate/dec"
 	"github.com/accurateproject/accurate/utils"
 )
 
@@ -22,13 +23,13 @@ type RateInterval struct {
 
 // Separate structure used for rating plan size optimization
 type RITiming struct {
-	Years              utils.Years
-	Months             utils.Months
-	MonthDays          utils.MonthDays
-	WeekDays           utils.WeekDays
-	StartTime, EndTime string // ##:##:## format
-	cronString         string
-	tag                string // loading validation only
+	Years      utils.Years     `bson:"years,omitempty"`
+	Months     utils.Months    `bson:"months,omitempty"`
+	MonthDays  utils.MonthDays `bson:"month_days,omitempty"`
+	WeekDays   utils.WeekDays  `bson:"week_days,omitempty"`
+	StartTime  string          `bson:"start_time,omitempty"`
+	EndTime    string          `bson:"end_time,omitempty"` // ##:##:## format
+	cronString string
 }
 
 func (rit *RITiming) CronString() string {
@@ -180,63 +181,57 @@ func (rit *RITiming) IsBlank() bool {
 		rit.StartTime == "00:00:00"
 }
 
-func (rit *RITiming) Stringify() string {
-	return utils.Sha1(fmt.Sprintf("%v", rit))[:8]
+func (rit *RITiming) hash() string {
+	return utils.Sha1(fmt.Sprintf("%v", rit))[:6]
 }
 
 // Separate structure used for rating plan size optimization
 type RIRate struct {
-	ConnectFee       float64
-	RoundingMethod   string
-	RoundingDecimals int
-	MaxCost          float64
-	MaxCostStrategy  string
-	Rates            RateGroups // GroupRateInterval (start time): Rate
-	tag              string     // loading validation only
+	ConnectFee      *dec.Dec   `bson:"connect_fee,omitempty"`
+	MaxCost         *dec.Dec   `bson:"max_cost,omitempty"`
+	MaxCostStrategy string     `bson:"max_cost_strategy,omitempty"`
+	Rates           RateGroups `bson:"rates"` // GroupRateInterval (start time): Rate
 }
 
-func (rir *RIRate) Stringify() string {
-	str := fmt.Sprintf("%v %v %v %v %v", rir.ConnectFee, rir.RoundingMethod, rir.RoundingDecimals, rir.MaxCost, rir.MaxCostStrategy)
+func (rir *RIRate) hash() string {
+	str := fmt.Sprintf("%v %v %s", rir.ConnectFee, rir.MaxCost, rir.MaxCostStrategy)
 	for _, r := range rir.Rates {
-		str += r.Stringify()
+		str += r.hash()
 	}
-	return utils.Sha1(str)[:8]
+	return utils.Sha1(str)[:6]
 }
 
-type Rate struct {
-	GroupIntervalStart time.Duration
-	Value              float64
-	RateIncrement      time.Duration
-	RateUnit           time.Duration
+type RateInfo struct {
+	GroupIntervalStart time.Duration `bson:"group_interval_start,omitempty"`
+	Value              *dec.Dec      `bson:"value,omitempty"`
+	RateIncrement      time.Duration `bson:"rate_increment,omitempty"`
+	RateUnit           time.Duration `bson:"rate_unit,omitempty"`
 }
 
-func (r *Rate) Stringify() string {
-	return utils.Sha1(fmt.Sprintf("%v", r))[:8]
+func (r *RateInfo) getValue() *dec.Dec {
+	if r.Value == nil {
+		r.Value = dec.New()
+	}
+	return r.Value
 }
 
-func (p *Rate) Equal(o *Rate) bool {
+func (r *RateInfo) hash() string {
+	return utils.Sha1(fmt.Sprintf("%v", r))[:6]
+}
+
+func (p *RateInfo) Equal(o *RateInfo) bool {
 	return p.GroupIntervalStart == o.GroupIntervalStart &&
 		p.Value == o.Value &&
 		p.RateIncrement == o.RateIncrement &&
 		p.RateUnit == o.RateUnit
 }
 
-type RateGroups []*Rate
-
-func (pg RateGroups) Len() int {
-	return len(pg)
-}
-
-func (pg RateGroups) Swap(i, j int) {
-	pg[i], pg[j] = pg[j], pg[i]
-}
-
-func (pg RateGroups) Less(i, j int) bool {
-	return pg[i].GroupIntervalStart < pg[j].GroupIntervalStart
-}
+type RateGroups []*RateInfo
 
 func (pg RateGroups) Sort() {
-	sort.Sort(pg)
+	sort.Slice(pg, func(i, j int) bool {
+		return pg[i].GroupIntervalStart < pg[j].GroupIntervalStart
+	})
 }
 
 func (pg RateGroups) Equal(og RateGroups) bool {
@@ -251,7 +246,7 @@ func (pg RateGroups) Equal(og RateGroups) bool {
 	return true
 }
 
-func (pg *RateGroups) AddRate(ps ...*Rate) {
+func (pg *RateGroups) AddRate(ps ...*RateInfo) {
 	for _, p := range ps {
 		found := false
 		for _, op := range *pg {
@@ -303,18 +298,16 @@ func (i *RateInterval) Equal(o *RateInterval) bool {
 		i.Timing.EndTime == o.Timing.EndTime
 }
 
-func (i *RateInterval) GetCost(duration, startSecond time.Duration) float64 {
-	price, _, rateUnit := i.
-		GetRateParameters(startSecond)
-	price /= rateUnit.Seconds()
-	d := duration.Seconds()
-	return d * price
+func (i *RateInterval) GetCost(duration, startSecond time.Duration) *dec.Dec {
+	price, _, rateUnit := i.GetRateParameters(startSecond)
+	price.QuoS(dec.NewFloat(rateUnit.Seconds()))
+	return dec.NewFloat(duration.Seconds()).MulS(price).Round(globalRoundingDecimals)
 }
 
 // Gets the price for a the provided start second
-func (i *RateInterval) GetRateParameters(startSecond time.Duration) (rate float64, rateIncrement, rateUnit time.Duration) {
+func (i *RateInterval) GetRateParameters(startSecond time.Duration) (rate *dec.Dec, rateIncrement, rateUnit time.Duration) {
 	if i.Rating == nil {
-		return -1, -1, -1
+		return dec.NewVal(-1, 0), -1, -1
 	}
 	i.Rating.Rates.Sort()
 	for index, price := range i.Rating.Rates {
@@ -326,15 +319,18 @@ func (i *RateInterval) GetRateParameters(startSecond time.Duration) (rate float6
 			if price.RateUnit == 0 {
 				price.RateUnit = 1 * time.Second
 			}
-			return price.Value, price.RateIncrement, price.RateUnit
+			return dec.New().Set(price.getValue()), price.RateIncrement, price.RateUnit
 		}
 	}
-	return -1, -1, -1
+	return dec.NewVal(-1, 0), -1, -1
 }
 
-func (ri *RateInterval) GetMaxCost() (float64, string) {
+func (ri *RateInterval) GetMaxCost() (*dec.Dec, string) {
 	if ri.Rating == nil {
-		return 0.0, ""
+		return dec.New(), ""
+	}
+	if ri.Rating.MaxCost == nil {
+		ri.Rating.MaxCost = dec.New()
 	}
 	return ri.Rating.MaxCost, ri.Rating.MaxCostStrategy
 }

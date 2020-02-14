@@ -1,4 +1,3 @@
-
 package cdrc
 
 /*
@@ -31,7 +30,7 @@ BYE|3111f3c9|49ca4c42|a58ebaae40d08d6757d8424fb09c4c54@0:0:0:0:0:0:0:0|200|OK|14
 
 	eCdrs := []*engine.StoredCdr{
 		&engine.StoredCdr{
-			CgrId:           "e61034c34148a7c4f40623e00ca5e551d1408bf3",
+			UniqueID:           "e61034c34148a7c4f40623e00ca5e551d1408bf3",
 			TOR:             utils.VOICE,
 			AccId:           "dd0c4c617a9919d29a6175cdff223a9e@0:0:0:0:0:0:0:02daec40c548625ac",
 			CdrHost:         "0.0.0.0",
@@ -53,7 +52,7 @@ BYE|3111f3c9|49ca4c42|a58ebaae40d08d6757d8424fb09c4c54@0:0:0:0:0:0:0:0|200|OK|14
 			Cost: -1,
 		},
 		&engine.StoredCdr{
-			CgrId:           "3ed64a28190e20ac8a6fd8fd48cb23efbfeb7a17",
+			UniqueID:           "3ed64a28190e20ac8a6fd8fd48cb23efbfeb7a17",
 			TOR:             utils.VOICE,
 			AccId:           "214d8f52b566e33a9349b184e72a4cca@0:0:0:0:0:0:0:0f9d3d5c3c863a6e3",
 			CdrHost:         "0.0.0.0",
@@ -75,7 +74,7 @@ BYE|3111f3c9|49ca4c42|a58ebaae40d08d6757d8424fb09c4c54@0:0:0:0:0:0:0:0|200|OK|14
 			Cost: -1,
 		},
 		&engine.StoredCdr{
-			CgrId:           "f2f8d9341adfbbe1836b22f75182142061ef3d20",
+			UniqueID:           "f2f8d9341adfbbe1836b22f75182142061ef3d20",
 			TOR:             utils.VOICE,
 			AccId:           "3a63321dd3b325eec688dc2aefb6ac2d@0:0:0:0:0:0:0:036e39a542d996f9",
 			CdrHost:         "0.0.0.0",
@@ -97,7 +96,7 @@ BYE|3111f3c9|49ca4c42|a58ebaae40d08d6757d8424fb09c4c54@0:0:0:0:0:0:0:0|200|OK|14
 			Cost: -1,
 		},
 		&engine.StoredCdr{
-			CgrId:           "ccf05e7e3b9db9d2370bcbe316817447dba7df54",
+			UniqueID:           "ccf05e7e3b9db9d2370bcbe316817447dba7df54",
 			TOR:             utils.VOICE,
 			AccId:           "a58ebaae40d08d6757d8424fb09c4c54@0:0:0:0:0:0:0:03111f3c949ca4c42",
 			CdrHost:         "0.0.0.0",
@@ -180,7 +179,7 @@ INVITE|324cb497|d4af7023|8deaadf2ae9a17809a391f05af31afb0@0:0:0:0:0:0:0:0|486|Bu
 `
 	eCdrs := []*engine.StoredCdr{
 		&engine.StoredCdr{
-			CgrId:           "1c20aa6543a5a30d26b2354ae79e1f5fb720e8e5",
+			UniqueID:           "1c20aa6543a5a30d26b2354ae79e1f5fb720e8e5",
 			TOR:             utils.VOICE,
 			AccId:           "0bfdd176d1b93e7df3de5c6f4873ee04@0:0:0:0:0:0:0:0ef6c6256da501581",
 			CdrHost:         "0.0.0.0",
@@ -202,7 +201,7 @@ INVITE|324cb497|d4af7023|8deaadf2ae9a17809a391f05af31afb0@0:0:0:0:0:0:0:0|486|Bu
 			Cost: -1,
 		},
 		&engine.StoredCdr{
-			CgrId:           "054ab7c6c7fe6dc4a72f34e270027fa2aa930a58",
+			UniqueID:           "054ab7c6c7fe6dc4a72f34e270027fa2aa930a58",
 			TOR:             utils.VOICE,
 			AccId:           "81880da80a94bda81b425b09009e055c@0:0:0:0:0:0:0:07905e511",
 			CdrHost:         "0.0.0.0",
@@ -224,7 +223,7 @@ INVITE|324cb497|d4af7023|8deaadf2ae9a17809a391f05af31afb0@0:0:0:0:0:0:0:0|486|Bu
 			Cost: -1,
 		},
 		&engine.StoredCdr{
-			CgrId:           "d49ea63d1655b15149336004629f1cadd1434b89",
+			UniqueID:           "d49ea63d1655b15149336004629f1cadd1434b89",
 			TOR:             utils.VOICE,
 			AccId:           "8deaadf2ae9a17809a391f05af31afb0@0:0:0:0:0:0:0:0324cb497d4af7023",
 			CdrHost:         "0.0.0.0",

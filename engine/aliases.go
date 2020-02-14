@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"fmt"
 	"reflect"
 	"sort"
 	"strings"
@@ -16,120 +17,110 @@ func GetAliasService() rpcclient.RpcClientConnection {
 }
 
 type Alias struct {
-	Direction string
-	Tenant    string
-	Category  string
-	Account   string
-	Subject   string
-	Context   string
-	Values    AliasValues
+	Direction string        `bson:"direction"`
+	Tenant    string        `bson:"tenant"`
+	Category  string        `bson:"category"`
+	Account   string        `bson:"account"`
+	Subject   string        `bson:"subject"`
+	Context   string        `bson:"context"`
+	Index     []*AliasIndex `bson:"index"`
+	Values    AliasValues   `bson:"values"`
 }
 
 type AliasValue struct {
-	DestinationId string
-	Pairs         AliasPairs
-	Weight        float64
+	DestinationID string  `bson:"destination_id"`
+	Fields        string  `bson:"fields"`
+	Weight        float64 `bson:"weight"`
+	fields        *utils.StructQ
+}
+
+type AliasIndex struct {
+	Target string `bson:"target"`
+	Alias  string `bson:"alias"`
 }
 
 func (av *AliasValue) Equals(other *AliasValue) bool {
-	return av.DestinationId == other.DestinationId &&
-		av.Pairs.Equals(other.Pairs) &&
+	return av.DestinationID == other.DestinationID &&
+		av.Fields == other.Fields &&
 		av.Weight == other.Weight
 }
 
-type AliasPairs map[string]map[string]string
-
-func (ap AliasPairs) Equals(other AliasPairs) bool {
-	if len(ap) != len(other) {
-		return false
+func (av *AliasValue) getFields() *utils.StructQ {
+	if av.fields != nil {
+		return av.fields
 	}
-
-	for attribute, origAlias := range ap {
-		otherOrigAlias, ok := other[attribute]
-		if !ok || len(origAlias) != len(otherOrigAlias) {
-			return false
-		}
-		for orig := range origAlias {
-			if origAlias[orig] != otherOrigAlias[orig] {
-				return false
-			}
-		}
-	}
-	return true
+	av.fields, _ = utils.NewStructQ(av.Fields) // error should be checked on load
+	return av.fields
 }
 
 type AliasValues []*AliasValue
 
-func (avs AliasValues) Len() int {
-	return len(avs)
-}
-
-func (avs AliasValues) Swap(i, j int) {
-	avs[i], avs[j] = avs[j], avs[i]
-}
-
-func (avs AliasValues) Less(j, i int) bool { // get higher weight in front
-	return avs[i].Weight < avs[j].Weight
-}
-
 func (avs AliasValues) Sort() {
-	sort.Sort(avs)
+	sort.Slice(avs, func(j, i int) bool { // get higher weight in front
+		return avs[i].Weight < avs[j].Weight
+	})
 }
 
 func (avs AliasValues) GetValueByDestId(destID string) *AliasValue {
 	for _, value := range avs {
-		if value.DestinationId == destID {
+		if value.DestinationID == destID {
 			return value
 		}
 	}
 	return nil
 }
 
-func (al *Alias) GetId() string {
-	return utils.ConcatenatedKey(al.Direction, al.Tenant, al.Category, al.Account, al.Subject, al.Context)
+func (al *Alias) FullID() string {
+	return utils.ConcatKey(al.Direction, al.Category, al.Account, al.Subject, al.Context)
 }
 
-func (al *Alias) GenerateIds() []string {
-	var result []string
-	result = append(result, utils.ConcatenatedKey(al.Direction, al.Tenant, al.Category, al.Account, al.Subject, al.Context))
-	result = append(result, utils.ConcatenatedKey(al.Direction, al.Tenant, al.Category, al.Account, utils.ANY, al.Context))
-	result = append(result, utils.ConcatenatedKey(al.Direction, al.Tenant, al.Category, utils.ANY, utils.ANY, al.Context))
-	result = append(result, utils.ConcatenatedKey(al.Direction, al.Tenant, utils.ANY, utils.ANY, utils.ANY, al.Context))
-	result = append(result, utils.ConcatenatedKey(al.Direction, utils.ANY, utils.ANY, utils.ANY, utils.ANY, al.Context))
-	result = append(result, utils.ConcatenatedKey(utils.ANY, utils.ANY, utils.ANY, utils.ANY, al.Context))
-	return result
-}
-
-func (al *Alias) SetId(id string) error {
-	vals := strings.Split(id, utils.CONCATENATED_KEY_SEP)
-	if len(vals) != 6 {
-		return utils.ErrInvalidKey
+func (al *Alias) precision() int {
+	precision := 0
+	if al.Direction != utils.ANY {
+		precision++
 	}
-	al.Direction = vals[0]
-	al.Tenant = vals[1]
-	al.Category = vals[2]
-	al.Account = vals[3]
-	al.Subject = vals[4]
-	al.Context = vals[5]
-	return nil
+	if al.Category != utils.ANY {
+		precision++
+	}
+	if al.Account != utils.ANY {
+		precision++
+	}
+	if al.Subject != utils.ANY {
+		precision++
+	}
+	if al.Context != utils.ANY {
+		precision++
+	}
+	return precision
 }
 
-type AttrMatchingAlias struct {
-	Destination string
+type AttrAlias struct {
 	Direction   string
 	Tenant      string
 	Category    string
 	Account     string
 	Subject     string
 	Context     string
-	Target      string
-	Original    string
+	Destination string
 }
 
 type AttrReverseAlias struct {
-	Alias   string
-	Target  string
+	Tenant  string
 	Context string
+	Target  string
+	Alias   string
+}
+
+type AttrMatchingAlias struct {
+	Tenant      string
+	Direction   string
+	Category    string
+	Account     string
+	Subject     string
+	Context     string
+	Destination string
+	Target      string
+	Original    string
 }
 
 type AliasService interface {
@@ -137,9 +128,7 @@ type AliasService interface {
 	UpdateAlias(Alias, *string) error
 	RemoveAlias(Alias, *string) error
 	GetAlias(Alias, *Alias) error
-	GetMatchingAlias(AttrMatchingAlias, *string) error
 	GetReverseAlias(AttrReverseAlias, *map[string][]*Alias) error
-	RemoveReverseAlias(AttrReverseAlias, *string) error
 }
 
 type AliasHandler struct {
@@ -165,7 +154,7 @@ func (am *AliasHandler) SetAlias(attr *AttrAddAlias, reply *string) error {
 
 	var oldAlias *Alias
 	if !attr.Overwrite { // get previous value
-		oldAlias, _ = am.accountingDb.GetAlias(attr.Alias.GetId(), utils.CACHED)
+		oldAlias, _ = am.accountingDb.GetAlias(attr.Alias.Direction, attr.Alias.Tenant, attr.Alias.Category, attr.Alias.Account, attr.Alias.Subject, attr.Alias.Context, utils.CACHED)
 	}
 
 	if attr.Overwrite || oldAlias == nil {
@@ -173,25 +162,17 @@ func (am *AliasHandler) SetAlias(attr *AttrAddAlias, reply *string) error {
 			*reply = err.Error()
 			return err
 		}
-		if err := am.accountingDb.SetReverseAlias(attr.Alias); err != nil {
-			*reply = err.Error()
-			return err
-		}
 	} else {
 		for _, value := range attr.Alias.Values {
 			found := false
-			if value.DestinationId == "" {
-				value.DestinationId = utils.ANY
+			if value.DestinationID == "" {
+				value.DestinationID = utils.ANY
 			}
 			for _, oldValue := range oldAlias.Values {
-				if oldValue.DestinationId == value.DestinationId {
-					for target, origAliasMap := range value.Pairs {
-						for orig, alias := range origAliasMap {
-							if oldValue.Pairs[target] == nil {
-								oldValue.Pairs[target] = make(map[string]string)
-							}
-							oldValue.Pairs[target][orig] = alias
-						}
+				if oldValue.DestinationID == value.DestinationID {
+					if oldValue.Fields != value.Fields {
+						oldValue.Fields = value.Fields
+						oldValue.fields = nil
 					}
 					oldValue.Weight = value.Weight
 					found = true
@@ -206,15 +187,6 @@ func (am *AliasHandler) SetAlias(attr *AttrAddAlias, reply *string) error {
 			*reply = err.Error()
 			return err
 		}
-		if err := am.accountingDb.SetReverseAlias(oldAlias); err != nil {
-			*reply = err.Error()
-			return err
-		}
-		//FIXME: optimize by creating better update reverse alias
-		/*err := am.accountingDb.UpdateReverseAlias(oldAlias, oldAlias)
-		if err != nil {
-			return err
-		}*/
 	}
 
 	*reply = utils.OK
@@ -224,7 +196,7 @@ func (am *AliasHandler) SetAlias(attr *AttrAddAlias, reply *string) error {
 func (am *AliasHandler) RemoveAlias(al *Alias, reply *string) error {
 	am.mu.Lock()
 	defer am.mu.Unlock()
-	if err := am.accountingDb.RemoveAlias(al.GetId()); err != nil {
+	if err := am.accountingDb.RemoveAlias(al.Direction, al.Tenant, al.Category, al.Account, al.Subject, al.Context); err != nil {
 		*reply = err.Error()
 		return err
 	}
@@ -232,92 +204,34 @@ func (am *AliasHandler) RemoveAlias(al *Alias, reply *string) error {
 	return nil
 }
 
-func (am *AliasHandler) GetAlias(al *Alias, result *Alias) error {
-	am.mu.RLock()
-	defer am.mu.RUnlock()
-	variants := al.GenerateIds()
-	for _, variant := range variants {
-		if r, err := am.accountingDb.GetAlias(variant, utils.CACHED); err == nil {
-			*result = *r
-			return nil
-		}
-	}
-	return utils.ErrNotFound
-}
-
 func (am *AliasHandler) GetReverseAlias(attr *AttrReverseAlias, result *map[string][]*Alias) error {
 	am.mu.Lock()
 	defer am.mu.Unlock()
 	aliases := make(map[string][]*Alias)
-	rKey := attr.Alias + attr.Target + attr.Context
-	if ids, err := am.accountingDb.GetReverseAlias(rKey, utils.CACHED); err == nil {
-		for _, key := range ids {
-			// get destination id
-			elems := strings.Split(key, utils.CONCATENATED_KEY_SEP)
-			var destID string
-			if len(elems) > 0 {
-				destID = elems[len(elems)-1]
-				key = strings.Join(elems[:len(elems)-1], utils.CONCATENATED_KEY_SEP)
+	if als, err := am.accountingDb.GetReverseAlias(attr.Tenant, attr.Context, attr.Target, attr.Alias, utils.CACHED); err == nil {
+		for _, al := range als {
+			for _, av := range al.Values {
+				// search for target: alias in fields
+				if strings.Contains(av.Fields, fmt.Sprintf(`"%s":"%s"`, attr.Target, attr.Alias)) {
+					aliases[av.DestinationID] = append(aliases[av.DestinationID], al)
+					break
+				}
 			}
-			if r, err := am.accountingDb.GetAlias(key, utils.CACHED); err != nil {
-				return err
-			} else {
-				aliases[destID] = append(aliases[destID], r)
-			}
+
 		}
 	}
 	*result = aliases
 	return nil
 }
 
-func (am *AliasHandler) GetMatchingAlias(attr *AttrMatchingAlias, result *string) error {
-	response := Alias{}
-	if err := am.GetAlias(&Alias{
-		Direction: attr.Direction,
-		Tenant:    attr.Tenant,
-		Category:  attr.Category,
-		Account:   attr.Account,
-		Subject:   attr.Subject,
-		Context:   attr.Context,
-	}, &response); err != nil {
-		return err
-	}
-	// sort according to weight
-	values := response.Values
-	values.Sort()
-
-	// if destination does not metter get first alias
-	if attr.Destination == "" || attr.Destination == utils.ANY {
-		for _, value := range values {
-			if origAlias, ok := value.Pairs[attr.Target]; ok {
-				if alias, ok := origAlias[attr.Original]; ok {
-					*result = alias
-					return nil
-				}
-			}
-		}
-		return utils.ErrNotFound
-	}
-	// check destination ids
-	for _, p := range utils.SplitPrefix(attr.Destination, MIN_PREFIX_MATCH) {
-		if destIDs, err := ratingStorage.GetReverseDestination(p, utils.CACHED); err == nil {
-			for _, value := range values {
-				for _, dId := range destIDs {
-					if value.DestinationId == utils.ANY || value.DestinationId == dId {
-						if origAliasMap, ok := value.Pairs[attr.Target]; ok {
-							if alias, ok := origAliasMap[attr.Original]; ok || attr.Original == "" || attr.Original == utils.ANY {
-								*result = alias
-								return nil
-							}
-							if alias, ok := origAliasMap[utils.ANY]; ok {
-								*result = alias
-								return nil
-							}
-						}
-					}
-				}
-			}
-		}
+func (am *AliasHandler) GetAlias(al *Alias, result *Alias) error {
+	am.mu.RLock()
+	defer am.mu.RUnlock()
+	//log.Print("ALIAS: ", utils.ToIJSON(al))
+	if alias, err := am.accountingDb.GetAlias(al.Direction, al.Tenant, al.Category, al.Account, al.Subject, al.Context, utils.CACHED); err == nil && alias != nil {
+		//log.Print("GOT: ", utils.ToIJSON(alias))
+		*result = *(alias) // copy
+		return nil
 	}
 	return utils.ErrNotFound
 }
@@ -350,7 +264,7 @@ func (am *AliasHandler) Call(serviceMethod string, args interface{}, reply inter
 	return err
 }
 
-func LoadAlias(attr *AttrMatchingAlias, in interface{}, extraFields string) error {
+func LoadAlias(attr *AttrAlias, in interface{}, extraFields string) error {
 	if aliasService == nil { // no alias service => no fun
 		return nil
 	}
@@ -370,67 +284,40 @@ func LoadAlias(attr *AttrMatchingAlias, in interface{}, extraFields string) erro
 	values := response.Values
 	values.Sort()
 
-	var rightPairs AliasPairs
+	var rightFields *utils.StructQ
 	// if destination does not metter get first alias
 	if attr.Destination == "" || attr.Destination == utils.ANY {
-		rightPairs = values[0].Pairs
+		rightFields = values[0].getFields()
 	}
 
-	if rightPairs == nil {
+	if rightFields == nil {
 		// check destination ids
-		for _, p := range utils.SplitPrefix(attr.Destination, MIN_PREFIX_MATCH) {
-			if destIDs, err := ratingStorage.GetReverseDestination(p, utils.CACHED); err == nil {
-				for _, value := range values {
-					for _, dId := range destIDs {
-						if value.DestinationId == utils.ANY || value.DestinationId == dId {
-							rightPairs = value.Pairs
-						}
-						if rightPairs != nil {
-							break
-						}
-					}
-					if rightPairs != nil {
-						break
-					}
+		if dests, err := ratingStorage.GetDestinations(attr.Tenant, attr.Destination, "", utils.DestMatching, utils.CACHED); err == nil {
+			destNames := dests.getNames()
+			for _, value := range values {
+				if value.DestinationID == utils.ANY || destNames[value.DestinationID] {
+					rightFields = value.getFields()
 				}
-			}
-			if rightPairs != nil {
-				break
+				if rightFields != nil {
+					break
+				}
 			}
 		}
 	}
 
-	if rightPairs != nil {
-		// change values in the given object
-		v := reflect.ValueOf(in)
-		if v.Kind() == reflect.Ptr {
-			v = v.Elem()
-		}
-		for target, originalAlias := range rightPairs {
-			for original, alias := range originalAlias {
-				field := v.FieldByName(target)
-				if field.IsValid() {
-					if field.Kind() == reflect.String {
-						if field.CanSet() && (original == "" || original == utils.ANY || field.String() == original) {
-							field.SetString(alias)
-						}
-					}
-				}
-				if extraFields != "" {
-					efField := v.FieldByName(extraFields)
-					if efField.IsValid() && efField.Kind() == reflect.Map {
-						keys := efField.MapKeys()
-						for _, key := range keys {
-							if key.Kind() == reflect.String && key.String() == target {
-								if original == "" || original == utils.ANY || efField.MapIndex(key).String() == original {
-									efField.SetMapIndex(key, reflect.ValueOf(alias))
-								}
-							}
-						}
-					}
-				}
-			}
+	if rightFields != nil {
+		if _, err := rightFields.Query(in, true); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+type AliasList []*Alias // used in GetAlias
+
+func (all AliasList) Sort() {
+	// we need higher precision earlyer in the list
+	sort.Slice(all, func(j, i int) bool {
+		return all[i].precision() < all[j].precision()
+	})
 }

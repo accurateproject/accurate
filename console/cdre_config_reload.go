@@ -1,13 +1,13 @@
 package console
 
 import (
-	"github.com/accurateproject/accurate/apier/v1"
+	"github.com/accurateproject/accurate/api/v1"
 )
 
 func init() {
 	c := &CmdCdreConfigReload{
 		name:      "cdre_config_reload",
-		rpcMethod: "ApierV1.ReloadCdreConfig",
+		rpcMethod: "ApiV1.ReloadCdreConfig",
 	}
 	commands[c.Name()] = c
 	c.CommandExecuter = &CommandExecuter{c}

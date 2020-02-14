@@ -9,13 +9,14 @@ import (
 	"time"
 
 	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/dec"
 	"github.com/accurateproject/accurate/engine"
 	"github.com/accurateproject/accurate/utils"
 )
 
 func NewCsvRecordsProcessor(csvReader *csv.Reader, timezone, fileName string,
-	dfltCdrcCfg *config.CdrcConfig, cdrcCfgs []*config.CdrcConfig,
-	httpSkipTlsCheck bool, unpairedRecordsCache *UnpairedRecordsCache, partialRecordsCache *PartialRecordsCache, cacheDumpFields []*config.CfgCdrField) *CsvRecordsProcessor {
+	dfltCdrcCfg *config.Cdrc, cdrcCfgs []*config.Cdrc,
+	httpSkipTlsCheck bool, unpairedRecordsCache *UnpairedRecordsCache, partialRecordsCache *PartialRecordsCache, cacheDumpFields []*config.CdrField) *CsvRecordsProcessor {
 	return &CsvRecordsProcessor{csvReader: csvReader, timezone: timezone, fileName: fileName,
 		dfltCdrcCfg: dfltCdrcCfg, cdrcCfgs: cdrcCfgs, httpSkipTlsCheck: httpSkipTlsCheck, unpairedRecordsCache: unpairedRecordsCache,
 		partialRecordsCache: partialRecordsCache, partialCacheDumpFields: cacheDumpFields}
@@ -26,13 +27,13 @@ type CsvRecordsProcessor struct {
 	csvReader              *csv.Reader
 	timezone               string // Timezone for CDRs which are not clearly specifying it
 	fileName               string
-	dfltCdrcCfg            *config.CdrcConfig
-	cdrcCfgs               []*config.CdrcConfig
+	dfltCdrcCfg            *config.Cdrc
+	cdrcCfgs               []*config.Cdrc
 	processedRecordsNr     int64 // Number of content records in file
 	httpSkipTlsCheck       bool
 	unpairedRecordsCache   *UnpairedRecordsCache // Shared by cdrc so we can cache for all files in a folder
 	partialRecordsCache    *PartialRecordsCache  // Cache records which are of type "Partial"
-	partialCacheDumpFields []*config.CfgCdrField
+	partialCacheDumpFields []*config.CdrField
 }
 
 func (self *CsvRecordsProcessor) ProcessedRecordsNr() int64 {
@@ -45,7 +46,7 @@ func (self *CsvRecordsProcessor) ProcessNextRecord() ([]*engine.CDR, error) {
 		return nil, err
 	}
 	self.processedRecordsNr += 1
-	if utils.IsSliceMember([]string{utils.KAM_FLATSTORE, utils.OSIPS_FLATSTORE}, self.dfltCdrcCfg.CdrFormat) {
+	if utils.IsSliceMember([]string{utils.KAM_FLATSTORE, utils.OSIPS_FLATSTORE}, *self.dfltCdrcCfg.CdrFormat) {
 		if record, err = self.processFlatstoreRecord(record); err != nil {
 			return nil, err
 		} else if record == nil {
@@ -58,7 +59,7 @@ func (self *CsvRecordsProcessor) ProcessNextRecord() ([]*engine.CDR, error) {
 
 // Processes a single partial record for flatstore CDRs
 func (self *CsvRecordsProcessor) processFlatstoreRecord(record []string) ([]string, error) {
-	if strings.HasPrefix(self.fileName, self.dfltCdrcCfg.FailedCallsPrefix) { // Use the first index since they should be the same in all configs
+	if strings.HasPrefix(self.fileName, *self.dfltCdrcCfg.FailedCallsPrefix) { // Use the first index since they should be the same in all configs
 		record = append(record, "0") // Append duration 0 for failed calls flatstore CDR and do not process it further
 		return record, nil
 	}
@@ -103,7 +104,7 @@ func (self *CsvRecordsProcessor) processRecord(record []string) ([]*engine.CDR, 
 		storedCdr, err := self.recordToStoredCdr(record, cdrcCfg)
 		if err != nil {
 			return nil, fmt.Errorf("Failed converting to StoredCdr, error: %s", err.Error())
-		} else if self.dfltCdrcCfg.CdrFormat == utils.PartialCSV {
+		} else if *self.dfltCdrcCfg.CdrFormat == utils.PartialCSV {
 			if storedCdr, err = self.partialRecordsCache.MergePartialCDRRecord(NewPartialCDRRecord(storedCdr, self.partialCacheDumpFields)); err != nil {
 				return nil, fmt.Errorf("Failed merging PartialCDR, error: %s", err.Error())
 			} else if storedCdr == nil { // CDR was absorbed by cache since it was partial
@@ -111,7 +112,7 @@ func (self *CsvRecordsProcessor) processRecord(record []string) ([]*engine.CDR, 
 			}
 		}
 		recordCdrs = append(recordCdrs, storedCdr)
-		if !cdrcCfg.ContinueOnSuccess {
+		if !*cdrcCfg.ContinueOnSuccess {
 			break
 		}
 	}
@@ -119,10 +120,10 @@ func (self *CsvRecordsProcessor) processRecord(record []string) ([]*engine.CDR, 
 }
 
 // Takes the record out of csv and turns it into storedCdr which can be processed by CDRS
-func (self *CsvRecordsProcessor) recordToStoredCdr(record []string, cdrcCfg *config.CdrcConfig) (*engine.CDR, error) {
-	storedCdr := &engine.CDR{OriginHost: "0.0.0.0", Source: cdrcCfg.CdrSourceId, ExtraFields: make(map[string]string), Cost: -1}
+func (self *CsvRecordsProcessor) recordToStoredCdr(record []string, cdrcCfg *config.Cdrc) (*engine.CDR, error) {
+	storedCdr := &engine.CDR{OriginHost: "0.0.0.0", Source: *cdrcCfg.CdrSourceID, ExtraFields: make(map[string]string), Cost: dec.NewVal(-1, 0)}
 	var err error
-	var lazyHttpFields []*config.CfgCdrField
+	var lazyHttpFields []*config.CdrField
 	for _, cdrFldCfg := range cdrcCfg.ContentFields {
 		filterBreak := false
 		for _, rsrFilter := range cdrFldCfg.FieldFilter {
@@ -139,8 +140,8 @@ func (self *CsvRecordsProcessor) recordToStoredCdr(record []string, cdrcCfg *con
 		if filterBreak { // Stop processing this field template since it's filters are not matching
 			continue
 		}
-		if utils.IsSliceMember([]string{utils.KAM_FLATSTORE, utils.OSIPS_FLATSTORE}, self.dfltCdrcCfg.CdrFormat) { // Hardcode some values in case of flatstore
-			switch cdrFldCfg.FieldId {
+		if utils.IsSliceMember([]string{utils.KAM_FLATSTORE, utils.OSIPS_FLATSTORE}, *self.dfltCdrcCfg.CdrFormat) { // Hardcode some values in case of flatstore
+			switch cdrFldCfg.FieldID {
 			case utils.ACCID:
 				cdrFldCfg.Value = utils.ParseRSRFieldsMustCompile("3;1;2", utils.INFIELD_SEP) // in case of flatstore, accounting id is made up out of callid, from_tag and to_tag
 			case utils.USAGE:
@@ -172,13 +173,13 @@ func (self *CsvRecordsProcessor) recordToStoredCdr(record []string, cdrcCfg *con
 		default:
 			return nil, fmt.Errorf("Unsupported field type: %s", cdrFldCfg.Type)
 		}
-		if err := storedCdr.ParseFieldValue(cdrFldCfg.FieldId, fieldVal, self.timezone); err != nil {
+		if err := storedCdr.ParseFieldValue(cdrFldCfg.FieldID, fieldVal, self.timezone); err != nil {
 			return nil, err
 		}
 	}
-	storedCdr.CGRID = utils.Sha1(storedCdr.OriginID, storedCdr.SetupTime.UTC().String())
-	if storedCdr.ToR == utils.DATA && cdrcCfg.DataUsageMultiplyFactor != 0 {
-		storedCdr.Usage = time.Duration(float64(storedCdr.Usage.Nanoseconds()) * cdrcCfg.DataUsageMultiplyFactor)
+	storedCdr.UniqueID = utils.Sha1(storedCdr.OriginID, storedCdr.SetupTime.UTC().String())
+	if storedCdr.ToR == utils.DATA && *cdrcCfg.DataUsageMultiplyFactor != 0 {
+		storedCdr.Usage = time.Duration(float64(storedCdr.Usage.Nanoseconds()) * *cdrcCfg.DataUsageMultiplyFactor)
 	}
 	for _, httpFieldCfg := range lazyHttpFields { // Lazy process the http fields
 		var outValByte []byte
@@ -198,7 +199,7 @@ func (self *CsvRecordsProcessor) recordToStoredCdr(record []string, cdrcCfg *con
 			if len(fieldVal) == 0 && httpFieldCfg.Mandatory {
 				return nil, fmt.Errorf("MandatoryIeMissing: Empty result for http_post field: %s", httpFieldCfg.Tag)
 			}
-			if err := storedCdr.ParseFieldValue(httpFieldCfg.FieldId, fieldVal, self.timezone); err != nil {
+			if err := storedCdr.ParseFieldValue(httpFieldCfg.FieldID, fieldVal, self.timezone); err != nil {
 				return nil, err
 			}
 		}

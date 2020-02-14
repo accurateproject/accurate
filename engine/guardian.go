@@ -1,25 +1,43 @@
-
 package engine
 
 import (
 	"sync"
 	"time"
+
+	"github.com/accurateproject/accurate/utils"
+	"go.uber.org/zap"
 )
 
-var lockPool = &sync.Pool{New: func() interface{} { return &lockItem{c: make(chan struct{}, 1), i: 0} }}
+var lockPool = &sync.Pool{New: func() interface{} { return &lockItem{} }}
 
 // global package variable
 var Guardian = &GuardianLock{locksMap: make(map[string]*lockItem)}
 
+func init() {
+	//go Guardian.debugGuardianStatus()
+}
+
 type lockItem struct {
-	c chan struct{}
-	i int // how many are queued to hold the lock
+	mu sync.Mutex
+	i  int // how many are queued to hold the lock
 }
 
 type GuardianLock struct {
 	locksMap map[string]*lockItem
 	mu       sync.Mutex
 }
+
+/*func (cm *GuardianLock) debugGuardianStatus() {
+	for {
+		cm.mu.Lock()
+		for key, value := range cm.locksMap {
+			log.Printf("Key: %s: %d", key, value.i)
+		}
+		cm.mu.Unlock()
+		time.Sleep(30 * time.Millisecond)
+
+	}
+}*/
 
 func (cm *GuardianLock) Guard(handler func() (interface{}, error), timeout time.Duration, names ...string) (reply interface{}, err error) {
 	var locks []*lockItem // take existing locks out of the mutex
@@ -30,7 +48,7 @@ func (cm *GuardianLock) Guard(handler func() (interface{}, error), timeout time.
 		if lock, found = Guardian.locksMap[name]; !found {
 			lock = lockPool.Get().(*lockItem)
 			Guardian.locksMap[name] = lock
-			lock.c <- struct{}{}
+			lock.mu.Lock()
 		} else {
 			locks = append(locks, lock)
 		}
@@ -39,7 +57,7 @@ func (cm *GuardianLock) Guard(handler func() (interface{}, error), timeout time.
 	cm.mu.Unlock()
 
 	for _, lock := range locks {
-		lock.c <- struct{}{} // will block here if already locked
+		lock.mu.Lock()
 	}
 
 	funcWaiter := make(chan bool)
@@ -53,6 +71,7 @@ func (cm *GuardianLock) Guard(handler func() (interface{}, error), timeout time.
 		select {
 		case <-funcWaiter:
 		case <-time.After(timeout):
+			utils.Logger.Warn("<Guardian> Timeout on keys: ", zap.Strings("keys", names))
 		}
 	} else {
 		<-funcWaiter
@@ -61,7 +80,7 @@ func (cm *GuardianLock) Guard(handler func() (interface{}, error), timeout time.
 	cm.mu.Lock()
 	for _, name := range names {
 		lock := Guardian.locksMap[name]
-		<-lock.c
+		lock.mu.Unlock()
 		lock.i--
 		if lock.i == 0 {
 			delete(Guardian.locksMap, name)

@@ -1,3 +1,5 @@
+//+build integration
+
 package cdrc
 
 import (
@@ -14,9 +16,9 @@ import (
 )
 
 var fwvCfgPath string
-var fwvCfg *config.CGRConfig
+var fwvCfg *config.Config
 var fwvRpc *rpc.Client
-var fwvCdrcCfg *config.CdrcConfig
+var fwvCdrcCfg *config.Cdrc
 
 var FW_CDR_FILE1 = `HDR0001DDB     ABC                                     Some Connect A.B.                       DDB-Some-10022-20120711-309.CDR         00030920120711100255
 CDR0000010  0 20120708181506000123451234         0040123123120                  004                                            000018009980010001ISDN  ABC   10Buiten uw regio                         EHV 00000009190000000009
@@ -56,47 +58,40 @@ TRL0001DDB     ABC                                     Some Connect A.B.        
 `
 
 func TestFwvLclInitCfg(t *testing.T) {
-	if !*testLocal {
-		return
-	}
 	var err error
 	fwvCfgPath = path.Join(*dataDir, "conf", "samples", "cdrcfwv")
-	if fwvCfg, err = config.NewCGRConfigFromFolder(fwvCfgPath); err != nil {
+	config.Reset()
+	if err = config.LoadPath(fwvCfgPath); err != nil {
 		t.Fatal("Got config error: ", err.Error())
 	}
+	fwvCfg = config.Get()
 }
 
 // Creates cdr files and moves them into processing folder
 func TestFwvLclCreateCdrFiles(t *testing.T) {
-	if !*testLocal {
-		return
-	}
 	if fwvCfg == nil {
 		t.Fatal("Empty default cdrc configuration")
 	}
-	for _, cdrcCfg := range fwvCfg.CdrcProfiles["/tmp/cgr_fwv/cdrc/in"] {
-		if cdrcCfg.ID == "FWV1" {
+	for _, cdrcCfg := range fwvCfg.CdrcProfiles()["/tmp/cgr_fwv/cdrc/in"] {
+		if *cdrcCfg.ID == "FWV1" {
 			fwvCdrcCfg = cdrcCfg
 		}
 	}
-	if err := os.RemoveAll(fwvCdrcCfg.CdrInDir); err != nil {
-		t.Fatal("Error removing folder: ", fwvCdrcCfg.CdrInDir, err)
+	if err := os.RemoveAll(*fwvCdrcCfg.CdrInDir); err != nil {
+		t.Fatal("Error removing folder: ", *fwvCdrcCfg.CdrInDir, err)
 	}
-	if err := os.MkdirAll(fwvCdrcCfg.CdrInDir, 0755); err != nil {
-		t.Fatal("Error creating folder: ", fwvCdrcCfg.CdrInDir, err)
+	if err := os.MkdirAll(*fwvCdrcCfg.CdrInDir, 0755); err != nil {
+		t.Fatal("Error creating folder: ", *fwvCdrcCfg.CdrInDir, err)
 	}
-	if err := os.RemoveAll(fwvCdrcCfg.CdrOutDir); err != nil {
-		t.Fatal("Error removing folder: ", fwvCdrcCfg.CdrOutDir, err)
+	if err := os.RemoveAll(*fwvCdrcCfg.CdrOutDir); err != nil {
+		t.Fatal("Error removing folder: ", *fwvCdrcCfg.CdrOutDir, err)
 	}
-	if err := os.MkdirAll(fwvCdrcCfg.CdrOutDir, 0755); err != nil {
-		t.Fatal("Error creating folder: ", fwvCdrcCfg.CdrOutDir, err)
+	if err := os.MkdirAll(*fwvCdrcCfg.CdrOutDir, 0755); err != nil {
+		t.Fatal("Error creating folder: ", *fwvCdrcCfg.CdrOutDir, err)
 	}
 }
 
 func TestFwvLclStartEngine(t *testing.T) {
-	if !*testLocal {
-		return
-	}
 	if _, err := engine.StopStartEngine(fwvCfgPath, *waitRater); err != nil {
 		t.Fatal(err)
 	}
@@ -104,33 +99,27 @@ func TestFwvLclStartEngine(t *testing.T) {
 
 // Connect rpc client to rater
 func TestFwvLclRpcConn(t *testing.T) {
-	if !*testLocal {
-		return
-	}
 	var err error
-	fwvRpc, err = jsonrpc.Dial("tcp", fwvCfg.RPCJSONListen) // We connect over JSON so we can also troubleshoot if needed
+	fwvRpc, err = jsonrpc.Dial("tcp", *fwvCfg.Listen.RpcJson) // We connect over JSON so we can also troubleshoot if needed
 	if err != nil {
 		t.Fatal("Could not connect to rater: ", err.Error())
 	}
 }
 
 func TestFwvLclProcessFiles(t *testing.T) {
-	if !*testLocal {
-		return
-	}
 	fileName := "test1.fwv"
 	if err := ioutil.WriteFile(path.Join("/tmp", fileName), []byte(FW_CDR_FILE1), 0644); err != nil {
 		t.Fatal(err.Error)
 	}
-	if err := os.Rename(path.Join("/tmp", fileName), path.Join(fwvCdrcCfg.CdrInDir, fileName)); err != nil {
+	if err := os.Rename(path.Join("/tmp", fileName), path.Join(*fwvCdrcCfg.CdrInDir, fileName)); err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(time.Duration(1) * time.Second)
-	filesInDir, _ := ioutil.ReadDir(fwvCdrcCfg.CdrInDir)
+	filesInDir, _ := ioutil.ReadDir(*fwvCdrcCfg.CdrInDir)
 	if len(filesInDir) != 0 {
 		t.Errorf("Files in cdrcInDir: %d", len(filesInDir))
 	}
-	filesOutDir, _ := ioutil.ReadDir(fwvCdrcCfg.CdrOutDir)
+	filesOutDir, _ := ioutil.ReadDir(*fwvCdrcCfg.CdrOutDir)
 	if len(filesOutDir) != 1 {
 		t.Errorf("In CdrcOutDir, expecting 1 files, got: %d", len(filesOutDir))
 	}

@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/accurateproject/accurate/dec"
 	"github.com/accurateproject/accurate/utils"
 )
 
@@ -213,68 +214,64 @@ func TestRitStrigyfy(t *testing.T) {
 		MonthDays: utils.MonthDays{},
 		StartTime: "00:00:00",
 	}
-	if rit1.Stringify() != rit2.Stringify() {
-		t.Error("Error in rir stringify: ", rit1.Stringify(), rit2.Stringify())
+	if rit1.hash() != rit2.hash() {
+		t.Error("Error in rir stringify: ", rit1.hash(), rit2.hash())
 	}
 }
 
 func TestRirStrigyfy(t *testing.T) {
 	rir1 := &RIRate{
-		ConnectFee: 0.1,
+		ConnectFee: dec.NewFloat(0.1),
 		Rates: RateGroups{
-			&Rate{
+			&RateInfo{
 				GroupIntervalStart: time.Hour,
-				Value:              0.17,
+				Value:              dec.NewFloat(0.17),
 				RateIncrement:      time.Second,
 				RateUnit:           time.Minute,
 			},
-			&Rate{
+			&RateInfo{
 				GroupIntervalStart: 0,
-				Value:              0.7,
+				Value:              dec.NewFloat(0.7),
 				RateIncrement:      time.Second,
 				RateUnit:           time.Minute,
 			},
 		},
-		RoundingMethod:   utils.ROUNDING_MIDDLE,
-		RoundingDecimals: 4,
 	}
 	rir2 := &RIRate{
-		ConnectFee: 0.1,
+		ConnectFee: dec.NewFloat(0.1),
 		Rates: RateGroups{
-			&Rate{
+			&RateInfo{
 				GroupIntervalStart: time.Hour,
-				Value:              0.17,
+				Value:              dec.NewFloat(0.17),
 				RateIncrement:      time.Second,
 				RateUnit:           time.Minute,
 			},
-			&Rate{
+			&RateInfo{
 				GroupIntervalStart: 0,
-				Value:              0.7,
+				Value:              dec.NewFloat(0.7),
 				RateIncrement:      time.Second,
 				RateUnit:           time.Minute,
 			},
 		},
-		RoundingMethod:   utils.ROUNDING_MIDDLE,
-		RoundingDecimals: 4,
 	}
-	if rir1.Stringify() != rir2.Stringify() {
-		t.Error("Error in rate stringify: ", rir1.Stringify(), rir2.Stringify())
+	if rir1.hash() != rir2.hash() {
+		t.Error("Error in rate stringify: ", rir1.hash(), rir2.hash())
 	}
 }
 
 func TestRateStrigyfy(t *testing.T) {
-	r1 := &Rate{
+	r1 := &RateInfo{
 		GroupIntervalStart: time.Hour,
-		Value:              0.17,
+		Value:              dec.NewFloat(0.17),
 		RateUnit:           time.Minute,
 	}
-	r2 := &Rate{
+	r2 := &RateInfo{
 		GroupIntervalStart: time.Hour,
-		Value:              0.17,
+		Value:              dec.NewFloat(0.17),
 		RateUnit:           time.Minute,
 	}
-	if r1.Stringify() != r2.Stringify() {
-		t.Error("Error in rate stringify: ", r1.Stringify(), r2.Stringify())
+	if r1.hash() != r2.hash() {
+		t.Error("Error in rate stringify: ", r1.hash(), r2.hash())
 	}
 }
 
@@ -335,8 +332,8 @@ func TestRateIntervalCost(t *testing.T) {
 	ri := &RateInterval{
 		Rating: &RIRate{
 			Rates: RateGroups{
-				&Rate{
-					Value:         0.1,
+				&RateInfo{
+					Value:         dec.NewFloat(0.1),
 					RateIncrement: time.Second,
 					RateUnit:      60 * time.Second,
 				},
@@ -344,7 +341,7 @@ func TestRateIntervalCost(t *testing.T) {
 		},
 	}
 	x := ri.GetCost(60*time.Second, 0)
-	if x != 0.1 {
+	if x.String() != "0.1" {
 		t.Error("expected 0.1 was: ", x)
 	}
 }

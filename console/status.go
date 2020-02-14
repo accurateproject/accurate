@@ -1,10 +1,12 @@
-
 package console
+
+import "github.com/accurateproject/accurate/engine"
 
 func init() {
 	c := &CmdStatus{
 		name:      "status",
 		rpcMethod: "Responder.Status",
+		rpcParams: &engine.AttrStatus{},
 	}
 	commands[c.Name()] = c
 	c.CommandExecuter = &CommandExecuter{c}
@@ -13,7 +15,7 @@ func init() {
 type CmdStatus struct {
 	name      string
 	rpcMethod string
-	rpcParams *EmptyWrapper
+	rpcParams *engine.AttrStatus
 	*CommandExecuter
 }
 
@@ -27,7 +29,7 @@ func (self *CmdStatus) RpcMethod() string {
 
 func (self *CmdStatus) RpcParams(reset bool) interface{} {
 	if reset || self.rpcParams == nil {
-		self.rpcParams = &EmptyWrapper{}
+		self.rpcParams = &engine.AttrStatus{}
 	}
 	return self.rpcParams
 }

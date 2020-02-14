@@ -3,11 +3,11 @@ package utils
 import "time"
 
 type LoadInstance struct {
-	LoadID           string // Unique identifier for the load
-	RatingLoadID     string
-	AccountingLoadID string
-	//TariffPlanID     string    // Tariff plan identificator for the data loaded
-	LoadTime time.Time // Time of load
+	LoadID           string `bson:"load_id"` // Unique identifier for the load
+	RatingLoadID     string `bson:"rating_load_id"`
+	AccountingLoadID string `bson:"accounting_load_id"`
+	//TariffPlanID     string `bson:"tariff_plan_id"`    // Tariff plan identificator for the data loaded
+	LoadTime time.Time `bson:"load_time"` // Time of load
 }
 
 type CacheFileInfo struct {

@@ -3,7 +3,6 @@ package cdrc
 import (
 	"encoding/csv"
 	"errors"
-	"fmt"
 	"os"
 	"path"
 	"strconv"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/accurateproject/accurate/engine"
 	"github.com/accurateproject/accurate/utils"
+	"go.uber.org/zap"
 )
 
 func NewUnpairedRecordsCache(ttl time.Duration, cdrOutDir string, csvSep rune) (*UnpairedRecordsCache, error) {
@@ -33,14 +33,14 @@ func (self *UnpairedRecordsCache) dumpUnpairedRecords(fileName string) error {
 			unpairedFilePath := path.Join(self.cdrOutDir, fileName+UNPAIRED_SUFFIX)
 			fileOut, err := os.Create(unpairedFilePath)
 			if err != nil {
-				utils.Logger.Err(fmt.Sprintf("<Cdrc> Failed creating %s, error: %s", unpairedFilePath, err.Error()))
+				utils.Logger.Error("<Cdrc> Failed creating", zap.String("file", unpairedFilePath), zap.Error(err))
 				return nil, err
 			}
 			csvWriter := csv.NewWriter(fileOut)
 			csvWriter.Comma = self.csvSep
 			for _, pr := range self.partialRecords[fileName] {
 				if err := csvWriter.Write(pr.Values); err != nil {
-					utils.Logger.Err(fmt.Sprintf("<Cdrc> Failed writing unpaired record %v to file: %s, error: %s", pr, unpairedFilePath, err.Error()))
+					utils.Logger.Error("<Cdrc> Failed writing unpaired record", zap.Any("record", pr), zap.String("file", unpairedFilePath), zap.Error(err))
 					return nil, err
 				}
 			}

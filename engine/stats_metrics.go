@@ -3,13 +3,13 @@ package engine
 import (
 	"time"
 
-	"github.com/accurateproject/accurate/utils"
+	"github.com/accurateproject/accurate/dec"
 )
 
 type Metric interface {
-	AddCdr(*QCdr)
-	RemoveCdr(*QCdr)
-	GetValue() float64
+	AddCDR(*QCDR)
+	RemoveCDR(*QCDR)
+	GetValue() *dec.Dec
 }
 
 const ASR = "ASR"
@@ -19,7 +19,8 @@ const ACC = "ACC"
 const TCC = "TCC"
 const PDD = "PDD"
 const DDC = "DDC"
-const STATS_NA = -1
+
+var STATS_NA = dec.MinusOne
 
 func CreateMetric(metric string) Metric {
 	switch metric {
@@ -32,9 +33,9 @@ func CreateMetric(metric string) Metric {
 	case TCD:
 		return &TCDMetric{}
 	case ACC:
-		return &ACCMetric{}
+		return &ACCMetric{sum: dec.New()}
 	case TCC:
-		return &TCCMetric{}
+		return &TCCMetric{sum: dec.New()}
 	case DDC:
 		return NewDccMetric()
 	}
@@ -44,175 +45,171 @@ func CreateMetric(metric string) Metric {
 // ASR - Answer-Seizure Ratio
 // successfully answered Calls divided by the total number of Calls attempted and multiplied by 100
 type ASRMetric struct {
-	answered float64
-	count    float64
+	answered int64
+	count    int64
 }
 
-func (asr *ASRMetric) AddCdr(cdr *QCdr) {
+func (asr *ASRMetric) AddCDR(cdr *QCDR) {
 	if !cdr.AnswerTime.IsZero() {
-		asr.answered += 1
+		asr.answered++
 	}
-	asr.count += 1
+	asr.count++
 }
 
-func (asr *ASRMetric) RemoveCdr(cdr *QCdr) {
+func (asr *ASRMetric) RemoveCDR(cdr *QCDR) {
 	if !cdr.AnswerTime.IsZero() {
-		asr.answered -= 1
+		asr.answered--
 	}
-	asr.count -= 1
+	asr.count--
 }
 
-func (asr *ASRMetric) GetValue() float64 {
+func (asr *ASRMetric) GetValue() *dec.Dec {
 	if asr.count == 0 {
 		return STATS_NA
 	}
-	val := asr.answered / asr.count * 100
-	return utils.Round(val, globalRoundingDecimals, utils.ROUNDING_MIDDLE)
+	return dec.New().Quo(dec.NewVal(asr.answered, -2), dec.NewVal(asr.count, 0))
 }
 
 // PDD – Post Dial Delay (average)
 // the sum of PDD seconds of total calls divided by the number of these calls.
 type PDDMetric struct {
 	sum   time.Duration
-	count float64
+	count int64
 }
 
-func (PDD *PDDMetric) AddCdr(cdr *QCdr) {
+func (pdd *PDDMetric) AddCDR(cdr *QCDR) {
 	if cdr.Pdd == 0 { // Pdd not defined
 		return
 	}
-	PDD.sum += cdr.Pdd
-	PDD.count += 1
+	pdd.sum += cdr.Pdd
+	pdd.count++
 }
 
-func (PDD *PDDMetric) RemoveCdr(cdr *QCdr) {
+func (pdd *PDDMetric) RemoveCDR(cdr *QCDR) {
 	if cdr.Pdd == 0 { // Pdd not defined
 		return
 	}
-	PDD.sum -= cdr.Pdd
-	PDD.count -= 1
+	pdd.sum -= cdr.Pdd
+	pdd.count--
 }
 
-func (PDD *PDDMetric) GetValue() float64 {
-	if PDD.count == 0 {
+func (pdd *PDDMetric) GetValue() *dec.Dec {
+	if pdd.count == 0 {
 		return STATS_NA
 	}
-	val := PDD.sum.Seconds() / PDD.count
-	return utils.Round(val, globalRoundingDecimals, utils.ROUNDING_MIDDLE)
+	return dec.New().Quo(dec.NewFloat(pdd.sum.Seconds()), dec.NewVal(pdd.count, 0))
 }
 
 // ACD – Average Call Duration
 // the sum of billable seconds (billsec) of answered calls divided by the number of these answered calls.
 type ACDMetric struct {
 	sum   time.Duration
-	count float64
+	count int64
 }
 
-func (acd *ACDMetric) AddCdr(cdr *QCdr) {
+func (acd *ACDMetric) AddCDR(cdr *QCDR) {
 	if !cdr.AnswerTime.IsZero() {
 		acd.sum += cdr.Usage
-		acd.count += 1
+		acd.count++
 	}
 }
 
-func (acd *ACDMetric) RemoveCdr(cdr *QCdr) {
+func (acd *ACDMetric) RemoveCDR(cdr *QCDR) {
 	if !cdr.AnswerTime.IsZero() {
 		acd.sum -= cdr.Usage
-		acd.count -= 1
+		acd.count--
 	}
 }
 
-func (acd *ACDMetric) GetValue() float64 {
+func (acd *ACDMetric) GetValue() *dec.Dec {
 	if acd.count == 0 {
 		return STATS_NA
 	}
-	val := acd.sum.Seconds() / acd.count
-	return utils.Round(val, globalRoundingDecimals, utils.ROUNDING_MIDDLE)
+	return dec.New().Quo(dec.NewFloat(acd.sum.Seconds()), dec.NewVal(acd.count, 0))
 }
 
 // TCD – Total Call Duration
 // the sum of billable seconds (billsec) of answered calls
 type TCDMetric struct {
 	sum   time.Duration
-	count float64
+	count int64
 }
 
-func (tcd *TCDMetric) AddCdr(cdr *QCdr) {
+func (tcd *TCDMetric) AddCDR(cdr *QCDR) {
 	if !cdr.AnswerTime.IsZero() {
 		tcd.sum += cdr.Usage
-		tcd.count += 1
+		tcd.count++
 	}
 }
 
-func (tcd *TCDMetric) RemoveCdr(cdr *QCdr) {
+func (tcd *TCDMetric) RemoveCDR(cdr *QCDR) {
 	if !cdr.AnswerTime.IsZero() {
 		tcd.sum -= cdr.Usage
-		tcd.count -= 1
+		tcd.count--
 	}
 }
 
-func (tcd *TCDMetric) GetValue() float64 {
+func (tcd *TCDMetric) GetValue() *dec.Dec {
 	if tcd.count == 0 {
 		return STATS_NA
 	}
-	return utils.Round(tcd.sum.Seconds(), globalRoundingDecimals, utils.ROUNDING_MIDDLE)
+	return dec.NewFloat(tcd.sum.Seconds())
 }
 
 // ACC – Average Call Cost
 // the sum of cost of answered calls divided by the number of these answered calls.
 type ACCMetric struct {
-	sum   float64
-	count float64
+	sum   *dec.Dec
+	count int64
 }
 
-func (acc *ACCMetric) AddCdr(cdr *QCdr) {
-	if !cdr.AnswerTime.IsZero() && cdr.Cost >= 0 {
-		acc.sum += cdr.Cost
-		acc.count += 1
+func (acc *ACCMetric) AddCDR(cdr *QCDR) {
+	if !cdr.AnswerTime.IsZero() && cdr.Cost.GtZero() {
+		acc.sum.AddS(cdr.Cost)
+		acc.count++
 	}
 }
 
-func (acc *ACCMetric) RemoveCdr(cdr *QCdr) {
-	if !cdr.AnswerTime.IsZero() && cdr.Cost >= 0 {
-		acc.sum -= cdr.Cost
-		acc.count -= 1
+func (acc *ACCMetric) RemoveCDR(cdr *QCDR) {
+	if !cdr.AnswerTime.IsZero() && cdr.Cost.GtZero() {
+		acc.sum.SubS(cdr.Cost)
+		acc.count--
 	}
 }
 
-func (acc *ACCMetric) GetValue() float64 {
+func (acc *ACCMetric) GetValue() *dec.Dec {
 	if acc.count == 0 {
 		return STATS_NA
 	}
-	val := acc.sum / acc.count
-	return utils.Round(val, globalRoundingDecimals, utils.ROUNDING_MIDDLE)
+	return dec.New().Quo(acc.sum, dec.NewVal(acc.count, 0))
 }
 
 // TCC – Total Call Cost
 // the sum of cost of answered calls
 type TCCMetric struct {
-	sum   float64
-	count float64
+	sum   *dec.Dec
+	count int64
 }
 
-func (tcc *TCCMetric) AddCdr(cdr *QCdr) {
-	if !cdr.AnswerTime.IsZero() && cdr.Cost >= 0 {
-		tcc.sum += cdr.Cost
-		tcc.count += 1
+func (tcc *TCCMetric) AddCDR(cdr *QCDR) {
+	if !cdr.AnswerTime.IsZero() && cdr.Cost.GtZero() {
+		tcc.sum.AddS(cdr.Cost)
+		tcc.count++
 	}
 }
 
-func (tcc *TCCMetric) RemoveCdr(cdr *QCdr) {
-	if !cdr.AnswerTime.IsZero() && cdr.Cost >= 0 {
-		tcc.sum -= cdr.Cost
-		tcc.count -= 1
+func (tcc *TCCMetric) RemoveCDR(cdr *QCDR) {
+	if !cdr.AnswerTime.IsZero() && cdr.Cost.GtZero() {
+		tcc.sum.SubS(cdr.Cost)
+		tcc.count--
 	}
 }
 
-func (tcc *TCCMetric) GetValue() float64 {
+func (tcc *TCCMetric) GetValue() *dec.Dec {
 	if tcc.count == 0 {
 		return STATS_NA
 	}
-	return utils.Round(tcc.sum, globalRoundingDecimals, utils.ROUNDING_MIDDLE)
+	return tcc.sum
 }
 
 // DDC - Destination Distinct Count
@@ -227,25 +224,25 @@ func NewDccMetric() *DCCMetric {
 	}
 }
 
-func (dcc *DCCMetric) AddCdr(cdr *QCdr) {
-	if count, exists := dcc.destinations[cdr.Dest]; exists {
-		dcc.destinations[cdr.Dest] = count + 1
+func (dcc *DCCMetric) AddCDR(cdr *QCDR) {
+	if count, exists := dcc.destinations[cdr.Destination]; exists {
+		dcc.destinations[cdr.Destination] = count + 1
 	} else {
-		dcc.destinations[cdr.Dest] = 0
+		dcc.destinations[cdr.Destination] = 0
 	}
 }
 
-func (dcc *DCCMetric) RemoveCdr(cdr *QCdr) {
-	if count, exists := dcc.destinations[cdr.Dest]; exists && count > 1 {
-		dcc.destinations[cdr.Dest] = count - 1
+func (dcc *DCCMetric) RemoveCDR(cdr *QCDR) {
+	if count, exists := dcc.destinations[cdr.Destination]; exists && count > 1 {
+		dcc.destinations[cdr.Destination] = count - 1
 	} else {
-		dcc.destinations[cdr.Dest] = 0
+		dcc.destinations[cdr.Destination] = 0
 	}
 }
 
-func (dcc *DCCMetric) GetValue() float64 {
+func (dcc *DCCMetric) GetValue() *dec.Dec {
 	if len(dcc.destinations) == 0 {
 		return STATS_NA
 	}
-	return float64(len(dcc.destinations))
+	return dec.NewVal(int64(len(dcc.destinations)), 0)
 }

@@ -1,10 +1,10 @@
-**CGRateS** Usage
+**AccuRate** Usage
 =================
 
-Loading **CGRateS** Tariff Plans
+Loading **AccuRate** Tariff Plans
 --------------------------------
 
-Before proceeding to this step, you should have **CGRateS** installed and
+Before proceeding to this step, you should have **AccuRate** installed and
 started with custom configuration, depending on the tutorial you have followed.
 
 For our tutorial we load again prepared data out of shared folder, containing
@@ -94,7 +94,7 @@ Test calls
 
 Since the user 1001 is marked as *prepaid* inside the telecom switch, calling between 1001 and 1002 should generate pre-auth and prepaid debits which can be checked with *get_account* command integrated within *cgr-console* tool. Charging will be done based on time of day as described in the tariff plan definition above.
 
-*Note*: An important particularity to  note here is the ability of **CGRateS** SessionManager to refund units booked in advance (eg: if debit occurs every 10s and rate increments are set to 1s, the SessionManager will be smart enough to refund pre-booked credits for calls stoped in the middle of debit interval).
+*Note*: An important particularity to  note here is the ability of **AccuRate** SessionManager to refund units booked in advance (eg: if debit occurs every 10s and rate increments are set to 1s, the SessionManager will be smart enough to refund pre-booked credits for calls stoped in the middle of debit interval).
 
 Check that 1001 balance is properly deducted, during the call, and moreover considering that general balance has priority over the shared one debits for this call should take place at first out of general balance.
 
@@ -130,7 +130,7 @@ To check that there are no debits during or by the end of the call, but when the
 1004 -> 1001
 ~~~~~~~~~~~~
 
-The user 1004 is marked as *rated* inside the telecom switch hence his calls not interact in any way with accounting subsystem. The only action perfomed by **CGRateS** related to his calls wil be rating/mediation of his CDRs.
+The user 1004 is marked as *rated* inside the telecom switch hence his calls not interact in any way with accounting subsystem. The only action perfomed by **AccuRate** related to his calls wil be rating/mediation of his CDRs.
 
 
 1006 -> 1002

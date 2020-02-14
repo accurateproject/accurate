@@ -1,9 +1,10 @@
-
 package utils
 
 import (
 	"sort"
 	"strings"
+
+	"github.com/accurateproject/accurate/dec"
 )
 
 // Binary string search in slice
@@ -33,20 +34,20 @@ func SliceMemberHasPrefix(ss []string, prfx string) bool {
 	return false
 }
 
-func Avg(values []float64) float64 {
+func Avg(values dec.DecSlice) *dec.Dec {
 	if len(values) == 0 {
-		return 0.0
+		return dec.New()
 	}
-	var sum float64
+	sum := dec.New()
 	for _, val := range values {
-		sum += val
+		sum.AddS(val)
 	}
-	return sum / float64(len(values))
+	return dec.New().Quo(sum, dec.NewVal(int64(len(values)), 0))
 }
 
-func AvgNegative(values []float64) float64 {
+func AvgNegative(values dec.DecSlice) *dec.Dec {
 	if len(values) == 0 {
-		return -1 // return -1 if no data
+		return dec.NewVal(-1, 0) // return -1 if no data
 	}
 	return Avg(values)
 }

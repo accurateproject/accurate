@@ -1,11 +1,11 @@
 package console
 
-import "github.com/accurateproject/accurate/apier/v1"
+import "github.com/accurateproject/accurate/api/v1"
 
 func init() {
 	c := &CmdExecuteScheduledActions{
 		name:      "scheduler_execute",
-		rpcMethod: "ApierV1.ExecuteScheduledActions",
+		rpcMethod: "ApiV1.ExecuteScheduledActions",
 		rpcParams: &v1.AttrsExecuteScheduledActions{},
 	}
 	commands[c.Name()] = c

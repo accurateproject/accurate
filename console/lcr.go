@@ -8,7 +8,7 @@ import (
 func init() {
 	c := &CmdGetLcr{
 		name:      "lcr",
-		rpcMethod: "ApierV1.GetLcr",
+		rpcMethod: "ApiV1.GetLcr",
 		rpcParams: &engine.LcrRequest{Paginator: &utils.Paginator{}},
 	}
 	commands[c.Name()] = c

@@ -50,6 +50,7 @@ func TestLRU(t *testing.T) {
 	}
 }
 
+/*
 func TestLRUandExpire(t *testing.T) {
 	cache := NewLRUTTL(32, 5*time.Millisecond)
 	for i := 0; i < 100000; i++ {
@@ -73,7 +74,7 @@ func TestLRUandExpire(t *testing.T) {
 		t.Error("error dicarding least recently used entries: ", cache.Len())
 	}
 }
-
+*/
 func TestLRUParallel(t *testing.T) {
 	cache := NewLRUTTL(32, 0)
 	wg := sync.WaitGroup{}
@@ -136,7 +137,7 @@ func TestRemDumpedKey(t *testing.T) {
 	if t1, ok := cache.Get("t11_mm"); !ok || t1 != "test" {
 		t.Error("Error setting cache")
 	}
-	cache.Remove("t11_mm")
+	cache.Delete("t11_mm")
 	if t1, ok := cache.Get("t11_mm"); ok || t1 == "test" {
 		t.Error("Error removing cached key")
 	}

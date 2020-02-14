@@ -8,7 +8,7 @@ import (
 func init() {
 	c := &CmdGetCostDetails{
 		name:      "cost_details",
-		rpcMethod: "ApierV1.GetCallCostLog",
+		rpcMethod: "ApiV1.GetCallCostLog",
 	}
 	commands[c.Name()] = c
 	c.CommandExecuter = &CommandExecuter{c}
@@ -33,7 +33,7 @@ func (self *CmdGetCostDetails) RpcMethod() string {
 
 func (self *CmdGetCostDetails) RpcParams(reset bool) interface{} {
 	if reset || self.rpcParams == nil {
-		self.rpcParams = &utils.AttrGetCallCost{RunId: utils.DEFAULT_RUNID}
+		self.rpcParams = &utils.AttrGetCallCost{RunID: utils.DEFAULT_RUNID}
 	}
 	return self.rpcParams
 }

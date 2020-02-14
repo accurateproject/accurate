@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/accurateproject/accurate/dec"
 	"github.com/accurateproject/accurate/engine"
 	"github.com/accurateproject/accurate/utils"
 )
@@ -101,15 +102,15 @@ func TestSessionRefund(t *testing.T) {
 		TimeEnd:   time.Date(2015, 6, 10, 14, 7, 30, 0, time.UTC),
 	}
 	// add increments
-	for i := 0; i < 30; i++ {
-		ts.AddIncrement(&engine.Increment{Duration: time.Second, Cost: 1.0})
-	}
+	ts.Increments = &engine.Increments{CompIncrement: &engine.Increment{Duration: time.Second, Cost: dec.NewVal(1, 0), CompressFactor: 30}}
 
 	cc := &engine.CallCost{Timespans: engine.TimeSpans{ts}}
 	hangupTime := time.Date(2015, 6, 10, 14, 7, 20, 0, time.UTC)
-	s.Refund(cc, hangupTime)
-	if len(mc.refundCd.Increments) != 1 || mc.refundCd.Increments[0].GetCompressFactor() != 10 || len(cc.Timespans) != 1 || cc.Timespans[0].TimeEnd != hangupTime {
-		t.Errorf("Error refunding: %+v, %+v", mc.refundCd.Increments, cc.Timespans[0])
+	if err := s.Refund(cc, hangupTime); err != nil {
+		t.Fatal(err)
+	}
+	if len(mc.refundCd.Increments) != 1 || mc.refundCd.Increments[0].CompressFactor != 10 || len(cc.Timespans) != 1 || cc.Timespans[0].TimeEnd != hangupTime {
+		t.Errorf("error refunding: %s, %s", utils.ToIJSON(mc.refundCd.Increments), utils.ToIJSON(cc.Timespans[0]))
 	}
 }
 
@@ -121,14 +122,14 @@ func TestSessionRefundAll(t *testing.T) {
 		TimeEnd:   time.Date(2015, 6, 10, 14, 7, 30, 0, time.UTC),
 	}
 	// add increments
-	for i := 0; i < 30; i++ {
-		ts.AddIncrement(&engine.Increment{Duration: time.Second, Cost: 1.0})
-	}
+	ts.Increments = &engine.Increments{CompIncrement: &engine.Increment{Duration: time.Second, Cost: dec.NewVal(1, 0), CompressFactor: 30}}
 
 	cc := &engine.CallCost{Timespans: engine.TimeSpans{ts}}
 	hangupTime := time.Date(2015, 6, 10, 14, 7, 0, 0, time.UTC)
-	s.Refund(cc, hangupTime)
-	if len(mc.refundCd.Increments) != 1 || mc.refundCd.Increments[0].GetCompressFactor() != 30 || len(cc.Timespans) != 0 {
+	if err := s.Refund(cc, hangupTime); err != nil {
+		t.Fatal(err)
+	}
+	if len(mc.refundCd.Increments) != 1 || mc.refundCd.Increments[0].CompressFactor != 30 || len(cc.Timespans) != 0 {
 		t.Errorf("Error refunding: %+v, %+v", len(mc.refundCd.Increments), cc.Timespans)
 	}
 }
@@ -141,23 +142,24 @@ func TestSessionRefundManyAll(t *testing.T) {
 		TimeEnd:   time.Date(2015, 6, 10, 14, 7, 30, 0, time.UTC),
 	}
 	// add increments
-	for i := 0; i < int(ts1.GetDuration().Seconds()); i++ {
-		ts1.AddIncrement(&engine.Increment{Duration: time.Second, Cost: 1.0})
-	}
+	ts1.Increments = &engine.Increments{CompIncrement: &engine.Increment{Duration: time.Second, Cost: dec.NewVal(1, 0), CompressFactor: int(ts1.GetDuration().Seconds())}}
 
 	ts2 := &engine.TimeSpan{
 		TimeStart: time.Date(2015, 6, 10, 14, 7, 30, 0, time.UTC),
 		TimeEnd:   time.Date(2015, 6, 10, 14, 8, 0, 0, time.UTC),
 	}
 	// add increments
-	for i := 0; i < int(ts2.GetDuration().Seconds()); i++ {
-		ts2.AddIncrement(&engine.Increment{Duration: time.Second, Cost: 1.0})
-	}
+	ts2.Increments = &engine.Increments{CompIncrement: &engine.Increment{Duration: time.Second, Cost: dec.NewVal(1, 0), CompressFactor: int(ts2.GetDuration().Seconds())}}
 
 	cc := &engine.CallCost{Timespans: engine.TimeSpans{ts1, ts2}}
 	hangupTime := time.Date(2015, 6, 10, 14, 07, 0, 0, time.UTC)
-	s.Refund(cc, hangupTime)
-	if len(mc.refundCd.Increments) != 1 || mc.refundCd.Increments[0].GetCompressFactor() != 60 || len(cc.Timespans) != 0 {
-		t.Errorf("Error refunding: %+v, %+v", len(mc.refundCd.Increments), cc.Timespans)
+	if err := s.Refund(cc, hangupTime); err != nil {
+		t.Fatal(err)
+	}
+	if len(mc.refundCd.Increments) != 2 ||
+		mc.refundCd.Increments[0].CompressFactor != 30 ||
+		mc.refundCd.Increments[1].CompressFactor != 30 ||
+		len(cc.Timespans) != 0 {
+		t.Errorf("Error refunding: %s \n %s", utils.ToIJSON(mc.refundCd.Increments), utils.ToIJSON(cc.Timespans))
 	}
 }

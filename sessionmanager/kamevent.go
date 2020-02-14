@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/dec"
 	"github.com/accurateproject/accurate/engine"
 	"github.com/accurateproject/accurate/utils"
 )
@@ -92,7 +93,7 @@ func (kev KamEvent) AsEvent(ignored string) engine.Event {
 func (kev KamEvent) GetName() string {
 	return kev[EVENT]
 }
-func (kev KamEvent) GetCgrId(timezone string) string {
+func (kev KamEvent) GetUniqueID(timezone string) string {
 	setupTime, _ := kev.GetSetupTime(utils.META_DEFAULT, timezone)
 	return utils.Sha1(kev.GetUUID(), setupTime.UTC().String())
 }
@@ -131,19 +132,19 @@ func (kev KamEvent) GetCategory(fieldName string) string {
 	if strings.HasPrefix(fieldName, utils.STATIC_VALUE_PREFIX) { // Static value
 		return fieldName[len(utils.STATIC_VALUE_PREFIX):]
 	}
-	return utils.FirstNonEmpty(kev[fieldName], kev[CGR_CATEGORY], config.CgrConfig().DefaultCategory)
+	return utils.FirstNonEmpty(kev[fieldName], kev[CGR_CATEGORY], *config.Get().General.DefaultCategory)
 }
 func (kev KamEvent) GetTenant(fieldName string) string {
 	if strings.HasPrefix(fieldName, utils.STATIC_VALUE_PREFIX) { // Static value
 		return fieldName[len(utils.STATIC_VALUE_PREFIX):]
 	}
-	return utils.FirstNonEmpty(kev[fieldName], kev[CGR_TENANT], config.CgrConfig().DefaultTenant)
+	return utils.FirstNonEmpty(kev[fieldName], kev[CGR_TENANT], *config.Get().General.DefaultTenant)
 }
 func (kev KamEvent) GetReqType(fieldName string) string {
 	if strings.HasPrefix(fieldName, utils.STATIC_VALUE_PREFIX) { // Static value
 		return fieldName[len(utils.STATIC_VALUE_PREFIX):]
 	}
-	return utils.FirstNonEmpty(kev[fieldName], kev[CGR_REQTYPE], config.CgrConfig().DefaultReqType)
+	return utils.FirstNonEmpty(kev[fieldName], kev[CGR_REQTYPE], *config.Get().General.DefaultRequestType)
 }
 func (kev KamEvent) GetAnswerTime(fieldName, timezone string) (time.Time, error) {
 	aTimeStr := utils.FirstNonEmpty(kev[fieldName], kev[CGR_ANSWERTIME])
@@ -246,12 +247,12 @@ func (kev KamEvent) MissingParameter(timezone string) bool {
 
 // Useful for CDR generation
 func (kev KamEvent) ParseEventValue(rsrFld *utils.RSRField, timezone string) string {
-	sTime, _ := kev.GetSetupTime(utils.META_DEFAULT, config.CgrConfig().DefaultTimezone)
-	aTime, _ := kev.GetAnswerTime(utils.META_DEFAULT, config.CgrConfig().DefaultTimezone)
+	sTime, _ := kev.GetSetupTime(utils.META_DEFAULT, *config.Get().General.DefaultTimezone)
+	aTime, _ := kev.GetAnswerTime(utils.META_DEFAULT, *config.Get().General.DefaultTimezone)
 	duration, _ := kev.GetDuration(utils.META_DEFAULT)
 	switch rsrFld.Id {
-	case utils.CGRID:
-		return rsrFld.ParseValue(kev.GetCgrId(timezone))
+	case utils.UniqueID:
+		return rsrFld.ParseValue(kev.GetUniqueID(timezone))
 	case utils.TOR:
 		return rsrFld.ParseValue(utils.VOICE)
 	case utils.ACCID:
@@ -300,7 +301,7 @@ func (kev KamEvent) PassesFieldFilter(*utils.RSRField) (bool, string) {
 
 func (kev KamEvent) AsStoredCdr(timezone string) *engine.CDR {
 	storCdr := new(engine.CDR)
-	storCdr.CGRID = kev.GetCgrId(timezone)
+	storCdr.UniqueID = kev.GetUniqueID(timezone)
 	storCdr.ToR = utils.VOICE
 	storCdr.OriginID = kev.GetUUID()
 	storCdr.OriginHost = kev.GetOriginatorIP(utils.META_DEFAULT)
@@ -319,7 +320,7 @@ func (kev KamEvent) AsStoredCdr(timezone string) *engine.CDR {
 	storCdr.Supplier = kev.GetSupplier(utils.META_DEFAULT)
 	storCdr.DisconnectCause = kev.GetDisconnectCause(utils.META_DEFAULT)
 	storCdr.ExtraFields = kev.GetExtraFields()
-	storCdr.Cost = -1
+	storCdr.Cost = dec.NewVal(-1, 0)
 
 	return storCdr
 }
@@ -367,7 +368,7 @@ func (kev KamEvent) AsCallDescriptor() (*engine.CallDescriptor, error) {
 		SetupTime:   utils.FirstNonEmpty(kev[CGR_SETUPTIME], kev[CGR_ANSWERTIME]),
 		Duration:    kev[CGR_DURATION],
 	}
-	return lcrReq.AsCallDescriptor(config.CgrConfig().DefaultTimezone)
+	return lcrReq.AsCallDescriptor(*config.Get().General.DefaultTimezone)
 }
 
 func (kev KamEvent) ComputeLcr() bool {
@@ -376,4 +377,8 @@ func (kev KamEvent) ComputeLcr() bool {
 	} else {
 		return computeLcr
 	}
+}
+
+func (kev KamEvent) AsMapStringIface() (map[string]interface{}, error) {
+	return nil, utils.ErrNotImplemented
 }

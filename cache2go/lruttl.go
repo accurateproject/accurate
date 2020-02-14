@@ -2,14 +2,11 @@ package cache2go
 
 import (
 	"container/list"
-	"fmt"
 	"sync"
 	"time"
-
-	"github.com/accurateproject/accurate/utils"
 )
 
-// Cache is an LRU cache. It is not safe for concurrent access.
+// Cache is an LRU cache.
 type Cache struct {
 	mu sync.RWMutex
 	// MaxEntries is the maximum number of cache entries before
@@ -55,15 +52,16 @@ func (c *Cache) cleanExpired() {
 			continue
 		}
 		e := c.ttlIndex[0]
-		c.mu.RUnlock()
 
 		en := e.Value.(*entry)
-		if time.Now().After(en.timestamp.Add(c.expiration)) {
+		exp := en.timestamp.Add(c.expiration)
+		c.mu.RUnlock()
+		if time.Now().After(exp) {
 			c.mu.Lock()
 			c.removeElement(e)
 			c.mu.Unlock()
 		} else {
-			time.Sleep(time.Now().Sub(en.timestamp.Add(c.expiration)))
+			time.Sleep(time.Now().Sub(exp))
 		}
 	}
 }
@@ -103,8 +101,8 @@ func (c *Cache) Set(key string, value interface{}) {
 
 // Get looks up a key's value from the cache.
 func (c *Cache) Get(key string) (value interface{}, ok bool) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.cache == nil {
 		return
 	}
@@ -117,7 +115,7 @@ func (c *Cache) Get(key string) (value interface{}, ok bool) {
 }
 
 // Remove removes the provided key from the cache.
-func (c *Cache) Remove(key string) {
+func (c *Cache) Delete(key string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.cache == nil {
@@ -155,8 +153,6 @@ func (c *Cache) removeElement(e *list.Element) {
 	if e.Value != nil {
 		kv := e.Value.(*entry)
 		delete(c.cache, kv.key)
-	} else {
-		utils.Logger.Debug(fmt.Sprintf("<lruttl_cache>: nil element: %+v", e))
 	}
 }
 

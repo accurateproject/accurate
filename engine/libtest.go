@@ -6,26 +6,24 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path"
 	"time"
 
 	"github.com/accurateproject/accurate/config"
-	"github.com/accurateproject/accurate/utils"
 	"github.com/kr/pty"
 )
 
-func InitDataDb(cfg *config.CGRConfig) error {
-	ratingDb, err := ConfigureRatingStorage(cfg.TpDbType, cfg.TpDbHost, cfg.TpDbPort, cfg.TpDbName, cfg.TpDbUser, cfg.TpDbPass, cfg.DBDataEncoding, cfg.CacheConfig, cfg.LoadHistorySize)
+func InitDataDb(cfg *config.Config) error {
+	ratingDb, err := ConfigureRatingStorage(*cfg.TariffPlanDb.Host, *cfg.TariffPlanDb.Port, *cfg.TariffPlanDb.Name, *cfg.TariffPlanDb.User, *cfg.TariffPlanDb.Password, cfg.Cache, *cfg.DataDb.LoadHistorySize)
 	if err != nil {
 		return err
 	}
-	accountDb, err := ConfigureAccountingStorage(cfg.DataDbType, cfg.DataDbHost, cfg.DataDbPort, cfg.DataDbName,
-		cfg.DataDbUser, cfg.DataDbPass, cfg.DBDataEncoding, cfg.CacheConfig, cfg.LoadHistorySize)
+	accountDb, err := ConfigureAccountingStorage(*cfg.DataDb.Host, *cfg.DataDb.Port, *cfg.DataDb.Name,
+		*cfg.DataDb.User, *cfg.DataDb.Password, cfg.Cache, *cfg.DataDb.LoadHistorySize)
 	if err != nil {
 		return err
 	}
 	for _, db := range []Storage{ratingDb, accountDb} {
-		if err := db.Flush(""); err != nil {
+		if err := db.Flush(); err != nil {
 			return err
 		}
 	}
@@ -34,13 +32,13 @@ func InitDataDb(cfg *config.CGRConfig) error {
 	return nil
 }
 
-func InitStorDb(cfg *config.CGRConfig) error {
-	storDb, err := ConfigureLoadStorage(cfg.StorDBType, cfg.StorDBHost, cfg.StorDBPort, cfg.StorDBName, cfg.StorDBUser, cfg.StorDBPass, cfg.DBDataEncoding,
-		cfg.StorDBMaxOpenConns, cfg.StorDBMaxIdleConns, cfg.StorDBCDRSIndexes)
+func InitCdrDb(cfg *config.Config) error {
+	cdrDb, err := ConfigureCdrStorage(*cfg.CdrDb.Host, *cfg.CdrDb.Port, *cfg.CdrDb.Name, *cfg.CdrDb.User, *cfg.CdrDb.Password,
+		*cfg.CdrDb.MaxOpenConns, *cfg.CdrDb.MaxIdleConns, cfg.CdrDb.CdrsIndexes)
 	if err != nil {
 		return err
 	}
-	if err := storDb.Flush(path.Join(cfg.DataFolderPath, "storage", cfg.StorDBType)); err != nil {
+	if err := cdrDb.Flush(); err != nil {
 		return err
 	}
 	return nil
@@ -73,42 +71,12 @@ func StopStartEngine(cfgPath string, waitEngine int) (*exec.Cmd, error) {
 	return StartEngine(cfgPath, waitEngine)
 }
 
-func LoadTariffPlanFromFolder(tpPath, timezone string, ratingDb RatingStorage, accountingDb AccountingStorage, disable_reverse bool) error {
-	loader := NewTpReader(ratingDb, accountingDb, NewFileCSVStorage(utils.CSV_SEP,
-		path.Join(tpPath, utils.DESTINATIONS_CSV),
-		path.Join(tpPath, utils.TIMINGS_CSV),
-		path.Join(tpPath, utils.RATES_CSV),
-		path.Join(tpPath, utils.DESTINATION_RATES_CSV),
-		path.Join(tpPath, utils.RATING_PLANS_CSV),
-		path.Join(tpPath, utils.RATING_PROFILES_CSV),
-		path.Join(tpPath, utils.SHARED_GROUPS_CSV),
-		path.Join(tpPath, utils.LCRS_CSV),
-		path.Join(tpPath, utils.ACTIONS_CSV),
-		path.Join(tpPath, utils.ACTION_PLANS_CSV),
-		path.Join(tpPath, utils.ACTION_TRIGGERS_CSV),
-		path.Join(tpPath, utils.ACCOUNT_ACTIONS_CSV),
-		path.Join(tpPath, utils.DERIVED_CHARGERS_CSV),
-		path.Join(tpPath, utils.CDR_STATS_CSV),
-
-		path.Join(tpPath, utils.USERS_CSV),
-		path.Join(tpPath, utils.ALIASES_CSV),
-		path.Join(tpPath, utils.ResourceLimitsCsv),
-	), "", timezone)
-	if err := loader.LoadAll(); err != nil {
-		return utils.NewErrServerError(err)
-	}
-	if err := loader.WriteToDatabase(false, false, disable_reverse); err != nil {
-		return utils.NewErrServerError(err)
-	}
-	return nil
-}
-
 type PjsuaAccount struct {
 	Id, Username, Password, Realm, Registrar string
 }
 
 // Returns file reference where we can write to control pjsua in terminal
-func StartPjsuaListener(acnts []*PjsuaAccount, localPort, waitMs int) (*os.File, error) {
+func StartPjsuaListener(acnts []*PjsuaAccount, localPort, waitDur time.Duration) (*os.File, error) {
 	cmdArgs := []string{fmt.Sprintf("--local-port=%d", localPort), "--null-audio", "--auto-answer=200", "--max-calls=32", "--app-log-level=0"}
 	for idx, acnt := range acnts {
 		if idx != 0 {
@@ -126,8 +94,8 @@ func StartPjsuaListener(acnts []*PjsuaAccount, localPort, waitMs int) (*os.File,
 		return nil, err
 	}
 	buf := new(bytes.Buffer)
-	io.Copy(os.Stdout, buf)                              // Free the content since otherwise pjsua will not start
-	time.Sleep(time.Duration(waitMs) * time.Millisecond) // Give time to rater to fire up
+	io.Copy(os.Stdout, buf) // Free the content since otherwise pjsua will not start
+	time.Sleep(waitDur)     // Give time to rater to fire up
 	return fPty, nil
 }
 

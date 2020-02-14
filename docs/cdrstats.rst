@@ -11,7 +11,7 @@ capabilities.
 
 Principles of functionality:
 
-- Standalone component (can be started individually on remote hardware, isolated form other CGRateS compoenents).
+- Standalone component (can be started individually on remote hardware, isolated form other AccuRate compoenents).
 - Performance oriented. Should be able to process tens of thousands of CDRs per second.
 - Cache driven technology. But SaveInterval can be set to store this information
   on redis.

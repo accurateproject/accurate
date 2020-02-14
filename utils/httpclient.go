@@ -1,4 +1,3 @@
-
 package utils
 
 import (
@@ -11,6 +10,8 @@ import (
 	"net/url"
 	"os"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 var (
@@ -52,11 +53,22 @@ func HttpJsonPost(url string, skipTlsVerify bool, content []byte) ([]byte, error
 	return respBody, nil
 }
 
+func NewHTTPPoster(skipTLSVerify bool, replyTimeout time.Duration) *HTTPPoster {
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: skipTLSVerify},
+	}
+	return &HTTPPoster{httpClient: &http.Client{Transport: tr, Timeout: replyTimeout}}
+}
+
+type HTTPPoster struct {
+	httpClient *http.Client
+}
+
 // Post with built-in failover
 // Returns also reference towards client so we can close it's connections when done
-func HttpPoster(addr string, skipTlsVerify bool, content interface{}, contentType string, attempts int, fallbackFilePath string, cacheIdleConns bool) ([]byte, *http.Client, error) {
+func (poster *HTTPPoster) Post(addr string, contentType string, content interface{}, attempts int, fallbackFilePath string) ([]byte, error) {
 	if !IsSliceMember([]string{CONTENT_JSON, CONTENT_FORM, CONTENT_TEXT}, contentType) {
-		return nil, nil, fmt.Errorf("Unsupported ContentType: %s", contentType)
+		return nil, fmt.Errorf("unsupported ContentType: %s", contentType)
 	}
 	var body []byte        // Used to write in file and send over http
 	var urlVals url.Values // Used when posting form
@@ -66,13 +78,6 @@ func HttpPoster(addr string, skipTlsVerify bool, content interface{}, contentTyp
 		urlVals = content.(url.Values)
 		body = []byte(urlVals.Encode())
 	}
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: skipTlsVerify},
-	}
-	if !cacheIdleConns {
-		tr.DisableKeepAlives = true
-	}
-	client := &http.Client{Transport: tr}
 	delay := Fib()
 	bodyType := "application/x-www-form-urlencoded"
 	if contentType == CONTENT_JSON {
@@ -82,37 +87,37 @@ func HttpPoster(addr string, skipTlsVerify bool, content interface{}, contentTyp
 	for i := 0; i < attempts; i++ {
 		var resp *http.Response
 		if IsSliceMember([]string{CONTENT_JSON, CONTENT_TEXT}, contentType) {
-			resp, err = client.Post(addr, bodyType, bytes.NewBuffer(body))
+			resp, err = poster.httpClient.Post(addr, bodyType, bytes.NewBuffer(body))
 		} else if contentType == CONTENT_FORM {
-			resp, err = client.PostForm(addr, urlVals)
+			resp, err = poster.httpClient.PostForm(addr, urlVals)
 		}
 		if err != nil {
-			Logger.Warning(fmt.Sprintf("<HttpPoster> Posting to : <%s>, error: <%s>", addr, err.Error()))
+			Logger.Warn("<HTTPPoster> Posting to : ", zap.String("addr", addr), zap.Error(err))
 			time.Sleep(delay())
 			continue
 		}
 		defer resp.Body.Close()
 		respBody, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			Logger.Warning(fmt.Sprintf("<HttpPoster> Posting to : <%s>, error: <%s>", addr, err.Error()))
+			Logger.Warn("<HTTPPoster> Posting to : ", zap.String("addr", addr), zap.Error(err))
 			time.Sleep(delay())
 			continue
 		}
 		if resp.StatusCode > 299 {
-			Logger.Warning(fmt.Sprintf("<HttpPoster> Posting to : <%s>, unexpected status code received: <%d>", addr, resp.StatusCode))
+			Logger.Warn("<HTTPPoster> Posting to : ", zap.String("addr", addr), zap.Int("unexpected status code", resp.StatusCode))
 			time.Sleep(delay())
 			continue
 		}
-		return respBody, client, nil
+		return respBody, nil
 	}
 	// If we got that far, post was not possible, write it on disk
 	fileOut, err := os.Create(fallbackFilePath)
 	if err != nil {
-		return nil, client, err
+		return nil, err
 	}
 	defer fileOut.Close()
 	if _, err := fileOut.Write(body); err != nil {
-		return nil, client, err
+		return nil, err
 	}
-	return nil, client, nil
+	return nil, nil
 }

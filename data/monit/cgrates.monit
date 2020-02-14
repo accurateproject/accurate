@@ -1,6 +1,6 @@
-# CGRateS Monit check script
+# AccuRate Monit check script
 
-check process CGRateS with pidfile /var/run/cgrates/cgr-engine.pid
+check process AccuRate with pidfile /var/run/cgrates/cgr-engine.pid
    start program = "/etc/init.d/cgrates start"
    stop  program = "/etc/init.d/cgrates stop"
    if failed host 127.0.0.1 port 2012 type TCP 4 times within 4 cycles then restart # Rater

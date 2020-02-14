@@ -1,0 +1,3 @@
+{"Tenant":"t1", "Tag":"STANDARD", "Bindings":[
+  {"DestinationRatesTag": "DR_STANDARD", "TimingTag": "*any", "Weight": 10}
+]}

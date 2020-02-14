@@ -5,7 +5,7 @@ import "github.com/accurateproject/accurate/utils"
 func init() {
 	c := &CmdExportCdrs{
 		name:      "cdrs_export",
-		rpcMethod: "ApierV2.ExportCdrsToFile",
+		rpcMethod: "ApiV2.ExportCdrsToFile",
 	}
 	commands[c.Name()] = c
 	c.CommandExecuter = &CommandExecuter{c}

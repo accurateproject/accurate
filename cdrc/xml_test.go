@@ -10,6 +10,7 @@ import (
 	"github.com/ChrisTrenkamp/goxpath"
 	"github.com/ChrisTrenkamp/goxpath/tree/xmltree"
 	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/dec"
 	"github.com/accurateproject/accurate/engine"
 	"github.com/accurateproject/accurate/utils"
 )
@@ -188,37 +189,37 @@ func TestXMLHandlerSubstractUsage(t *testing.T) {
 }
 
 func TestXMLRPProcess(t *testing.T) {
-	cdrcCfgs := []*config.CdrcConfig{
-		&config.CdrcConfig{
-			ID:                      "TestXML",
-			Enabled:                 true,
-			CdrFormat:               "xml",
-			DataUsageMultiplyFactor: 1024,
-			CDRPath:                 utils.HierarchyPath([]string{"broadWorksCDR", "cdrData"}),
-			CdrSourceId:             "TestXML",
+	cdrcCfgs := []*config.Cdrc{
+		&config.Cdrc{
+			ID:                      utils.StringPointer("TestXML"),
+			Enabled:                 utils.BoolPointer(true),
+			CdrFormat:               utils.StringPointer("xml"),
+			DataUsageMultiplyFactor: utils.Float64Pointer(1024),
+			CdrPath:                 utils.StringPointer("broadWorksCDR,cdrData"),
+			CdrSourceID:             utils.StringPointer("TestXML"),
 			CdrFilter:               utils.ParseRSRFieldsMustCompile("broadWorksCDR>cdrData>headerModule>type(Normal)", utils.INFIELD_SEP),
-			ContentFields: []*config.CfgCdrField{
-				&config.CfgCdrField{Tag: "TOR", Type: utils.META_COMPOSED, FieldId: utils.TOR,
+			ContentFields: []*config.CdrField{
+				&config.CdrField{Tag: "TOR", Type: utils.META_COMPOSED, FieldID: utils.TOR,
 					Value: utils.ParseRSRFieldsMustCompile("^*voice", utils.INFIELD_SEP), Mandatory: true},
-				&config.CfgCdrField{Tag: "OriginID", Type: utils.META_COMPOSED, FieldId: utils.ACCID,
+				&config.CdrField{Tag: "OriginID", Type: utils.META_COMPOSED, FieldID: utils.ACCID,
 					Value: utils.ParseRSRFieldsMustCompile("broadWorksCDR>cdrData>basicModule>localCallId", utils.INFIELD_SEP), Mandatory: true},
-				&config.CfgCdrField{Tag: "RequestType", Type: utils.META_COMPOSED, FieldId: utils.REQTYPE,
+				&config.CdrField{Tag: "RequestType", Type: utils.META_COMPOSED, FieldID: utils.REQTYPE,
 					Value: utils.ParseRSRFieldsMustCompile("^*rated", utils.INFIELD_SEP), Mandatory: true},
-				&config.CfgCdrField{Tag: "Direction", Type: utils.META_COMPOSED, FieldId: utils.DIRECTION,
+				&config.CdrField{Tag: "Direction", Type: utils.META_COMPOSED, FieldID: utils.DIRECTION,
 					Value: utils.ParseRSRFieldsMustCompile("^*out", utils.INFIELD_SEP), Mandatory: true},
-				&config.CfgCdrField{Tag: "Tenant", Type: utils.META_COMPOSED, FieldId: utils.TENANT,
+				&config.CdrField{Tag: "Tenant", Type: utils.META_COMPOSED, FieldID: utils.TENANT,
 					Value: utils.ParseRSRFieldsMustCompile("~broadWorksCDR>cdrData>basicModule>userId:s/.*@(.*)/${1}/", utils.INFIELD_SEP), Mandatory: true},
-				&config.CfgCdrField{Tag: "Category", Type: utils.META_COMPOSED, FieldId: utils.CATEGORY,
+				&config.CdrField{Tag: "Category", Type: utils.META_COMPOSED, FieldID: utils.CATEGORY,
 					Value: utils.ParseRSRFieldsMustCompile("^call", utils.INFIELD_SEP), Mandatory: true},
-				&config.CfgCdrField{Tag: "Account", Type: utils.META_COMPOSED, FieldId: utils.ACCOUNT,
+				&config.CdrField{Tag: "Account", Type: utils.META_COMPOSED, FieldID: utils.ACCOUNT,
 					Value: utils.ParseRSRFieldsMustCompile("broadWorksCDR>cdrData>basicModule>userNumber", utils.INFIELD_SEP), Mandatory: true},
-				&config.CfgCdrField{Tag: "Destination", Type: utils.META_COMPOSED, FieldId: utils.DESTINATION,
+				&config.CdrField{Tag: "Destination", Type: utils.META_COMPOSED, FieldID: utils.DESTINATION,
 					Value: utils.ParseRSRFieldsMustCompile("broadWorksCDR>cdrData>basicModule>calledNumber", utils.INFIELD_SEP), Mandatory: true},
-				&config.CfgCdrField{Tag: "SetupTime", Type: utils.META_COMPOSED, FieldId: utils.SETUP_TIME,
+				&config.CdrField{Tag: "SetupTime", Type: utils.META_COMPOSED, FieldID: utils.SETUP_TIME,
 					Value: utils.ParseRSRFieldsMustCompile("broadWorksCDR>cdrData>basicModule>startTime", utils.INFIELD_SEP), Mandatory: true},
-				&config.CfgCdrField{Tag: "AnswerTime", Type: utils.META_COMPOSED, FieldId: utils.ANSWER_TIME,
+				&config.CdrField{Tag: "AnswerTime", Type: utils.META_COMPOSED, FieldID: utils.ANSWER_TIME,
 					Value: utils.ParseRSRFieldsMustCompile("broadWorksCDR>cdrData>basicModule>answerTime", utils.INFIELD_SEP), Mandatory: true},
-				&config.CfgCdrField{Tag: "Usage", Type: utils.META_HANDLER, FieldId: utils.USAGE, HandlerId: utils.HandlerSubstractUsage,
+				&config.CdrField{Tag: "Usage", Type: utils.META_HANDLER, FieldID: utils.USAGE, HandlerID: utils.HandlerSubstractUsage,
 					Value: utils.ParseRSRFieldsMustCompile("broadWorksCDR>cdrData>basicModule>releaseTime;^|;broadWorksCDR>cdrData>basicModule>answerTime", utils.INFIELD_SEP), Mandatory: true},
 			},
 		},
@@ -238,10 +239,10 @@ func TestXMLRPProcess(t *testing.T) {
 		t.Error(err)
 	}
 	expectedCDRs := []*engine.CDR{
-		&engine.CDR{CGRID: "1f045359a0784d15e051d7e41ae30132b139d714", OriginHost: "0.0.0.0", Source: "TestXML", OriginID: "25160047719:0",
+		&engine.CDR{UniqueID: "1f045359a0784d15e051d7e41ae30132b139d714", OriginHost: "0.0.0.0", Source: "TestXML", OriginID: "25160047719:0",
 			ToR: "*voice", RequestType: "*rated", Direction: "*out", Tenant: "cgrates.org", Category: "call", Account: "1001", Destination: "+4986517174963",
 			SetupTime: time.Date(2016, 4, 19, 21, 0, 5, 247000000, time.UTC), AnswerTime: time.Date(2016, 4, 19, 21, 0, 6, 813000000, time.UTC), Usage: time.Duration(13483000000),
-			ExtraFields: map[string]string{}, Cost: -1},
+			ExtraFields: map[string]string{}, Cost: dec.NewVal(-1, 0)},
 	}
 	if !reflect.DeepEqual(expectedCDRs, cdrs) {
 		t.Errorf("Expecting: %+v\n, received: %+v\n", expectedCDRs, cdrs)

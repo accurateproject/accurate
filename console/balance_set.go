@@ -1,13 +1,14 @@
 package console
 
 import (
+	"github.com/accurateproject/accurate/api/v1"
 	"github.com/accurateproject/accurate/utils"
 )
 
 func init() {
 	c := &CmdSetBalance{
 		name:      "balance_set",
-		rpcMethod: "ApierV1.SetBalance",
+		rpcMethod: "ApiV1.SetBalance",
 	}
 	commands[c.Name()] = c
 	c.CommandExecuter = &CommandExecuter{c}
@@ -17,7 +18,7 @@ func init() {
 type CmdSetBalance struct {
 	name      string
 	rpcMethod string
-	rpcParams *utils.AttrSetBalance
+	rpcParams *v1.AttrSetBalance
 	*CommandExecuter
 }
 
@@ -31,7 +32,7 @@ func (self *CmdSetBalance) RpcMethod() string {
 
 func (self *CmdSetBalance) RpcParams(reset bool) interface{} {
 	if reset || self.rpcParams == nil {
-		self.rpcParams = &utils.AttrSetBalance{BalanceType: utils.MONETARY}
+		self.rpcParams = &v1.AttrSetBalance{TOR: utils.MONETARY}
 	}
 	return self.rpcParams
 }

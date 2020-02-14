@@ -1,7 +1,6 @@
 package agents
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/accurateproject/accurate/utils"
@@ -9,6 +8,7 @@ import (
 	"github.com/fiorix/go-diameter/diam/avp"
 	"github.com/fiorix/go-diameter/diam/datatype"
 	"github.com/fiorix/go-diameter/diam/sm"
+	"go.uber.org/zap"
 )
 
 func NewDiameterClient(addr, originHost, originRealm string, vendorId int, productName string, firmwareRev int, dictsDir string) (*DiameterClient, error) {
@@ -22,7 +22,7 @@ func NewDiameterClient(addr, originHost, originRealm string, vendorId int, produ
 	dSM := sm.New(cfg)
 	go func() {
 		for err := range dSM.ErrorReports() {
-			utils.Logger.Err(fmt.Sprintf("<DiameterClient> StateMachine error: %+v", err))
+			utils.Logger.Error("<DiameterClient> StateMachine error:", zap.Stringer("error", err))
 		}
 	}()
 	cli := &sm.Client{
@@ -61,7 +61,7 @@ func (dc *DiameterClient) SendMessage(m *diam.Message) error {
 }
 
 func (dc *DiameterClient) handleALL(c diam.Conn, m *diam.Message) {
-	utils.Logger.Warning(fmt.Sprintf("<DiameterClient> Received unexpected message from %s:\n%s", c.RemoteAddr(), m))
+	utils.Logger.Warn("<DiameterClient> Received unexpected message", zap.Stringer("addr", c.RemoteAddr()), zap.Stringer("message", m))
 	dc.received <- m
 }
 

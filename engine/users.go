@@ -1,54 +1,77 @@
 package engine
 
 import (
-	"fmt"
 	"reflect"
 	"sort"
 	"strings"
 	"sync"
 
+	"github.com/accurateproject/accurate/config"
 	"github.com/accurateproject/accurate/utils"
+	"go.uber.org/zap"
 )
 
 type UserProfile struct {
-	Tenant   string
-	UserName string
-	Masked   bool
-	Profile  map[string]string
-	Weight   float64
-	ponder   int
+	Tenant string            `bson:"tenant"`
+	Name   string            `bson:"name"`
+	Masked bool              `bson:"masked"`
+	Index  map[string]string `bson:"index"`
+	Query  string            `bson:"query"`
+	Weight float64           `bson:"weight"`
+	query  *utils.StructQ
+}
+
+func (up *UserProfile) Ponder() int {
+	if up.query == nil {
+		return 0
+	}
+	return up.query.Complexity()
+}
+
+func (up *UserProfile) Equals(o *UserProfile) bool {
+	return up.Tenant == o.Tenant && up.Name == o.Name
+}
+
+func (up *UserProfile) getQuery() *utils.StructQ {
+	if up.query != nil {
+		return up.query
+	}
+	up.query, _ = utils.NewStructQ(up.Query) // the error should be checked during load
+	return up.query
 }
 
 type UserProfiles []*UserProfile
 
-func (ups UserProfiles) Len() int {
-	return len(ups)
+func (ups UserProfiles) sort() {
+	sort.Slice(ups, func(j, i int) bool { // get higher Weight and ponder in front
+		return ups[i].Weight < ups[j].Weight ||
+			(ups[i].Weight == ups[j].Weight && ups[i].Ponder() < ups[j].Ponder())
+	})
 }
 
-func (ups UserProfiles) Swap(i, j int) {
-	ups[i], ups[j] = ups[j], ups[i]
-}
-
-func (ups UserProfiles) Less(j, i int) bool { // get higher Weight and ponder in front
-	return ups[i].Weight < ups[j].Weight ||
-		(ups[i].Weight == ups[j].Weight && ups[i].ponder < ups[j].ponder)
-}
-
-func (ups UserProfiles) Sort() {
-	sort.Sort(ups)
-}
-
-func (ud *UserProfile) GetId() string {
-	return utils.ConcatenatedKey(ud.Tenant, ud.UserName)
-}
-
-func (ud *UserProfile) SetId(id string) error {
-	vals := strings.Split(id, utils.CONCATENATED_KEY_SEP)
-	if len(vals) != 2 {
-		return utils.ErrInvalidKey
+func (ups *UserProfiles) remove(up *UserProfile) {
+	index := -1
+	for i, itUP := range *ups {
+		if itUP.Equals(up) {
+			index = i
+			break
+		}
 	}
+	if index != -1 {
+		*ups = append((*ups)[:index], (*ups)[index+1:]...)
+	}
+}
+
+func (ud *UserProfile) FullID() string {
+	return utils.ConcatKey(ud.Tenant, ud.Name)
+}
+
+func (ud *UserProfile) SetID(id string) error {
+	vals := strings.SplitN(id, utils.CONCATENATED_KEY_SEP, 2)
 	ud.Tenant = vals[0]
-	ud.UserName = vals[1]
+	if len(vals) == 2 {
+		ud.Name = vals[1]
+	}
 	return nil
 }
 
@@ -56,67 +79,58 @@ type UserService interface {
 	SetUser(UserProfile, *string) error
 	RemoveUser(UserProfile, *string) error
 	UpdateUser(UserProfile, *string) error
-	GetUsers(UserProfile, *UserProfiles) error
+	GetUsers(AttrGetUsers, *UserProfiles) error
 	AddIndex([]string, *string) error
 	GetIndexes(string, *map[string][]string) error
-	ReloadUsers(string, *string) error
-}
-
-type prop struct {
-	masked bool
-	weight float64
+	ReloadUsers(attr AttrReloadUsers, reply *string) error
 }
 
 type UserMap struct {
-	table        map[string]map[string]string
-	properties   map[string]*prop
-	index        map[string]map[string]bool
-	indexKeys    []string
+	table        map[string]*UserProfile
+	index        map[string]UserProfiles
+	indexKeys    utils.StringMap
 	accountingDb AccountingStorage
 	mu           sync.RWMutex
 }
 
 func NewUserMap(accountingDb AccountingStorage, indexes []string) (*UserMap, error) {
-	um := newUserMap(accountingDb, indexes)
+	um := newUserMap(accountingDb, utils.NewStringMap(indexes...))
 	var reply string
-	if err := um.ReloadUsers("", &reply); err != nil {
+	if err := um.ReloadUsers(AttrReloadUsers{}, &reply); err != nil {
 		return nil, err
 	}
 	return um, nil
 }
 
-func newUserMap(accountingDb AccountingStorage, indexes []string) *UserMap {
+func newUserMap(accountingDb AccountingStorage, indexes utils.StringMap) *UserMap {
 	return &UserMap{
-		table:        make(map[string]map[string]string),
-		properties:   make(map[string]*prop),
-		index:        make(map[string]map[string]bool),
+		table:        make(map[string]*UserProfile),
+		index:        make(map[string]UserProfiles),
 		indexKeys:    indexes,
 		accountingDb: accountingDb,
 	}
 }
 
-func (um *UserMap) ReloadUsers(in string, reply *string) error {
+func (um *UserMap) ReloadUsers(attr AttrReloadUsers, reply *string) error {
 	um.mu.Lock()
 
 	// backup old data
 	oldTable := um.table
 	oldIndex := um.index
-	oldProperties := um.properties
-	um.table = make(map[string]map[string]string)
-	um.index = make(map[string]map[string]bool)
-	um.properties = make(map[string]*prop)
+	um.table = make(map[string]*UserProfile)
+	um.index = make(map[string]UserProfiles)
 
 	// load from db
-	if ups, err := um.accountingDb.GetUsers(); err == nil {
-		for _, up := range ups {
-			um.table[up.GetId()] = up.Profile
-			um.properties[up.GetId()] = &prop{weight: up.Weight, masked: up.Masked}
-		}
-	} else {
+	up := &UserProfile{}
+	upIter := um.accountingDb.Iterator(ColUsr, "", map[string]interface{}{"tenant": attr.Tenant})
+	for upIter.Next(up) {
+		um.table[up.FullID()] = up
+		up = &UserProfile{}
+	}
+	if err := upIter.Close(); err != nil {
 		// restore old data before return
 		um.table = oldTable
 		um.index = oldIndex
-		um.properties = oldProperties
 
 		*reply = err.Error()
 		return err
@@ -125,12 +139,12 @@ func (um *UserMap) ReloadUsers(in string, reply *string) error {
 
 	if len(um.indexKeys) != 0 {
 		var s string
-		if err := um.AddIndex(um.indexKeys, &s); err != nil {
-			utils.Logger.Err(fmt.Sprintf("Error adding %v indexes to user profile service: %v", um.indexKeys, err))
+		if err := um.AddIndex(um.indexKeys.Slice(), &s); err != nil {
+			utils.Logger.Error("error adding indexes to user profile service: ", zap.Stringer("keys", um.indexKeys), zap.Error(err))
+			um.mu.Lock()
 			um.table = oldTable
 			um.index = oldIndex
-			um.properties = oldProperties
-
+			um.mu.Unlock()
 			*reply = err.Error()
 			return err
 		}
@@ -142,12 +156,12 @@ func (um *UserMap) ReloadUsers(in string, reply *string) error {
 func (um *UserMap) SetUser(up *UserProfile, reply *string) error {
 	um.mu.Lock()
 	defer um.mu.Unlock()
+	up.Query = strings.Replace(up.Query, `'`, `"`, -1)
 	if err := um.accountingDb.SetUser(up); err != nil {
 		*reply = err.Error()
 		return err
 	}
-	um.table[up.GetId()] = up.Profile
-	um.properties[up.GetId()] = &prop{weight: up.Weight, masked: up.Masked}
+	um.table[up.FullID()] = up
 	um.addIndex(up, um.indexKeys)
 	*reply = utils.OK
 	return nil
@@ -156,12 +170,11 @@ func (um *UserMap) SetUser(up *UserProfile, reply *string) error {
 func (um *UserMap) RemoveUser(up *UserProfile, reply *string) error {
 	um.mu.Lock()
 	defer um.mu.Unlock()
-	if err := um.accountingDb.RemoveUser(up.GetId()); err != nil {
+	if err := um.accountingDb.RemoveUser(up.Tenant, up.Name); err != nil {
 		*reply = err.Error()
 		return err
 	}
-	delete(um.table, up.GetId())
-	delete(um.properties, up.GetId())
+	delete(um.table, up.FullID())
 	um.deleteIndex(up)
 	*reply = utils.OK
 	return nil
@@ -170,135 +183,77 @@ func (um *UserMap) RemoveUser(up *UserProfile, reply *string) error {
 func (um *UserMap) UpdateUser(up *UserProfile, reply *string) error {
 	um.mu.Lock()
 	defer um.mu.Unlock()
-	m, found := um.table[up.GetId()]
-	if !found {
-		*reply = utils.ErrNotFound.Error()
-		return utils.ErrNotFound
-	}
-	properties := um.properties[up.GetId()]
-	if m == nil {
-		m = make(map[string]string)
-	}
-	oldM := make(map[string]string, len(m))
-	for k, v := range m {
-		oldM[k] = v
-	}
-	oldUp := &UserProfile{
-		Tenant:   up.Tenant,
-		UserName: up.UserName,
-		Masked:   properties.masked,
-		Weight:   properties.weight,
-		Profile:  oldM,
-	}
-	for key, value := range up.Profile {
-		m[key] = value
-	}
-	finalUp := &UserProfile{
-		Tenant:   up.Tenant,
-		UserName: up.UserName,
-		Masked:   up.Masked,
-		Weight:   up.Weight,
-		Profile:  m,
-	}
-	if err := um.accountingDb.SetUser(finalUp); err != nil {
+	up.Query = strings.Replace(up.Query, `'`, `"`, -1)
+	oldUp, found := um.table[up.FullID()]
+
+	if err := um.accountingDb.SetUser(up); err != nil {
 		*reply = err.Error()
 		return err
 	}
-	um.table[up.GetId()] = m
-	um.properties[up.GetId()] = &prop{weight: up.Weight, masked: up.Masked}
-	um.deleteIndex(oldUp)
-	um.addIndex(finalUp, um.indexKeys)
+	um.table[up.FullID()] = up
+	if found {
+		um.deleteIndex(oldUp)
+	}
+	um.addIndex(up, um.indexKeys)
 	*reply = utils.OK
 	return nil
 }
 
-func (um *UserMap) GetUsers(up *UserProfile, results *UserProfiles) error {
+type AttrGetUsers struct {
+	Object interface{}
+	Masked bool
+}
+
+type AttrReloadUsers struct {
+	Tenant string
+}
+
+func (um *UserMap) GetUsers(attr AttrGetUsers, results *UserProfiles) error {
 	um.mu.RLock()
 	defer um.mu.RUnlock()
 	table := um.table // no index
 
-	indexUnionKeys := make(map[string]bool)
 	// search index
-	if up.Tenant != "" {
-		if keys, found := um.index[utils.ConcatenatedKey("Tenant", up.Tenant)]; found {
-			for key := range keys {
-				indexUnionKeys[key] = true
-			}
+	indexedTable := make(map[string]*UserProfile)
+	valuesMap := utils.FieldByName(attr.Object, um.indexKeys)
+	for fieldName, valueInterface := range valuesMap {
+		value, ok := valueInterface.(string)
+		if !ok {
+			continue
 		}
-	}
-	if up.UserName != "" {
-		if keys, found := um.index[utils.ConcatenatedKey("UserName", up.UserName)]; found {
-			for key := range keys {
-				indexUnionKeys[key] = true
+
+		if indexedUPs, found := um.index[utils.ConcatKey(fieldName, value)]; found {
+			for _, indexedUP := range indexedUPs {
+				indexedTable[indexedUP.FullID()] = indexedUP
 			}
-		}
-	}
-	for k, v := range up.Profile {
-		if keys, found := um.index[utils.ConcatenatedKey(k, v)]; found {
-			for key := range keys {
-				indexUnionKeys[key] = true
-			}
-		}
-	}
-	if len(indexUnionKeys) != 0 {
-		table = make(map[string]map[string]string)
-		for key := range indexUnionKeys {
-			table[key] = um.table[key]
 		}
 	}
 
-	candidates := make(UserProfiles, 0) // It should not return nil in case of no users but []
-	for key, values := range table {
+	if len(indexedTable) > 0 {
+		table = indexedTable
+	}
+	candidates := make(UserProfiles, 0) // It should [], not nil
+	for _, tableUP := range table {
 		// skip masked if not asked for
-		if up.Masked == false && um.properties[key] != nil && um.properties[key].masked == true {
+		if attr.Masked == false && tableUP.Masked == true {
 			continue
 		}
-		ponder := 0
-		tableUP := &UserProfile{
-			Profile: values,
-		}
-		tableUP.SetId(key)
-		if up.Tenant != "" && tableUP.Tenant != "" && up.Tenant != tableUP.Tenant {
-			continue
-		}
-		if tableUP.Tenant != "" {
-			ponder += 1
-		}
-		if up.UserName != "" && tableUP.UserName != "" && up.UserName != tableUP.UserName {
-			continue
-		}
-		if tableUP.UserName != "" {
-			ponder += 1
-		}
-		valid := true
-		for k, v := range up.Profile {
-			if tableUP.Profile[k] != "" && tableUP.Profile[k] != v {
-				valid = false
-				break
+		//utils.Logger.Info("checking user", zap.String("query", tableUP.Query))
+		if passed, err := tableUP.getQuery().Query(attr.Object, false); !passed || err != nil {
+			if err != nil {
+				utils.Logger.Error("<GetUsers> error checking query: ", zap.Error(err), zap.String("filter", tableUP.Query))
 			}
-			if tableUP.Profile[k] != "" {
-				ponder += 1
-			}
-		}
-		if !valid {
 			continue
 		}
 		// all filters passed, add to candidates
-		nup := &UserProfile{
-			Profile: make(map[string]string),
+		candidates = append(candidates, tableUP)
+		if *config.Get().Users.ComplexityMatch == false { // only return first match
+			break
 		}
-		if um.properties[key] != nil {
-			nup.Masked = um.properties[key].masked
-			nup.Weight = um.properties[key].weight
-		}
-		nup.SetId(key)
-		nup.ponder = ponder
-		for k, v := range tableUP.Profile {
-			nup.Profile[k] = v
-		}
-		candidates = append(candidates, nup)
 	}
-	candidates.Sort()
+	if len(candidates) > 1 {
+		candidates.sort()
+	}
 	*results = candidates
 	return nil
 }
@@ -306,79 +261,76 @@ func (um *UserMap) GetUsers(up *UserProfile, results *UserProfiles) error {
 func (um *UserMap) AddIndex(indexes []string, reply *string) error {
 	um.mu.Lock()
 	defer um.mu.Unlock()
-	um.indexKeys = append(um.indexKeys, indexes...)
-	for key, values := range um.table {
-		up := &UserProfile{Profile: values}
-		up.SetId(key)
-		um.addIndex(up, indexes)
+	if um.indexKeys == nil {
+		um.indexKeys = utils.StringMap{}
+	}
+	um.indexKeys.CopySlice(indexes)
+	indexMap := utils.NewStringMap(indexes...)
+	for _, up := range um.table {
+		um.addIndex(up, indexMap)
 	}
 	*reply = utils.OK
 	return nil
 }
 
-func (um *UserMap) addIndex(up *UserProfile, indexes []string) {
-	key := up.GetId()
-	for _, index := range indexes {
+func (um *UserMap) addIndex(up *UserProfile, indexes utils.StringMap) {
+	for index := range indexes {
 		if index == "Tenant" {
 			if up.Tenant != "" {
-				indexKey := utils.ConcatenatedKey(index, up.Tenant)
-				if um.index[indexKey] == nil {
-					um.index[indexKey] = make(map[string]bool)
-				}
-				um.index[indexKey][key] = true
+				indexKey := utils.ConcatKey(index, up.Tenant)
+				um.index[indexKey] = append(um.index[indexKey], up)
 			}
 			continue
 		}
-		if index == "UserName" {
-			if up.UserName != "" {
-				indexKey := utils.ConcatenatedKey(index, up.UserName)
-				if um.index[indexKey] == nil {
-					um.index[indexKey] = make(map[string]bool)
-				}
-				um.index[indexKey][key] = true
+		if index == "Name" {
+			if up.Name != "" {
+				indexKey := utils.ConcatKey(index, up.Name)
+				um.index[indexKey] = append(um.index[indexKey], up)
 			}
 			continue
 		}
 
-		for k, v := range up.Profile {
+		for k, v := range up.Index {
 			if k == index && v != "" {
-				indexKey := utils.ConcatenatedKey(k, v)
-				if um.index[indexKey] == nil {
-					um.index[indexKey] = make(map[string]bool)
-				}
-				um.index[indexKey][key] = true
+				indexKey := utils.ConcatKey(k, v)
+				um.index[indexKey] = append(um.index[indexKey], up)
 			}
 		}
 	}
 }
 
 func (um *UserMap) deleteIndex(up *UserProfile) {
-	key := up.GetId()
-	for _, index := range um.indexKeys {
+	for index := range um.indexKeys {
 		if index == "Tenant" {
 			if up.Tenant != "" {
-				indexKey := utils.ConcatenatedKey(index, up.Tenant)
-				delete(um.index[indexKey], key)
+				indexKey := utils.ConcatKey(index, up.Tenant)
+				x := um.index[indexKey]
+				(&x).remove(up)
+				um.index[indexKey] = x
 				if len(um.index[indexKey]) == 0 {
 					delete(um.index, indexKey)
 				}
 			}
 			continue
 		}
-		if index == "UserName" {
-			if up.UserName != "" {
-				indexKey := utils.ConcatenatedKey(index, up.UserName)
-				delete(um.index[indexKey], key)
+		if index == "Name" {
+			if up.Name != "" {
+				indexKey := utils.ConcatKey(index, up.Name)
+				x := um.index[indexKey]
+				(&x).remove(up)
+				um.index[indexKey] = x
 				if len(um.index[indexKey]) == 0 {
 					delete(um.index, indexKey)
 				}
 			}
 			continue
 		}
-		for k, v := range up.Profile {
+		for k, v := range up.Index {
 			if k == index && v != "" {
-				indexKey := utils.ConcatenatedKey(k, v)
-				delete(um.index[indexKey], key)
+				indexKey := utils.ConcatKey(k, v)
+				x := um.index[indexKey]
+				(&x).remove(up)
+				um.index[indexKey] = x
 				if len(um.index[indexKey]) == 0 {
 					delete(um.index, indexKey)
 				}
@@ -393,8 +345,8 @@ func (um *UserMap) GetIndexes(in string, reply *map[string][]string) error {
 	indexes := make(map[string][]string)
 	for key, values := range um.index {
 		var vs []string
-		for val := range values {
-			vs = append(vs, val)
+		for _, val := range values {
+			vs = append(vs, val.FullID())
 		}
 		indexes[key] = vs
 	}
@@ -431,57 +383,22 @@ func (um *UserMap) Call(serviceMethod string, args interface{}, reply interface{
 }
 
 // extraFields - Field name in the interface containing extraFields information
-func LoadUserProfile(in interface{}, extraFields string) error {
-	if userService == nil { // no user service => no fun
+func LoadUserProfile(in UsersNeeder, masked bool) error {
+	if userService == nil || !in.NeedsUsers() {
 		return nil
-	}
-	m := utils.ToMapStringString(in)
-	var needsUsers bool
-	for _, val := range m {
-		if val == utils.USERS {
-			needsUsers = true
-			break
-		}
-	}
-	if !needsUsers { // Do not process further if user profile is not needed
-		return nil
-	}
-	up := &UserProfile{
-		Masked:  false, // do not get masked users
-		Profile: make(map[string]string),
-	}
-	tenant := m["Tenant"]
-	if tenant != "" && tenant != utils.USERS {
-		up.Tenant = tenant
-	}
-	delete(m, "Tenant")
-
-	// clean empty and *user fields
-	for key, val := range m {
-		if val != "" && val != utils.USERS {
-			up.Profile[key] = val
-		}
-	}
-	// add extra fields
-	if extraFields != "" {
-		extra := utils.GetMapExtraFields(in, extraFields)
-		for key, val := range extra {
-			if val != "" && val != utils.USERS {
-				up.Profile[key] = val
-			}
-		}
 	}
 	ups := UserProfiles{}
-	if err := userService.Call("UsersV1.GetUsers", up, &ups); err != nil {
+	if err := userService.Call("UsersV1.GetUsers", AttrGetUsers{Object: in, Masked: masked}, &ups); err != nil {
 		return err
 	}
 	if len(ups) > 0 {
-		up = ups[0]
-		m := up.Profile
-		m["Tenant"] = up.Tenant
-		utils.FromMapStringString(m, in)
-		utils.SetMapExtraFields(in, m, extraFields)
-		return nil
+		up := ups[0]
+		_, err := up.getQuery().Query(in, true)
+		return err
 	}
 	return utils.ErrUserNotFound
+}
+
+type UsersNeeder interface {
+	NeedsUsers() bool
 }

@@ -1,7 +1,7 @@
 1. Introduction
 ===============
 
-`CGRateS`_ is a *very fast* and *easily scalable* **(charging, rating, accounting, lcr, mediation, billing, authorization)** *ENGINE* targeted especially for ISPs and Telecom Operators.
+`AccuRate`_ is a *very fast* and *easily scalable* **(charging, rating, accounting, lcr, mediation, billing, authorization)** *ENGINE* targeted especially for ISPs and Telecom Operators.
 
 It is written in `Go`_ programming language and is accessible from any programming language via JSON RPC.
 The code is well documented (**go doc** compliant `API docs`_) and heavily tested. (also **1300+** tests are part of the build system).
@@ -11,9 +11,9 @@ the project focused on **Redis** as it delivers the best trade-off between speed
 
 .. important:: `MongoDB`_ **full** support is now added.
 
-Thanks to CGRateS flexibility, connection to any database can be easily integrated by writing a simple adapter.
+Thanks to AccuRate flexibility, connection to any database can be easily integrated by writing a simple adapter.
 
-.. _CGRateS: http://cgrates.org
+.. _AccuRate: http://accurateproject.github.io
 .. _Go: http://golang.org
 .. _kyoto cabinet: http://fallabs.com/kyotocabinet
 .. _apache cassandra: http://cassandra.apache.org
@@ -21,9 +21,9 @@ Thanks to CGRateS flexibility, connection to any database can be easily integrat
 .. _mongodb: http://www.mongodb.org
 .. _api docs: https://godoc.org/github.com/accurateproject/accurate/apier
 
-To better understand the CGRateS architecture, below are some logical configurations in which CGRateS can operate:
+To better understand the AccuRate architecture, below are some logical configurations in which AccuRate can operate:
 
-.. note::  **RALs** - is a CGRateS component and stands for RatingAccountingLCR service.
+.. note::  **RALs** - is a AccuRate component and stands for RatingAccountingLCR service.
 
 .. image::  images/Simple.png
 This scenario fits most of the simple installations. The **Balancer** can be left out and the **RALs** can be queried directly.
@@ -44,7 +44,7 @@ Without Balancer using HA (broadcast) ....
 .. note:: We are planning to support **multiple** *Balancers* for huge networks if the need arises.
 
 
-1.1. CGRateS Features
+1.1. AccuRate Features
 ---------------------
 
 - Reliable and Fast ( very fast ;) ). To get an idea about speed, we have benchmarked 13000+ req/sec on a rather modest machine without requiring special tweaks in the kernel.
@@ -53,7 +53,7 @@ Without Balancer using HA (broadcast) ....
    - In-Memory database with persistence over restarts.
    - Use of Balancer assures High-Availability of RALs as well as increase of processing performance where that is required.
    - Use of Linux enterprise ready tools to assure High-Availability of the Balancer where that is required (*Supervise* for Application level availability and *LinuxHA* for Host level availability).
-   - High-Availability of main components is now part of CGRateS core.
+   - High-Availability of main components is now part of AccuRate core.
 
 - Modular architecture
     - Easy to enhance functionality by writing custom session managers or mediators.
@@ -91,8 +91,8 @@ Without Balancer using HA (broadcast) ....
 1.2. Links
 ----------
 
-- CGRateS quick overview :ref:`overview-main`
-- CGRateS home page `<http://www.cgrates.org>`_
+- AccuRate quick overview :ref:`overview-main`
+- AccuRate home page `<http://accurateproject.github.io>`_
 - Documentation `<http://cgrates.readthedocs.io>`_
 - API docs `<https://godoc.org/github.com/accurateproject/accurate/apier>`_
 - Source code `<https://github.com/accurateproject/accurate>`_
@@ -103,4 +103,4 @@ Without Balancer using HA (broadcast) ....
 1.3. License
 ------------
 
-`CGRateS`_ is released under the terms of the `[GNU GENERAL PUBLIC LICENSE Version 3] <http://www.gnu.org/licenses/gpl-3.0.en.html>`_. See **LICENSE.txt** file for details.
+`AccuRate`_ is released under the terms of the `[GNU GENERAL PUBLIC LICENSE Version 3] <http://www.gnu.org/licenses/gpl-3.0.en.html>`_. See **LICENSE.txt** file for details.

@@ -1,9 +1,9 @@
 5. Administration
 =================
 
-The general steps to get CGRateS operational are:
+The general steps to get AccuRate operational are:
 
-#. Create CSV files containing the initial data for CGRateS.
+#. Create CSV files containing the initial data for AccuRate.
 #. Load the data in the databases using the Loader application.
 #. Start the a Balancer or a Rater. If Balancer is used, start one or more Raters serving that Balancer.
 #. Start the SessionManager talking to your VoIP Switch or directly make API calls to the Balancer/Rater.

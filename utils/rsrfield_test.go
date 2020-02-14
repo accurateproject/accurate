@@ -1,4 +1,3 @@
-
 package utils
 
 import (
@@ -16,6 +15,7 @@ func TestNewRSRField1(t *testing.T) {
 	} else if !reflect.DeepEqual(expRSRField1, rsrField) {
 		t.Errorf("Expecting: %v, received: %v", expRSRField1, rsrField)
 	}
+
 	// With filter
 	filter, _ := NewRSRFilter("086517174963")
 	expRSRField2 := &RSRField{Id: "sip_redirected_to", filters: []*RSRFilter{filter},
@@ -143,7 +143,7 @@ func TestParseRSRFields(t *testing.T) {
 	rsrFld3, _ := NewRSRField(`^destination/+4912345/`)
 	rsrFld4, _ := NewRSRField(`~mediation_runid:s/^default$/default/`)
 	eRSRFields := RSRFields{rsrFld1, rsrFld2, rsrFld3, rsrFld4}
-	if rsrFlds, err := ParseRSRFields(fieldsStr1, INFIELD_SEP); err != nil {
+	if rsrFlds, err := ParseRSRFields(fieldsStr1, FALLBACK_SEP); err != nil {
 		t.Error("Unexpected error: ", err)
 	} else if !reflect.DeepEqual(eRSRFields, rsrFlds) {
 		t.Errorf("Expecting: %v, received: %v", eRSRFields, rsrFlds)
@@ -214,6 +214,15 @@ func TestRSRCostDetails(t *testing.T) {
 	}
 	if parsedVal := rsrField.ParseValue(fieldsStr1); parsedVal != "Canada" {
 		t.Errorf("Expecting: Canada, received: %s", parsedVal)
+	}
+	fieldsStr2 := `{"Direction":"*out","Category":"call","Tenant":"sip.test.cgrates.org","Subject":"dan","Account":"dan","Destination":"+4986517174963","TOR":"*voice","Cost":0,"Timespans":[{"TimeStart":"2015-05-13T15:03:34+02:00","TimeEnd":"2015-05-13T15:03:38+02:00","Cost":0,"RateInterval":{"Timing":{"Years":[],"Months":[],"MonthDays":[],"WeekDays":[],"StartTime":"00:00:00","EndTime":""},"Rating":{"ConnectFee":0,"RoundingMethod":"*middle","RoundingDecimals":4,"MaxCost":0,"MaxCostStrategy":"","Rates":[{"GroupIntervalStart":0,"Value":0,"RateIncrement":1000000000,"RateUnit":60000000000}]},"Weight":10},"DurationIndex":4000000000,"Increments":[{"Duration":1000000000,"Cost":0,"BalanceInfo":{"Unit":null,"Monetary":null,"AccountID":""},"CompressFactor":4}],"RoundIncrement":null,"MatchedSubject":"*out:sip.test.cgrates.org:call:*any","MatchedPrefix":"+31800","MatchedDestId":"CST_49800_DE080","RatingPlanId":"ISC_V","CompressFactor":1}],"RatedUsage":4}`
+	rsrField, err = NewRSRField(`~CostDetails:s/"MatchedDestId":.*_(\w{5})/${1}/:s/"MatchedDestId":"INTERNAL"/ON010/`)
+	if err != nil {
+		t.Error(err)
+	}
+	eMatch := "DE080"
+	if parsedVal := rsrField.ParseValue(fieldsStr2); parsedVal != eMatch {
+		t.Errorf("Expecting: <%s>, received: <%s>", eMatch, parsedVal)
 	}
 }
 
@@ -334,11 +343,21 @@ func TestRSRFilterPass(t *testing.T) {
 	if !fltr.Pass("") {
 		t.Error("Not passing!")
 	}
+	fltr, err = NewRSRFilter("!^$") // Non-empty value
+	if err != nil {
+		t.Error(err)
+	}
+	if !fltr.Pass("CGRateS") {
+		t.Error("Not passing!")
+	}
+	if fltr.Pass("") {
+		t.Error("Passing!")
+	}
 }
 
 func TestRSRFiltersPass(t *testing.T) {
 	rlStr := "~^C.+S$;CGRateS;ateS$"
-	fltrs, err := ParseRSRFilters(rlStr, INFIELD_SEP)
+	fltrs, err := ParseRSRFilters(rlStr, FALLBACK_SEP)
 	if err != nil {
 		t.Error(err)
 	}
@@ -353,5 +372,24 @@ func TestRSRFiltersPass(t *testing.T) {
 	}
 	if fltrs.Pass("teS", false) {
 		t.Error("Passing")
+	}
+}
+
+func TestRSRFieldRunFilters(t *testing.T) {
+	runFilters, _ := ParseRSRFields("^filteredHeader1/filterValue1/", INFIELD_SEP)
+	if len(runFilters) != 1 {
+		t.Fatal("error parsing rsr run filter: ", ToIJSON(runFilters))
+	}
+	extraFields := map[string]string{
+		"field_extr1": "val_extr1",
+		"fieldextr2":  "valextr2",
+	}
+	rsrFld := runFilters[0]
+	result := rsrFld.ParseValue(extraFields[rsrFld.Id])
+	if result != "filteredHeader1/filterValue1/" {
+		t.Error("failed to parse value: ", result)
+	}
+	if !rsrFld.FilterPasses(result) {
+		t.Error("filter should pass!")
 	}
 }

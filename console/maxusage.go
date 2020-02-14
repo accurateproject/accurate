@@ -5,7 +5,7 @@ import "github.com/accurateproject/accurate/engine"
 func init() {
 	c := &CmdGetMaxUsage{
 		name:      "maxusage",
-		rpcMethod: "ApierV1.GetMaxUsage",
+		rpcMethod: "ApiV1.GetMaxUsage",
 	}
 	commands[c.Name()] = c
 	c.CommandExecuter = &CommandExecuter{c}

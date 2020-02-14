@@ -1,10 +1,11 @@
-
 package console
+
+import "github.com/accurateproject/accurate/api/v1"
 
 func init() {
 	c := &CmdCdrStatsQueueIds{
 		name:      "cdrstats_queueids",
-		rpcMethod: "CDRStatsV1.GetQueueIds",
+		rpcMethod: "CDRStatsV1.GetQueueIDs",
 	}
 	commands[c.Name()] = c
 	c.CommandExecuter = &CommandExecuter{c}
@@ -13,7 +14,7 @@ func init() {
 type CmdCdrStatsQueueIds struct {
 	name      string
 	rpcMethod string
-	rpcParams *StringWrapper
+	rpcParams *v1.AttrTenant
 	*CommandExecuter
 }
 
@@ -27,7 +28,7 @@ func (self *CmdCdrStatsQueueIds) RpcMethod() string {
 
 func (self *CmdCdrStatsQueueIds) RpcParams(reset bool) interface{} {
 	if reset || self.rpcParams == nil {
-		self.rpcParams = &StringWrapper{}
+		self.rpcParams = &v1.AttrTenant{}
 	}
 	return self.rpcParams
 }

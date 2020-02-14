@@ -19,7 +19,7 @@ import (
 )
 
 var cfgPath string
-var cfg *config.CGRConfig
+var cfg *config.Config
 var rater *rpc.Client
 
 var testLocal = flag.Bool("local", false, "Perform the tests only on local test environment, not by default.") // This flag will be passed here via "go test -local" args
@@ -54,9 +54,11 @@ func TestMCDRCLoadConfig(t *testing.T) {
 	}
 	var err error
 	cfgPath = path.Join(*dataDir, "conf", "samples", "multiplecdrc")
-	if cfg, err = config.NewCGRConfigFromFolder(cfgPath); err != nil {
+	config.Reset()
+	if err = config.LoadPath(cfgPath); err != nil {
 		t.Error(err)
 	}
+	cfg = config.Get()
 }
 
 // Remove data in both rating and accounting db
@@ -82,9 +84,9 @@ func TestMCDRCCreateCdrDirs(t *testing.T) {
 	if !*testLocal {
 		return
 	}
-	for _, cdrcProfiles := range cfg.CdrcProfiles {
+	for _, cdrcProfiles := range cfg.CdrcProfiles() {
 		for _, cdrcInst := range cdrcProfiles {
-			for _, dir := range []string{cdrcInst.CdrInDir, cdrcInst.CdrOutDir} {
+			for _, dir := range []string{*cdrcInst.CdrInDir, *cdrcInst.CdrOutDir} {
 				if err := os.RemoveAll(dir); err != nil {
 					t.Fatal("Error removing folder: ", dir, err)
 				}
@@ -103,7 +105,7 @@ func TestMCDRCRpcConn(t *testing.T) {
 	}
 	startEngine()
 	var err error
-	rater, err = jsonrpc.Dial("tcp", cfg.RPCJSONListen) // We connect over JSON so we can also troubleshoot if needed
+	rater, err = jsonrpc.Dial("tcp", *cfg.Listen.RpcJson) // We connect over JSON so we can also troubleshoot if needed
 	if err != nil {
 		t.Fatal("Could not connect to rater: ", err.Error())
 	}
@@ -136,7 +138,7 @@ dbafe9c8614c785a65aabd116dd3959c3c56f7f7,default,*voice,dsafdsag,rated,*out,cgra
 	fileName := "file1.csv"
 	tmpFilePath := path.Join("/tmp", fileName)
 	if err := ioutil.WriteFile(tmpFilePath, []byte(fileContent1), 0644); err != nil {
-		t.Fatal(err.Error)
+		t.Fatal(err)
 	}
 	if err := os.Rename(tmpFilePath, path.Join("/tmp/cgrates/cdrc1/in", fileName)); err != nil {
 		t.Fatal("Error moving file to processing directory: ", err)
@@ -154,7 +156,7 @@ func TestMCDRCHandleCdr2File(t *testing.T) {
 	fileName := "file2.csv"
 	tmpFilePath := path.Join("/tmp", fileName)
 	if err := ioutil.WriteFile(tmpFilePath, []byte(fileContent), 0644); err != nil {
-		t.Fatal(err.Error)
+		t.Fatal(err)
 	}
 	if err := os.Rename(tmpFilePath, path.Join("/tmp/cgrates/cdrc2/in", fileName)); err != nil {
 		t.Fatal("Error moving file to processing directory: ", err)
@@ -171,7 +173,7 @@ func TestMCDRCHandleCdr3File(t *testing.T) {
 	fileName := "file3.csv"
 	tmpFilePath := path.Join("/tmp", fileName)
 	if err := ioutil.WriteFile(tmpFilePath, []byte(fileContent), 0644); err != nil {
-		t.Fatal(err.Error)
+		t.Fatal(err)
 	}
 	if err := os.Rename(tmpFilePath, path.Join("/tmp/cgrates/cdrc3/in", fileName)); err != nil {
 		t.Fatal("Error moving file to processing directory: ", err)

@@ -2,96 +2,28 @@ package engine
 
 import (
 	"testing"
-	"time"
 
 	"github.com/accurateproject/accurate/cache2go"
 	"github.com/accurateproject/accurate/utils"
 )
 
-func TestMsgpackStructsAdded(t *testing.T) {
-	var a = struct{ First string }{"test"}
-	var b = struct {
-		First  string
-		Second string
-	}{}
-	m := NewCodecMsgpackMarshaler()
-	buf, err := m.Marshal(&a)
-	if err != nil {
-		t.Error("error marshaling structure: ", err)
-	}
-	err = m.Unmarshal(buf, &b)
-	if err != nil || b.First != "test" || b.Second != "" {
-		t.Error("error unmarshalling structure: ", b, err)
-	}
-}
-
-func TestMsgpackStructsMissing(t *testing.T) {
-	var a = struct {
-		First  string
-		Second string
-	}{"test1", "test2"}
-	var b = struct{ First string }{}
-	m := NewCodecMsgpackMarshaler()
-	buf, err := m.Marshal(&a)
-	if err != nil {
-		t.Error("error marshaling structure: ", err)
-	}
-	err = m.Unmarshal(buf, &b)
-	if err != nil || b.First != "test1" {
-		t.Error("error unmarshalling structure: ", b, err)
-	}
-}
-
-func TestMsgpackTime(t *testing.T) {
-	t1 := time.Date(2013, 8, 28, 22, 27, 0, 0, time.UTC)
-	m := NewCodecMsgpackMarshaler()
-	buf, err := m.Marshal(&t1)
-	if err != nil {
-		t.Error("error marshaling structure: ", err)
-	}
-	var t2 time.Time
-	err = m.Unmarshal(buf, &t2)
-	if err != nil || t1 != t2 || !t1.Equal(t2) {
-		t.Errorf("error unmarshalling structure: %#v %#v %v", t1, t2, err)
-	}
-}
-
 func TestStorageDestinationContainsPrefixShort(t *testing.T) {
-	dest, err := ratingStorage.GetDestination("NAT", utils.CACHE_SKIP)
-	precision := dest.containsPrefix("0723")
-	if err != nil || precision != 4 {
-		t.Error("Error finding prefix: ", err, precision)
-	}
-}
-
-func TestStorageDestinationContainsPrefixLong(t *testing.T) {
-	dest, err := ratingStorage.GetDestination("NAT", utils.CACHE_SKIP)
-	precision := dest.containsPrefix("0723045326")
-	if err != nil || precision != 4 {
-		t.Error("Error finding prefix: ", err, precision)
-	}
-}
-
-func TestStorageDestinationContainsPrefixNotExisting(t *testing.T) {
-	dest, err := ratingStorage.GetDestination("NAT", utils.CACHE_SKIP)
-	precision := dest.containsPrefix("072")
-	if err != nil || precision != 0 {
-		t.Error("Error finding prefix: ", err, precision)
+	dests, err := ratingStorage.GetDestinations("test", "", "NAT", utils.DestExact, utils.CACHE_SKIP)
+	if err != nil || len(dests) != 4 {
+		t.Error("Error finding prefix: ", err, dests)
 	}
 }
 
 func TestStorageCacheRefresh(t *testing.T) {
-	ratingStorage.SetDestination(&Destination{"T11", []string{"0"}})
-	ratingStorage.GetDestination("T11", utils.CACHED)
-	ratingStorage.SetDestination(&Destination{"T11", []string{"1"}})
-	t.Log("Test cache refresh")
+	ratingStorage.SetDestination(&Destination{Tenant: "ts", Code: "0", Name: "T11"})
+	ratingStorage.GetDestinations("ts", "", "T11", utils.DestExact, utils.CACHED)
+	ratingStorage.SetDestination(&Destination{Tenant: "ts", Code: "1", Name: "T11"})
 	err := ratingStorage.PreloadRatingCache()
 	if err != nil {
 		t.Error("Error cache rating: ", err)
 	}
-	d, err := ratingStorage.GetDestination("T11", utils.CACHED)
-	p := d.containsPrefix("1")
-	if err != nil || p == 0 {
+	d, err := ratingStorage.GetDestinations("ts", "", "T11", utils.DestExact, utils.CACHED)
+	if err != nil || len(d) != 2 {
 		t.Error("Error refreshing cache:", d)
 	}
 }
@@ -106,9 +38,9 @@ func TestStorageGetAliases(t *testing.T) {
 		Context:   utils.ALIAS_CONTEXT_RATING,
 		Values: AliasValues{
 			&AliasValue{
-				Pairs:         AliasPairs{"Subject": map[string]string{"b1": "aaa"}},
+				Fields:        `{"Subject":{"$rpl":["b1", "aaa"]}}`,
 				Weight:        10,
-				DestinationId: utils.ANY,
+				DestinationID: utils.ANY,
 			},
 		},
 	}
@@ -121,68 +53,29 @@ func TestStorageGetAliases(t *testing.T) {
 		Context:   "*other",
 		Values: AliasValues{
 			&AliasValue{
-				Pairs:         AliasPairs{"Account": map[string]string{"b1": "aaa"}},
+				Fields:        `{"Account":{"$rpl":["b1", "aaa"]}}`,
 				Weight:        10,
-				DestinationId: utils.ANY,
+				DestinationID: utils.ANY,
 			},
 		},
 	}
 	accountingStorage.SetAlias(ala)
-	accountingStorage.SetReverseAlias(ala)
 	accountingStorage.SetAlias(alb)
-	accountingStorage.SetReverseAlias(alb)
-	foundAlias, err := accountingStorage.GetAlias(ala.GetId(), utils.CACHE_SKIP)
+	foundAlias, err := accountingStorage.GetAlias("*out", "vdf", "0", "b1", "b1", utils.ALIAS_CONTEXT_RATING, utils.CACHE_SKIP)
 	if err != nil || len(foundAlias.Values) != 1 {
 		t.Errorf("Alias get error %+v, %v: ", foundAlias, err)
 	}
-	foundAlias, err = accountingStorage.GetAlias(alb.GetId(), utils.CACHE_SKIP)
+	foundAlias, err = accountingStorage.GetAlias("*out", "vdf", "0", "b1", "b1", "*other", utils.CACHE_SKIP)
 	if err != nil || len(foundAlias.Values) != 1 {
 		t.Errorf("Alias get error %+v, %v: ", foundAlias, err)
 	}
-	foundAlias, err = accountingStorage.GetAlias(ala.GetId(), utils.CACHED)
+	foundAlias, err = accountingStorage.GetAlias("*out", "vdf", "0", "b1", "b1", utils.ALIAS_CONTEXT_RATING, utils.CACHED)
 	if err != nil || len(foundAlias.Values) != 1 {
 		t.Errorf("Alias get error %+v, %v: ", foundAlias, err)
 	}
-	foundAlias, err = accountingStorage.GetAlias(alb.GetId(), utils.CACHED)
+	foundAlias, err = accountingStorage.GetAlias("*out", "vdf", "0", "b1", "b1", "*other", utils.CACHED)
 	if err != nil || len(foundAlias.Values) != 1 {
 		t.Errorf("Alias get error %+v, %v: ", foundAlias, err)
-	}
-}
-
-func TestStorageCacheGetReverseAliases(t *testing.T) {
-	ala := &Alias{
-		Direction: "*out",
-		Tenant:    "vdf",
-		Category:  "0",
-		Account:   "b1",
-		Subject:   "b1",
-		Context:   utils.ALIAS_CONTEXT_RATING,
-	}
-	alb := &Alias{
-		Direction: "*out",
-		Tenant:    "vdf",
-		Category:  "0",
-		Account:   "b1",
-		Subject:   "b1",
-		Context:   "*other",
-	}
-	accountingStorage.GetReverseAlias("aaa"+"Subject"+utils.ALIAS_CONTEXT_RATING, utils.CACHED)
-	if x, ok := cache2go.Get(utils.REVERSE_ALIASES_PREFIX + "aaa" + "Subject" + utils.ALIAS_CONTEXT_RATING); ok {
-		aliasKeys := x.([]string)
-		if len(aliasKeys) != 1 {
-			t.Error("Error getting reverse alias: ", aliasKeys, ala.GetId()+utils.ANY)
-		}
-	} else {
-		t.Error("Error getting reverse alias: ", err)
-	}
-	accountingStorage.GetReverseAlias("aaa"+"Account"+"*other", utils.CACHED)
-	if x, ok := cache2go.Get(utils.REVERSE_ALIASES_PREFIX + "aaa" + "Account" + "*other"); ok {
-		aliasKeys := x.([]string)
-		if len(aliasKeys) != 1 {
-			t.Error("Error getting reverse alias: ", aliasKeys, alb.GetId()+utils.ANY)
-		}
-	} else {
-		t.Error("Error getting reverse alias: ", err)
 	}
 }
 
@@ -203,26 +96,19 @@ func TestStorageCacheRemoveCachedAliases(t *testing.T) {
 		Subject:   "b1",
 		Context:   "*other",
 	}
-	accountingStorage.RemoveAlias(ala.GetId())
-	accountingStorage.RemoveAlias(alb.GetId())
+	accountingStorage.RemoveAlias("*out", "vdf", "0", "b1", "b1", utils.ALIAS_CONTEXT_RATING)
+	accountingStorage.RemoveAlias("*out", "vdf", "0", "b1", "b1", "*other")
 
-	if _, ok := cache2go.Get(utils.ALIASES_PREFIX + ala.GetId()); ok {
+	if _, ok := cache2go.Get(ala.Tenant, utils.ALIASES_PREFIX+ala.FullID()); ok {
 		t.Error("Error removing cached alias: ", ok)
 	}
-	if _, ok := cache2go.Get(utils.ALIASES_PREFIX + alb.GetId()); ok {
+	if _, ok := cache2go.Get(ala.Tenant, utils.ALIASES_PREFIX+alb.FullID()); ok {
 		t.Error("Error removing cached alias: ", ok)
-	}
-
-	if _, ok := cache2go.Get(utils.REVERSE_ALIASES_PREFIX + "aaa" + utils.ALIAS_CONTEXT_RATING); ok {
-		t.Error("Error removing cached reverse alias: ", ok)
-	}
-	if _, ok := cache2go.Get(utils.REVERSE_ALIASES_PREFIX + "aaa" + utils.ALIAS_CONTEXT_RATING); ok {
-		t.Error("Error removing cached reverse alias: ", ok)
 	}
 }
 
 func TestStorageDisabledAccount(t *testing.T) {
-	acc, err := accountingStorage.GetAccount("cgrates.org:alodis")
+	acc, err := accountingStorage.GetAccount("test", "alodis")
 	if err != nil || acc == nil {
 		t.Error("Error loading disabled user account: ", err, acc)
 	}
@@ -233,24 +119,23 @@ func TestStorageDisabledAccount(t *testing.T) {
 
 // Install fails to detect them and starting server will panic, these tests will fix this
 func TestStoreInterfaces(t *testing.T) {
-	rds := new(RedisStorage)
-	var _ RatingStorage = rds
-	var _ AccountingStorage = rds
-	sql := new(SQLStorage)
-	var _ CdrStorage = sql
+	mdb := new(MongoStorage)
+	var _ RatingStorage = mdb
+	var _ AccountingStorage = mdb
+	var _ CdrStorage = mdb
 }
 
 func TestDifferentUuid(t *testing.T) {
-	a1, err := accountingStorage.GetAccount("cgrates.org:12345")
+	a1, err := accountingStorage.GetAccount("test", "12345")
 	if err != nil {
 		t.Error("Error getting account: ", err)
 	}
-	a2, err := accountingStorage.GetAccount("cgrates.org:123456")
+	a2, err := accountingStorage.GetAccount("test", "123456")
 	if err != nil {
 		t.Error("Error getting account: ", err)
 	}
-	if a1.BalanceMap[utils.VOICE][0].Uuid == a2.BalanceMap[utils.VOICE][0].Uuid ||
-		a1.BalanceMap[utils.MONETARY][0].Uuid == a2.BalanceMap[utils.MONETARY][0].Uuid {
+	if a1.BalanceMap[utils.VOICE][0].UUID == a2.BalanceMap[utils.VOICE][0].UUID ||
+		a1.BalanceMap[utils.MONETARY][0].UUID == a2.BalanceMap[utils.MONETARY][0].UUID {
 		t.Errorf("Identical uuids in different accounts: %+v <-> %+v", a1.BalanceMap[utils.VOICE][0], a1.BalanceMap[utils.MONETARY][0])
 	}
 }
@@ -261,28 +146,28 @@ func TestStorageTask(t *testing.T) {
 		ratingStorage.PopTask()
 	}
 
-	if err := ratingStorage.PushTask(&Task{Uuid: "1"}); err != nil {
+	if err := ratingStorage.PushTask(&Task{UUID: "1"}); err != nil {
 		t.Error("Error pushing task: ", err)
 	}
-	if err := ratingStorage.PushTask(&Task{Uuid: "2"}); err != nil {
+	if err := ratingStorage.PushTask(&Task{UUID: "2"}); err != nil {
 		t.Error("Error pushing task: ", err)
 	}
-	if err := ratingStorage.PushTask(&Task{Uuid: "3"}); err != nil {
+	if err := ratingStorage.PushTask(&Task{UUID: "3"}); err != nil {
 		t.Error("Error pushing task: ", err)
 	}
-	if err := ratingStorage.PushTask(&Task{Uuid: "4"}); err != nil {
+	if err := ratingStorage.PushTask(&Task{UUID: "4"}); err != nil {
 		t.Error("Error pushing task: ", err)
 	}
-	if task, err := ratingStorage.PopTask(); err != nil && task.Uuid != "1" {
+	if task, err := ratingStorage.PopTask(); err != nil && task.UUID != "1" {
 		t.Error("Error poping task: ", task, err)
 	}
-	if task, err := ratingStorage.PopTask(); err != nil && task.Uuid != "2" {
+	if task, err := ratingStorage.PopTask(); err != nil && task.UUID != "2" {
 		t.Error("Error poping task: ", task, err)
 	}
-	if task, err := ratingStorage.PopTask(); err != nil && task.Uuid != "3" {
+	if task, err := ratingStorage.PopTask(); err != nil && task.UUID != "3" {
 		t.Error("Error poping task: ", task, err)
 	}
-	if task, err := ratingStorage.PopTask(); err != nil && task.Uuid != "4" {
+	if task, err := ratingStorage.PopTask(); err != nil && task.UUID != "4" {
 		t.Error("Error poping task: ", task, err)
 	}
 	if task, err := ratingStorage.PopTask(); err == nil && task != nil {
@@ -290,179 +175,111 @@ func TestStorageTask(t *testing.T) {
 	}
 }
 
-/************************** Benchmarks *****************************/
-
-func GetUB() *Account {
-	uc := &UnitCounter{
-		Counters: CounterFilters{&CounterFilter{Value: 1}, &CounterFilter{Filter: &BalanceFilter{Weight: utils.Float64Pointer(20), DestinationIDs: utils.StringMapPointer(utils.NewStringMap("NAT"))}}, &CounterFilter{Filter: &BalanceFilter{Weight: utils.Float64Pointer(10), DestinationIDs: utils.StringMapPointer(utils.NewStringMap("RET"))}}},
+func TestFakeAPBIteratorAll(t *testing.T) {
+	apbi := NewFakeAPBIterator("t1", "apl1", []string{"acc1", "acc2"})
+	apbs := make([]*ActionPlanBinding, 0)
+	apbi.All(&apbs)
+	if len(apbs) != 2 ||
+		apbs[0].Account != "acc1" ||
+		apbs[1].Account != "acc2" {
+		t.Error("failed to return all apbs from iterator: ", utils.ToIJSON(apbs))
 	}
-	at := &ActionTrigger{
-		ID:             "some_uuid",
-		ThresholdValue: 100.0,
-		Balance: &BalanceFilter{
-			Type:           utils.StringPointer(utils.MONETARY),
-			Directions:     utils.StringMapPointer(utils.NewStringMap(utils.OUT)),
-			DestinationIDs: utils.StringMapPointer(utils.NewStringMap("NAT")),
-		},
-		Weight:    10.0,
-		ActionsID: "Commando",
-	}
-	var zeroTime time.Time
-	zeroTime = zeroTime.UTC() // for deep equal to find location
-	ub := &Account{
-		ID:             "rif",
-		AllowNegative:  true,
-		BalanceMap:     map[string]Balances{utils.SMS: Balances{&Balance{Value: 14, ExpirationDate: zeroTime}}, utils.DATA: Balances{&Balance{Value: 1024, ExpirationDate: zeroTime}}, utils.VOICE: Balances{&Balance{Weight: 20, DestinationIDs: utils.NewStringMap("NAT")}, &Balance{Weight: 10, DestinationIDs: utils.NewStringMap("RET")}}},
-		UnitCounters:   UnitCounters{utils.SMS: []*UnitCounter{uc, uc}},
-		ActionTriggers: ActionTriggers{at, at, at},
-	}
-	return ub
-}
-
-func BenchmarkMarshallerJSONStoreRestore(b *testing.B) {
-	b.StopTimer()
-	i := &RateInterval{
-		Timing: &RITiming{
-			Months:    []time.Month{time.February},
-			MonthDays: []int{1},
-			WeekDays:  []time.Weekday{time.Wednesday, time.Thursday},
-			StartTime: "14:30:00",
-			EndTime:   "15:00:00"}}
-	ap := &RatingPlan{Id: "test"}
-	ap.AddRateInterval("NAT", i)
-	ub := GetUB()
-
-	ap1 := RatingPlan{}
-	ub1 := &Account{}
-	b.StartTimer()
-	ms := new(JSONMarshaler)
-	for i := 0; i < b.N; i++ {
-		result, _ := ms.Marshal(ap)
-		ms.Unmarshal(result, ap1)
-		result, _ = ms.Marshal(ub)
-		ms.Unmarshal(result, ub1)
+	if err := apbi.Close(); err != nil {
+		t.Error("unexpected error: ", err)
 	}
 }
 
-func BenchmarkMarshallerBSONStoreRestore(b *testing.B) {
-	b.StopTimer()
-	i := &RateInterval{
-		Timing: &RITiming{
-			Months:    []time.Month{time.February},
-			MonthDays: []int{1},
-			WeekDays:  []time.Weekday{time.Wednesday, time.Thursday},
-			StartTime: "14:30:00",
-			EndTime:   "15:00:00"}}
-	ap := &RatingPlan{Id: "test"}
-	ap.AddRateInterval("NAT", i)
-	ub := GetUB()
-
-	ap1 := RatingPlan{}
-	ub1 := &Account{}
-	b.StartTimer()
-	ms := new(BSONMarshaler)
-	for i := 0; i < b.N; i++ {
-		result, _ := ms.Marshal(ap)
-		ms.Unmarshal(result, ap1)
-		result, _ = ms.Marshal(ub)
-		ms.Unmarshal(result, ub1)
+func TestFakeAPBIteratorAllEmpty(t *testing.T) {
+	apbi := NewFakeAPBIterator("t1", "apl1", []string{})
+	apbs := make([]*ActionPlanBinding, 0)
+	apbi.All(&apbs)
+	if len(apbs) != 0 {
+		t.Error("failed to return all apbs from iterator: ", utils.ToIJSON(apbs))
+	}
+	if err := apbi.Close(); err != nil {
+		t.Error("unexpected error: ", err)
 	}
 }
 
-func BenchmarkMarshallerJSONBufStoreRestore(b *testing.B) {
-	b.StopTimer()
-	i := &RateInterval{
-		Timing: &RITiming{Months: []time.Month{time.February},
-			MonthDays: []int{1},
-			WeekDays:  []time.Weekday{time.Wednesday, time.Thursday},
-			StartTime: "14:30:00",
-			EndTime:   "15:00:00"}}
-	ap := &RatingPlan{Id: "test"}
-	ap.AddRateInterval("NAT", i)
-	ub := GetUB()
+func TestFakeAPBIterator(t *testing.T) {
+	apbi := NewFakeAPBIterator("t1", "apl1", []string{"acc1", "acc2"})
+	var apb ActionPlanBinding
+	x := apbi.Next(&apb)
+	if !x || apb.Tenant != "t1" ||
+		apb.Account != "acc1" ||
+		apb.ActionPlan != "apl1" {
+		t.Error("unexpected action plan binding: ", utils.ToIJSON(apb))
+	}
+	if apbi.Done() {
+		t.Error("should not return Done!")
+	}
 
-	ap1 := RatingPlan{}
-	ub1 := &Account{}
-	b.StartTimer()
-	ms := new(JSONBufMarshaler)
-	for i := 0; i < b.N; i++ {
-		result, _ := ms.Marshal(ap)
-		ms.Unmarshal(result, ap1)
-		result, _ = ms.Marshal(ub)
-		ms.Unmarshal(result, ub1)
+	x = apbi.Next(&apb)
+	if !x || apb.Tenant != "t1" ||
+		apb.Account != "acc2" ||
+		apb.ActionPlan != "apl1" {
+		t.Error("unexpected action plan binding: ", utils.ToIJSON(apb))
+	}
+	if !apbi.Done() {
+		t.Error("should return Done!")
+	}
+	x = apbi.Next(&apb)
+	if x {
+		t.Error("unexepected extra iterator next!")
+	}
+
+	if err := apbi.Close(); err != nil {
+		t.Error("unexpected error: ", err)
 	}
 }
 
-func BenchmarkMarshallerGOBStoreRestore(b *testing.B) {
-	b.StopTimer()
-	i := &RateInterval{
-		Timing: &RITiming{Months: []time.Month{time.February},
-			MonthDays: []int{1},
-			WeekDays:  []time.Weekday{time.Wednesday, time.Thursday},
-			StartTime: "14:30:00",
-			EndTime:   "15:00:00"}}
-	ap := &RatingPlan{Id: "test"}
-	ap.AddRateInterval("NAT", i)
-	ub := GetUB()
+func TestFakeAPBIteratorEmpty(t *testing.T) {
+	apbi := NewFakeAPBIterator("t1", "apl1", []string{})
+	var apb ActionPlanBinding
 
-	ap1 := RatingPlan{}
-	ub1 := &Account{}
-	b.StartTimer()
-	ms := new(GOBMarshaler)
-	for i := 0; i < b.N; i++ {
-		result, _ := ms.Marshal(ap)
-		ms.Unmarshal(result, ap1)
-		result, _ = ms.Marshal(ub)
-		ms.Unmarshal(result, ub1)
+	if !apbi.Done() {
+		t.Error("should return Done!")
+	}
+	x := apbi.Next(&apb)
+	if x {
+		t.Error("unexepected extra iterator next!")
+	}
+
+	if err := apbi.Close(); err != nil {
+		t.Error("unexpected error: ", err)
 	}
 }
 
-func BenchmarkMarshallerCodecMsgpackStoreRestore(b *testing.B) {
-	b.StopTimer()
-	i := &RateInterval{
-		Timing: &RITiming{
-			Months:    []time.Month{time.February},
-			MonthDays: []int{1},
-			WeekDays:  []time.Weekday{time.Wednesday, time.Thursday},
-			StartTime: "14:30:00",
-			EndTime:   "15:00:00"}}
-	ap := &RatingPlan{Id: "test"}
-	ap.AddRateInterval("NAT", i)
-	ub := GetUB()
-
-	ap1 := RatingPlan{}
-	ub1 := &Account{}
-	b.StartTimer()
-	ms := NewCodecMsgpackMarshaler()
-	for i := 0; i < b.N; i++ {
-		result, _ := ms.Marshal(ap)
-		ms.Unmarshal(result, ap1)
-		result, _ = ms.Marshal(ub)
-		ms.Unmarshal(result, ub1)
+func TestPushPopTask(t *testing.T) {
+	var initialCount int
+	var err error
+	if initialCount, err = ratingStorage.Count(ColTsk); err != nil {
+		t.Errorf("error counting tasks: %d, %v", initialCount, err)
 	}
-}
+	t.Log("initial count: ", initialCount)
+	if err := ratingStorage.PushTask(&Task{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ratingStorage.PushTask(&Task{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ratingStorage.PushTask(&Task{}); err != nil {
+		t.Fatal(err)
+	}
+	if count, err := ratingStorage.Count(ColTsk); err != nil || count != initialCount+3 {
+		t.Errorf("error pushing tasks: %d, %v", count, err)
+	}
 
-func BenchmarkMarshallerBincStoreRestore(b *testing.B) {
-	b.StopTimer()
-	i := &RateInterval{
-		Timing: &RITiming{
-			Months:    []time.Month{time.February},
-			MonthDays: []int{1},
-			WeekDays:  []time.Weekday{time.Wednesday, time.Thursday},
-			StartTime: "14:30:00",
-			EndTime:   "15:00:00"}}
-	ap := &RatingPlan{Id: "test"}
-	ap.AddRateInterval("NAT", i)
-	ub := GetUB()
-
-	ap1 := RatingPlan{}
-	ub1 := &Account{}
-	b.StartTimer()
-	ms := NewBincMarshaler()
-	for i := 0; i < b.N; i++ {
-		result, _ := ms.Marshal(ap)
-		ms.Unmarshal(result, ap1)
-		result, _ = ms.Marshal(ub)
-		ms.Unmarshal(result, ub1)
+	if task, err := ratingStorage.PopTask(); err != nil || task == nil {
+		t.Fatal(err)
+	}
+	if task, err := ratingStorage.PopTask(); err != nil || task == nil {
+		t.Fatal(err)
+	}
+	if task, err := ratingStorage.PopTask(); err != nil || task == nil {
+		t.Fatal(err)
+	}
+	if count, err := ratingStorage.Count(ColTsk); err != nil || count != initialCount {
+		t.Errorf("error poping tasks: %d, %v", count, err)
 	}
 }

@@ -17,36 +17,42 @@ const (
 )
 
 var (
-	mux   sync.RWMutex
-	cache cacheStore
-	cfg   *config.CacheConfig
+	mux         sync.RWMutex
+	cfg         *config.Cache
+	tenantCache = make(map[string]cacheStore)
 	// transaction stuff
-	transactionBuffer map[string][]*transactionItem
+	transactionBuffer = make(map[string][]*transactionItem)
 	transactionMux    sync.Mutex
 )
 
 type transactionItem struct {
-	key   string
-	value interface{}
-	kind  string
+	tenant string
+	key    string
+	value  interface{}
+	kind   string
 }
 
 func init() {
 	NewCache(nil)
 }
 
-func NewCache(cacheCfg *config.CacheConfig) {
+func c(tenant string) cacheStore {
+	c, ok := tenantCache[tenant]
+	if !ok {
+		c = newLruStore()
+		tenantCache[tenant] = c
+	}
+	return c
+}
+
+func NewCache(cacheCfg *config.Cache) {
 	cfg = cacheCfg
-	cache = newLruStore()
 }
 
 func BeginTransaction() string {
 	transID := utils.GenUUID()
 	transactionMux.Lock()
 	defer transactionMux.Unlock()
-	if transactionBuffer == nil {
-		transactionBuffer = make(map[string][]*transactionItem)
-	}
 	transactionBuffer[transID] = make([]*transactionItem, 0)
 	return transID
 }
@@ -76,11 +82,11 @@ func CommitTransaction(transID string) {
 	for _, item := range items {
 		switch item.kind {
 		case KIND_REM:
-			RemKey(item.key, COMMIT)
+			RemKey(item.tenant, item.key, COMMIT)
 		case KIND_PRF:
-			RemPrefixKey(item.key, COMMIT)
+			RemPrefixKey(item.tenant, item.key, COMMIT)
 		case KIND_ADD:
-			Set(item.key, item.value, COMMIT)
+			Set(item.tenant, item.key, item.value, COMMIT)
 		}
 	}
 	mux.Unlock()
@@ -88,13 +94,13 @@ func CommitTransaction(transID string) {
 }
 
 // The function to be used to cache a key/value pair when expiration is not needed
-func Set(key string, value interface{}, transID string) {
+func Set(tenant, key string, value interface{}, transID string) {
 	if transID == "" || transID == COMMIT {
 		if transID == "" {
 			mux.Lock()
 			defer mux.Unlock()
 		}
-		cache.Put(key, value)
+		c(tenant).Put(key, value)
 	} else {
 		transactionMux.Lock()
 		defer transactionMux.Unlock()
@@ -105,24 +111,24 @@ func Set(key string, value interface{}, transID string) {
 		if !trasOK {
 			return
 		}
-		transactionBuffer[transID] = append(items, &transactionItem{key: key, value: value, kind: KIND_ADD})
+		transactionBuffer[transID] = append(items, &transactionItem{tenant: tenant, key: key, value: value, kind: KIND_ADD})
 	}
 }
 
 // The function to extract a value for a key that never expire
-func Get(key string) (interface{}, bool) {
+func Get(tenant, key string) (interface{}, bool) {
 	mux.RLock()
 	defer mux.RUnlock()
-	return cache.Get(key)
+	return c(tenant).Get(key)
 }
 
-func RemKey(key, transID string) {
+func RemKey(tenant, key, transID string) {
 	if transID == "" || transID == COMMIT {
 		if transID == "" {
 			mux.Lock()
 			defer mux.Unlock()
 		}
-		cache.Delete(key)
+		c(tenant).Delete(key)
 	} else {
 		transactionMux.Lock()
 		defer transactionMux.Unlock()
@@ -133,17 +139,17 @@ func RemKey(key, transID string) {
 		if !trasOK {
 			return
 		}
-		transactionBuffer[transID] = append(items, &transactionItem{key: key, kind: KIND_REM})
+		transactionBuffer[transID] = append(items, &transactionItem{tenant: tenant, key: key, kind: KIND_REM})
 	}
 }
 
-func RemPrefixKey(prefix, transID string) {
+func RemPrefixKey(tenant, prefix, transID string) {
 	if transID == "" || transID == COMMIT {
 		if transID == "" {
 			mux.Lock()
 			defer mux.Unlock()
 		}
-		cache.DeletePrefix(prefix)
+		c(tenant).DeletePrefix(prefix)
 	} else {
 		transactionMux.Lock()
 		defer transactionMux.Unlock()
@@ -154,25 +160,17 @@ func RemPrefixKey(prefix, transID string) {
 		if !trasOK {
 			return
 		}
-		transactionBuffer[transID] = append(items, &transactionItem{key: prefix, kind: KIND_PRF})
+		transactionBuffer[transID] = append(items, &transactionItem{tenant: tenant, key: prefix, kind: KIND_PRF})
 	}
 }
 
 // Delete all keys from cache
-func Flush() {
+func Flush(tenant string) {
 	mux.Lock()
 	defer mux.Unlock()
-	cache = newLruStore()
-}
-
-func CountEntries(prefix string) (result int) {
-	mux.RLock()
-	defer mux.RUnlock()
-	return cache.CountEntriesForPrefix(prefix)
-}
-
-func GetEntriesKeys(prefix string) (keys []string) {
-	mux.RLock()
-	defer mux.RUnlock()
-	return cache.GetKeysForPrefix(prefix)
+	if tenant == "*any" {
+		tenantCache = make(map[string]cacheStore)
+	} else {
+		tenantCache[tenant] = newLruStore()
+	}
 }

@@ -7,7 +7,7 @@ Set of scheduler related APIs.
 ApierV1.ReloadScheduler
 -----------------------
 
-When called CGRateS will reorder/reschedule tasks based on data available in dataDb. This command is necessary after each data load, in some cases being automated in the administration tools (eg: inside *cgr-loader*)
+When called AccuRate will reorder/reschedule tasks based on data available in dataDb. This command is necessary after each data load, in some cases being automated in the administration tools (eg: inside *cc-loader*)
 
 **Request**:
 

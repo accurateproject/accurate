@@ -1,7 +1,6 @@
 package engine
 
 import (
-	"fmt"
 	"math/rand"
 	"sort"
 	"strconv"
@@ -9,7 +8,9 @@ import (
 	"time"
 
 	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/dec"
 	"github.com/accurateproject/accurate/utils"
+	"go.uber.org/zap"
 )
 
 const (
@@ -57,10 +58,10 @@ func (self *LcrRequest) AsCallDescriptor(timezone string) (*CallDescriptor, erro
 		self.Direction = utils.OUT
 	}
 	if len(self.Tenant) == 0 {
-		self.Tenant = config.CgrConfig().DefaultTenant
+		self.Tenant = *config.Get().General.DefaultTenant
 	}
 	if len(self.Category) == 0 {
-		self.Category = config.CgrConfig().DefaultCategory
+		self.Category = *config.Get().General.DefaultCategory
 	}
 	if len(self.Subject) == 0 {
 		self.Subject = self.Account
@@ -99,7 +100,7 @@ func (self *LcrRequest) AsCallDescriptor(timezone string) (*CallDescriptor, erro
 
 // A LCR reply, used in APIer and SM where we need to expose it
 type LcrReply struct {
-	DestinationId string
+	DestinationID string
 	RPCategory    string
 	Strategy      string
 	Suppliers     []*LcrSupplier
@@ -108,28 +109,29 @@ type LcrReply struct {
 // One supplier out of LCR reply
 type LcrSupplier struct {
 	Supplier string
-	Cost     float64
-	QOS      map[string]float64
+	Cost     *dec.Dec
+	QOS      map[string]*dec.Dec
 }
 
 type LCR struct {
-	Direction   string
-	Tenant      string
-	Category    string
-	Account     string
-	Subject     string
-	Activations []*LCRActivation
+	Direction   string           `bson:"direction"`
+	Tenant      string           `bson:"tenant"`
+	Category    string           `bson:"category"`
+	Account     string           `bson:"account"`
+	Subject     string           `bson:"subject"`
+	Activations []*LCRActivation `bson:"activations"`
 }
 type LCRActivation struct {
-	ActivationTime time.Time
-	Entries        []*LCREntry
+	ActivationTime time.Time   `bson:"activation_time"`
+	Entries        []*LCREntry `bson:"entries"`
+	parentLCR      *LCR
 }
 type LCREntry struct {
-	DestinationId  string
-	RPCategory     string
-	Strategy       string
-	StrategyParams string
-	Weight         float64
+	DestinationID  string  `bson:"destination_id"`
+	RPCategory     string  `bson:"rp_category"`
+	Strategy       string  `bson:"strategy"`
+	StrategyParams string  `bson:"strategy_params"`
+	Weight         float64 `bson:"weight"`
 	precision      int
 }
 
@@ -140,32 +142,55 @@ type LCRCost struct {
 
 type LCRSupplierCost struct {
 	Supplier       string
-	Cost           float64
+	Cost           *dec.Dec
 	Duration       time.Duration
 	Error          string // Not error due to JSON automatic serialization into struct
-	QOS            map[string]float64
+	QOS            map[string]*dec.Dec
 	qosSortParams  []string
 	supplierQueues []*StatsQueue // used for load distribution
 }
 
-func (lcr *LCR) GetId() string {
-	return utils.LCRKey(lcr.Direction, lcr.Tenant, lcr.Category, lcr.Account, lcr.Subject)
+func (lsc *LCRSupplierCost) getCost() *dec.Dec {
+	if lsc.Cost == nil {
+		lsc.Cost = dec.New()
+	}
+	return lsc.Cost
 }
 
-func (lcr *LCR) Len() int {
-	return len(lcr.Activations)
-}
-
-func (lcr *LCR) Swap(i, j int) {
-	lcr.Activations[i], lcr.Activations[j] = lcr.Activations[j], lcr.Activations[i]
-}
-
-func (lcr *LCR) Less(i, j int) bool {
-	return lcr.Activations[i].ActivationTime.Before(lcr.Activations[j].ActivationTime)
+func (lcr *LCR) FullID() string {
+	return utils.ConcatKey(lcr.Direction, lcr.Category, lcr.Account, lcr.Subject)
 }
 
 func (lcr *LCR) Sort() {
-	sort.Sort(lcr)
+	sort.Slice(lcr.Activations, func(i, j int) bool {
+		return lcr.Activations[i].ActivationTime.Before(lcr.Activations[j].ActivationTime)
+	})
+}
+
+func (lcr *LCR) setParentLCR() {
+	for _, lcra := range lcr.Activations {
+		lcra.parentLCR = lcr
+	}
+}
+
+func (lcr *LCR) precision() int {
+	precision := 0
+	if lcr.Direction != utils.ANY {
+		precision++
+	}
+	if lcr.Tenant != utils.ANY {
+		precision++
+	}
+	if lcr.Category != utils.ANY {
+		precision++
+	}
+	if lcr.Account != utils.ANY {
+		precision++
+	}
+	if lcr.Subject != utils.ANY {
+		precision++
+	}
+	return precision
 }
 
 func (le *LCREntry) GetQOSLimits() (minASR, maxASR float64, minPDD, maxPDD, minACD, maxACD, minTCD, maxTCD time.Duration, minACC, maxACC, minTCC, maxTCC, minDDC, maxDDC float64) {
@@ -239,35 +264,23 @@ func (le *LCREntry) GetParams() []string {
 
 type LCREntriesSorter []*LCREntry
 
-func (es LCREntriesSorter) Len() int {
-	return len(es)
-}
-
-func (es LCREntriesSorter) Swap(i, j int) {
-	es[i], es[j] = es[j], es[i]
-}
-
-// we need the best earlyer in the list
-func (es LCREntriesSorter) Less(j, i int) bool {
-	return es[i].Weight < es[j].Weight ||
-		(es[i].Weight == es[j].Weight && es[i].precision < es[j].precision)
-
-}
-
 func (es LCREntriesSorter) Sort() {
-	sort.Sort(es)
+	sort.Slice(es, func(j, i int) bool {
+		// we need the best earlyer in the list
+		return es[i].Weight < es[j].Weight ||
+			(es[i].Weight == es[j].Weight && es[i].precision < es[j].precision)
+
+	})
 }
 
 func (lcra *LCRActivation) GetLCREntryForPrefix(destination string) *LCREntry {
 	var potentials LCREntriesSorter
-	for _, p := range utils.SplitPrefix(destination, MIN_PREFIX_MATCH) {
-		if destIDs, err := ratingStorage.GetReverseDestination(p, utils.CACHED); err == nil {
-			for _, dId := range destIDs {
-				for _, entry := range lcra.Entries {
-					if entry.DestinationId == dId {
-						entry.precision = len(p)
-						potentials = append(potentials, entry)
-					}
+	if dests, err := ratingStorage.GetDestinations(lcra.parentLCR.Tenant, destination, "", utils.DestMatching, utils.CACHED); err == nil {
+		for _, dest := range dests {
+			for _, entry := range lcra.Entries {
+				if entry.DestinationID == dest.Name {
+					entry.precision = len(dest.Code)
+					potentials = append(potentials, entry)
 				}
 			}
 		}
@@ -279,7 +292,7 @@ func (lcra *LCRActivation) GetLCREntryForPrefix(destination string) *LCREntry {
 	}
 	// return the *any entry if it exists
 	for _, entry := range lcra.Entries {
-		if entry.DestinationId == utils.ANY {
+		if entry.DestinationID == utils.ANY {
 			return entry
 		}
 	}
@@ -340,27 +353,27 @@ func (lc *LCRCost) SortLoadDistribution() {
 	for supCost, sq := range supplierQueues {
 		ratio := lc.GetSupplierRatio(supCost.Supplier)
 		if ratio == -1 {
-			supCost.Cost = -1
+			supCost.Cost = dec.NewVal(-1, 0)
 			haveRatiolessSuppliers = true
 			continue
 		}
-		cdrCount := len(sq.Cdrs)
+		cdrCount := sq.length()
 		if cdrCount < ratio {
-			supCost.Cost = float64(LOW_PRIORITY_LIMIT + rand.Intn(RAND_LIMIT))
+			supCost.Cost = dec.NewFloat(float64(LOW_PRIORITY_LIMIT + rand.Intn(RAND_LIMIT)))
 			continue
 		}
 		if cdrCount%ratio == 0 {
-			supCost.Cost = float64(MED_PRIORITY_LIMIT+rand.Intn(RAND_LIMIT)) + (time.Now().Sub(sq.Cdrs[len(sq.Cdrs)-1].SetupTime).Seconds() / RAND_LIMIT)
+			supCost.Cost = dec.NewFloat(float64(MED_PRIORITY_LIMIT+rand.Intn(RAND_LIMIT)) + (time.Now().Sub(sq.getLastSetupTime()).Seconds() / RAND_LIMIT))
 			continue
 		} else {
-			supCost.Cost = float64(HIGH_PRIORITY_LIMIT+rand.Intn(RAND_LIMIT)) + (time.Now().Sub(sq.Cdrs[len(sq.Cdrs)-1].SetupTime).Seconds() / RAND_LIMIT)
+			supCost.Cost = dec.NewFloat(float64(HIGH_PRIORITY_LIMIT+rand.Intn(RAND_LIMIT)) + (time.Now().Sub(sq.getLastSetupTime()).Seconds() / RAND_LIMIT))
 			continue
 		}
 	}
 	if haveRatiolessSuppliers {
 		var filteredSupplierCost []*LCRSupplierCost
 		for _, supCost := range lc.SupplierCosts {
-			if supCost.Cost != -1 {
+			if supCost.Cost.Cmp(dec.NewVal(-1, 0)) != 0 {
 				filteredSupplierCost = append(filteredSupplierCost, supCost)
 			}
 		}
@@ -377,12 +390,12 @@ func (lc *LCRCost) GetSupplierRatio(supplier string) int {
 	for _, param := range params {
 		ratioSlice := strings.Split(param, utils.CONCATENATED_KEY_SEP)
 		if len(ratioSlice) != 2 {
-			utils.Logger.Warning(fmt.Sprintf("bad format in load distribution strategy param: %s", lc.Entry.StrategyParams))
+			utils.Logger.Warn("bad format in load distribution strategy", zap.String("param", lc.Entry.StrategyParams))
 			continue
 		}
 		p, err := strconv.Atoi(ratioSlice[1])
 		if err != nil {
-			utils.Logger.Warning(fmt.Sprintf("bad format in load distribution strategy param: %s", lc.Entry.StrategyParams))
+			utils.Logger.Warn("bad format in load distribution strategy", zap.String("param", lc.Entry.StrategyParams))
 			continue
 		}
 		ratios[ratioSlice[0]] = p
@@ -416,7 +429,7 @@ func (lc *LCRCost) HasErrors() bool {
 func (lc *LCRCost) LogErrors() {
 	for _, supplCost := range lc.SupplierCosts {
 		if len(supplCost.Error) != 0 {
-			utils.Logger.Err(fmt.Sprintf("LCR_ERROR: supplier <%s>, error <%s>", supplCost.Supplier, supplCost.Error))
+			utils.Logger.Error("LCR_ERROR: supplier", zap.String("supplier", supplCost.Supplier), zap.String("error", supplCost.Error))
 		}
 	}
 }
@@ -469,7 +482,7 @@ func (lscs LowestSupplierCostSorter) Swap(i, j int) {
 }
 
 func (lscs LowestSupplierCostSorter) Less(i, j int) bool {
-	return lscs[i].Cost < lscs[j].Cost
+	return lscs[i].getCost().Cmp(lscs[j].getCost()) < 0
 }
 
 type HighestSupplierCostSorter []*LCRSupplierCost
@@ -483,7 +496,7 @@ func (hscs HighestSupplierCostSorter) Swap(i, j int) {
 }
 
 func (hscs HighestSupplierCostSorter) Less(i, j int) bool {
-	return hscs[i].Cost > hscs[j].Cost
+	return hscs[i].getCost().Cmp(hscs[j].getCost()) > 0
 }
 
 type QOSSorter []*LCRSupplierCost
@@ -510,13 +523,22 @@ func (qoss QOSSorter) Less(i, j int) bool {
 			continue
 		}
 		// -1 is the best
-		if qoss[j].QOS[param] == -1 {
+		if qoss[j].QOS[param].Cmp(dec.MinusOne) == 0 {
 			return false
 		}
 		// more is better
-		if qoss[i].QOS[param] == -1 || qoss[i].QOS[param] > qoss[j].QOS[param] {
+		if qoss[i].QOS[param].Cmp(dec.MinusOne) == 0 || qoss[i].QOS[param].Cmp(qoss[j].QOS[param]) > 0 {
 			return true
 		}
 	}
 	return false
+}
+
+type LCRList []*LCR // used in GetLCR
+
+func (lcrl LCRList) Sort() {
+	sort.Slice(lcrl, func(j, i int) bool {
+		// we need higher precision earlyer in the list
+		return lcrl[i].precision() < lcrl[j].precision()
+	})
 }

@@ -1,0 +1,40 @@
+{
+    "dependencies": {
+        "github.com/ChrisTrenkamp/goxpath": {
+            "revision": "4aad8d0161aae7d17df4755d2c1e86cd1fcaaab6"
+        },
+        "github.com/accurateproject/fsock": {
+            "branch": "master"
+        },
+        "github.com/accurateproject/kamevapi": {
+            "branch": "master"
+        },
+        "github.com/accurateproject/rpcclient": {
+            "branch": "master"
+        },
+        "github.com/cenk/hub": {
+            "revision": "11382a9960d39b0ecda16fd01c424c11ff765a34"
+        },
+        "github.com/cenk/rpc2": {
+            "revision": "7ab76d2e88c77ca1a715756036d8264b2886acd2"
+        },
+        "github.com/ericlagergren/decimal": {
+            "branch": "master"
+        },
+        "github.com/fiorix/go-diameter": {
+            "branch": "master"
+        },
+        "github.com/mitchellh/mapstructure": {
+            "branch": "master"
+        },
+        "go.uber.org/zap": {
+            "branch": "master"
+        },
+        "golang.org/x/net": {
+            "branch": "master"
+        },
+        "gopkg.in/mgo.v2": {
+            "branch": "v2"
+        }
+    }
+}

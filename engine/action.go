@@ -15,44 +15,165 @@ import (
 	"time"
 
 	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/dec"
 	"github.com/accurateproject/accurate/utils"
 	"github.com/accurateproject/rpcclient"
 	"github.com/mitchellh/mapstructure"
+	"go.uber.org/zap"
 )
 
+type ActionGroup struct {
+	Tenant  string  `bson:"tenant"`
+	Name    string  `bson:"name"`
+	Actions Actions `bson:"actions"`
+}
+
+// SetParentGroup populates parent to all actions
+func (ag *ActionGroup) SetParentGroup() {
+	for _, a := range ag.Actions {
+		a.parentGroup = ag
+	}
+}
+
 /*
-Structure to be filled for each tariff plan with the bonus value for received calls minutes.
+Action is data to be filled for each tariff plan with the bonus value for received calls minutes.
 */
 type Action struct {
-	Id               string
-	ActionType       string
-	ExtraParameters  string
-	Filter           string
-	ExpirationString string // must stay as string because it can have relative values like 1month
-	Weight           float64
-	Balance          *BalanceFilter
-	balanceValue     float64 // balance value after action execution, used with cdrlog
+	ActionType   string   `bson:"action_type"`
+	TOR          string   `bson:"tor"`
+	Params       string   `bson:"params"`
+	ExecFilter   string   `bson:"exec_filter"`
+	Filter1      string   `bson:"filter"`
+	Weight       float64  `bson:"weight"`
+	balanceValue *dec.Dec // balance value after action execution, used with cdrlog
+	parentGroup  *ActionGroup
+	filter       *utils.StructQ
+	balance      *Balance
+}
+
+func (a *Action) getBalanceValue() *dec.Dec {
+	if a.balanceValue == nil {
+		a.balanceValue = dec.New()
+	}
+	return a.balanceValue
+}
+
+func (a *Action) getFilter() *utils.StructQ {
+	if a == nil {
+		return nil
+	}
+	if a.filter != nil {
+		return a.filter
+	}
+	// ignore error as its hould be checked at load time
+	a.filter, _ = utils.NewStructQ(a.Filter1)
+	return a.filter
+}
+
+func (a *Action) getBalance(b *Balance) (*Balance, error) {
+	if b == nil && a.balance != nil {
+		return a.balance, nil
+	}
+	if a.Params == "" || !strings.Contains(a.Params, "Balance") {
+		if b != nil {
+			return b, nil
+		}
+		return &Balance{}, nil
+	}
+	param := struct {
+		Balance *Balance
+	}{}
+	if b != nil {
+		param.Balance = b
+	}
+	if err := json.Unmarshal([]byte(a.Params), &param); err != nil {
+		//log.Print("err: ", err)
+		return nil, err
+	}
+	a.balance = param.Balance
+	// load action timings from tags
+	if strings.Contains(a.Params, "TimingTags") {
+		var x struct {
+			Balance struct {
+				TimingTags []string
+			}
+		}
+		if err := json.Unmarshal([]byte(a.Params), &x); err != nil {
+			return nil, err
+		}
+		if a.balance.TimingIDs == nil {
+			a.balance.TimingIDs = utils.StringMap{}
+		}
+		for _, timingID := range x.Balance.TimingTags {
+			if a.parentGroup == nil {
+				return nil, fmt.Errorf("no parentgroup on: %s", utils.ToJSON(a))
+			}
+			timing, err := ratingStorage.GetTiming(a.parentGroup.Tenant, timingID)
+			if err != nil {
+				return nil, fmt.Errorf("error getting action timing id %s", timingID)
+			}
+			if timing != nil {
+				a.balance.TimingIDs[timingID] = true
+				a.balance.Timings = append(a.balance.Timings, &RITiming{
+					Years:     timing.Years,
+					Months:    timing.Months,
+					MonthDays: timing.MonthDays,
+					WeekDays:  timing.WeekDays,
+					StartTime: timing.Time,
+				})
+			} else {
+				return nil, fmt.Errorf("could not find timing: %v", timingID)
+			}
+		}
+	}
+
+	// load ExpiryTime
+	if strings.Contains(a.Params, "ExpiryTime") {
+		var x struct {
+			Balance struct {
+				ExpiryTime string
+			}
+		}
+		if err := json.Unmarshal([]byte(a.Params), &x); err != nil {
+			return nil, err
+		}
+		if expDate, err := utils.ParseDate(x.Balance.ExpiryTime); err != nil {
+			return nil, err
+		} else {
+			a.balance.ExpirationDate = expDate
+		}
+	}
+	// load ValueFormula
+	if strings.Contains(a.Params, "ValueFormula") {
+		var x struct {
+			ValueFormula *utils.ValueFormula
+		}
+		if err := json.Unmarshal([]byte(a.Params), &x); err != nil {
+			return nil, err
+		}
+		a.balance.GetValue().SetFloat64(x.ValueFormula.GetValue())
+	}
+	return a.balance, nil
 }
 
 const (
-	LOG             = "*log"
-	RESET_TRIGGERS  = "*reset_triggers"
-	SET_RECURRENT   = "*set_recurrent"
-	UNSET_RECURRENT = "*unset_recurrent"
-	ALLOW_NEGATIVE  = "*allow_negative"
-	DENY_NEGATIVE   = "*deny_negative"
-	RESET_ACCOUNT   = "*reset_account"
-	REMOVE_ACCOUNT  = "*remove_account"
-	SET_BALANCE     = "*set_balance"
-	REMOVE_BALANCE  = "*remove_balance"
-	TOPUP_RESET     = "*topup_reset"
-	TOPUP           = "*topup"
-	DEBIT_RESET     = "*debit_reset"
-	DEBIT           = "*debit"
-	RESET_COUNTERS  = "*reset_counters"
-	ENABLE_ACCOUNT  = "*enable_account"
-	DISABLE_ACCOUNT = "*disable_account"
-	//ENABLE_DISABLE_BALANCE    = "*enable_disable_balance"
+	LOG                       = "*log"
+	RESET_TRIGGERS            = "*reset_triggers"
+	SET_RECURRENT             = "*set_recurrent"
+	UNSET_RECURRENT           = "*unset_recurrent"
+	ALLOW_NEGATIVE            = "*allow_negative"
+	DENY_NEGATIVE             = "*deny_negative"
+	RESET_ACCOUNT             = "*reset_account"
+	REMOVE_ACCOUNT            = "*remove_account"
+	SET_BALANCE               = "*set_balance"
+	REMOVE_BALANCE            = "*remove_balance"
+	TOPUP_RESET               = "*topup_reset"
+	TOPUP                     = "*topup"
+	DEBIT_RESET               = "*debit_reset"
+	DEBIT                     = "*debit"
+	RESET_COUNTERS            = "*reset_counters"
+	ENABLE_ACCOUNT            = "*enable_account"
+	DISABLE_ACCOUNT           = "*disable_account"
 	CALL_URL                  = "*call_url"
 	CALL_URL_ASYNC            = "*call_url_async"
 	MAIL_ASYNC                = "*mail_async"
@@ -65,13 +186,13 @@ const (
 
 func (a *Action) Clone() *Action {
 	return &Action{
-		Id:         a.Id,
-		ActionType: a.ActionType,
-		//BalanceType:      a.BalanceType,
-		ExtraParameters:  a.ExtraParameters,
-		ExpirationString: a.ExpirationString,
-		Weight:           a.Weight,
-		Balance:          a.Balance,
+		ActionType:  a.ActionType,
+		ExecFilter:  a.ExecFilter,
+		Params:      a.Params,
+		Filter1:     a.Filter1,
+		Weight:      a.Weight,
+		TOR:         a.TOR,
+		parentGroup: a.parentGroup,
 	}
 }
 
@@ -79,25 +200,23 @@ type actionTypeFunc func(*Account, *StatsQueueTriggered, *Action, Actions) error
 
 func getActionFunc(typ string) (actionTypeFunc, bool) {
 	actionFuncMap := map[string]actionTypeFunc{
-		LOG:             logAction,
-		CDRLOG:          cdrLogAction,
-		RESET_TRIGGERS:  resetTriggersAction,
-		SET_RECURRENT:   setRecurrentAction,
-		UNSET_RECURRENT: unsetRecurrentAction,
-		ALLOW_NEGATIVE:  allowNegativeAction,
-		DENY_NEGATIVE:   denyNegativeAction,
-		RESET_ACCOUNT:   resetAccountAction,
-		TOPUP_RESET:     topupResetAction,
-		TOPUP:           topupAction,
-		DEBIT_RESET:     debitResetAction,
-		DEBIT:           debitAction,
-		RESET_COUNTERS:  resetCountersAction,
-		ENABLE_ACCOUNT:  enableAccountAction,
-		DISABLE_ACCOUNT: disableAccountAction,
-		//case ENABLE_DISABLE_BALANCE:
-		//	return enableDisableBalanceAction, true
-		CALL_URL:                  callUrl,
-		CALL_URL_ASYNC:            callUrlAsync,
+		LOG:                       logAction,
+		CDRLOG:                    cdrLogAction,
+		RESET_TRIGGERS:            resetTriggersAction,
+		SET_RECURRENT:             setRecurrentAction,
+		UNSET_RECURRENT:           unsetRecurrentAction,
+		ALLOW_NEGATIVE:            allowNegativeAction,
+		DENY_NEGATIVE:             denyNegativeAction,
+		RESET_ACCOUNT:             resetAccountAction,
+		TOPUP_RESET:               topupResetAction,
+		TOPUP:                     topupAction,
+		DEBIT_RESET:               debitResetAction,
+		DEBIT:                     debitAction,
+		RESET_COUNTERS:            resetCountersAction,
+		ENABLE_ACCOUNT:            enableAccountAction,
+		DISABLE_ACCOUNT:           disableAccountAction,
+		CALL_URL:                  callURL,
+		CALL_URL_ASYNC:            callURLAsync,
 		MAIL_ASYNC:                mailAsync,
 		SET_DDESTINATIONS:         setddestinations,
 		REMOVE_ACCOUNT:            removeAccountAction,
@@ -110,64 +229,58 @@ func getActionFunc(typ string) (actionTypeFunc, bool) {
 	return f, exists
 }
 
-func logAction(ub *Account, sq *StatsQueueTriggered, a *Action, acs Actions) (err error) {
-	if ub != nil {
-		body, _ := json.Marshal(ub)
-		utils.Logger.Info(fmt.Sprintf("Threshold hit, Balance: %s", body))
+func logAction(acc *Account, sq *StatsQueueTriggered, a *Action, acs Actions) (err error) {
+	if acc != nil {
+		utils.Logger.Info("Threshold hit", zap.Any("balance", acc), zap.String("extra_info", a.Params))
 	}
 	if sq != nil {
-		body, _ := json.Marshal(sq)
-		utils.Logger.Info(fmt.Sprintf("Threshold hit, StatsQueue: %s", body))
+		utils.Logger.Info("Threshold hit", zap.Any("stats queue", sq), zap.String("extra_info", a.Params))
 	}
 	return
 }
 
 // Used by cdrLogAction to dynamically parse values out of account and action
 func parseTemplateValue(rsrFlds utils.RSRFields, acnt *Account, action *Action) string {
-	var err error
-	var dta *utils.TenantAccount
-	if acnt != nil {
-		dta, err = utils.NewTAFromAccountKey(acnt.ID) // Account information should be valid
-	}
-	if err != nil || acnt == nil {
-		dta = new(utils.TenantAccount) // Init with empty values
-	}
 	var parsedValue string // Template values
-	b := action.Balance.CreateBalance()
+	b, err := action.getBalance(nil)
+	if err != nil {
+		utils.Logger.Error("<parse Template value> error unmarshalling balance: ", zap.Error(err))
+		return ""
+	}
 	for _, rsrFld := range rsrFlds {
 		switch rsrFld.Id {
 		case "AccountID":
-			parsedValue += rsrFld.ParseValue(acnt.ID)
+			parsedValue += rsrFld.ParseValue(acnt.FullID())
 		case "Directions":
 			parsedValue += rsrFld.ParseValue(b.Directions.String())
 		case utils.TENANT:
-			parsedValue += rsrFld.ParseValue(dta.Tenant)
+			parsedValue += rsrFld.ParseValue(acnt.Tenant)
 		case utils.ACCOUNT:
-			parsedValue += rsrFld.ParseValue(dta.Account)
+			parsedValue += rsrFld.ParseValue(acnt.Name)
 		case "ActionID":
-			parsedValue += rsrFld.ParseValue(action.Id)
+			parsedValue += rsrFld.ParseValue(action.parentGroup.Name)
 		case "ActionType":
 			parsedValue += rsrFld.ParseValue(action.ActionType)
 		case "ActionValue":
-			parsedValue += rsrFld.ParseValue(strconv.FormatFloat(b.GetValue(), 'f', -1, 64))
+			parsedValue += rsrFld.ParseValue(b.GetValue().String())
 		case "BalanceType":
-			parsedValue += rsrFld.ParseValue(action.Balance.GetType())
+			parsedValue += rsrFld.ParseValue(action.TOR)
 		case "BalanceUUID":
-			parsedValue += rsrFld.ParseValue(b.Uuid)
+			parsedValue += rsrFld.ParseValue(b.UUID)
 		case "BalanceID":
 			parsedValue += rsrFld.ParseValue(b.ID)
 		case "BalanceValue":
-			parsedValue += rsrFld.ParseValue(strconv.FormatFloat(action.balanceValue, 'f', -1, 64))
+			parsedValue += rsrFld.ParseValue(action.balanceValue.String())
 		case "DestinationIDs":
 			parsedValue += rsrFld.ParseValue(b.DestinationIDs.String())
-		case "ExtraParameters":
-			parsedValue += rsrFld.ParseValue(action.ExtraParameters)
+		case "Params":
+			parsedValue += rsrFld.ParseValue(action.Params)
 		case "RatingSubject":
 			parsedValue += rsrFld.ParseValue(b.RatingSubject)
 		case utils.CATEGORY:
-			parsedValue += rsrFld.ParseValue(action.Balance.Categories.String())
+			parsedValue += rsrFld.ParseValue(b.Categories.String()) // TODO: check these
 		case "SharedGroups":
-			parsedValue += rsrFld.ParseValue(action.Balance.SharedGroups.String())
+			parsedValue += rsrFld.ParseValue(b.SharedGroups.String()) // TODO: check these
 		default:
 			parsedValue += rsrFld.ParseValue("") // Mostly for static values
 		}
@@ -186,14 +299,16 @@ func cdrLogAction(acc *Account, sq *StatsQueueTriggered, a *Action, acs Actions)
 		utils.SUBJECT:   utils.ParseRSRFieldsMustCompile(utils.ACCOUNT, utils.INFIELD_SEP),
 		utils.COST:      utils.ParseRSRFieldsMustCompile("ActionValue", utils.INFIELD_SEP),
 	}
-	template := make(map[string]string)
 
 	// overwrite default template
-	if a.ExtraParameters != "" {
-		if err = json.Unmarshal([]byte(a.ExtraParameters), &template); err != nil {
+	if a.Params != "" && strings.Contains(a.Params, "CdrLogTemplate") {
+		x := struct {
+			CdrLogTemplate map[string]string
+		}{}
+		if err = json.Unmarshal([]byte(a.Params), &x); err != nil {
 			return
 		}
-		for field, rsr := range template {
+		for field, rsr := range x.CdrLogTemplate {
 			defaultTemplate[field], err = utils.ParseRSRFields(rsr, utils.INFIELD_SEP)
 			if err != nil {
 				return err
@@ -204,11 +319,11 @@ func cdrLogAction(acc *Account, sq *StatsQueueTriggered, a *Action, acs Actions)
 	// set stored cdr values
 	var cdrs []*CDR
 	for _, action := range acs {
-		if !utils.IsSliceMember([]string{DEBIT, DEBIT_RESET, TOPUP, TOPUP_RESET}, action.ActionType) || action.Balance == nil {
+		if !utils.IsSliceMember([]string{DEBIT, DEBIT_RESET, TOPUP, TOPUP_RESET}, action.ActionType) {
 			continue // Only log specific actions
 		}
 		cdr := &CDR{RunID: action.ActionType, Source: CDRLOG, SetupTime: time.Now(), AnswerTime: time.Now(), OriginID: utils.GenUUID(), ExtraFields: make(map[string]string)}
-		cdr.CGRID = utils.Sha1(cdr.OriginID, cdr.SetupTime.String())
+		cdr.UniqueID = utils.Sha1(cdr.OriginID, cdr.SetupTime.String())
 		cdr.Usage = time.Duration(1) * time.Second
 		elem := reflect.ValueOf(cdr).Elem()
 		for key, rsrFlds := range defaultTemplate {
@@ -238,7 +353,7 @@ func cdrLogAction(acc *Account, sq *StatsQueueTriggered, a *Action, acs Actions)
 		}
 	}
 	b, _ := json.Marshal(cdrs)
-	a.ExpirationString = string(b) // testing purpose only
+	a.ExecFilter = string(b) // testing purpose only
 	return
 }
 
@@ -343,8 +458,9 @@ func resetCountersAction(ub *Account, sq *StatsQueueTriggered, a *Action, acs Ac
 }
 
 func genericMakeNegative(a *Action) {
-	if a.Balance != nil && a.Balance.GetValue() > 0 { // only apply if not allready negative
-		a.Balance.SetValue(-a.Balance.GetValue())
+	b, _ := a.getBalance(nil)
+	if b != nil && b.GetValue().GtZero() { // only apply if not allready negative
+		b.GetValue().Neg(b.GetValue())
 	}
 }
 
@@ -374,24 +490,16 @@ func disableAccountAction(acc *Account, sq *StatsQueueTriggered, a *Action, acs 
 	return
 }
 
-/*func enableDisableBalanceAction(ub *Account, sq *StatsQueueTriggered, a *Action, acs Actions) (err error) {
-	if ub == nil {
-		return errors.New("nil account")
-	}
-	ub.enableDisableBalanceAction(a)
-	return
-}*/
-
 func genericReset(ub *Account) error {
 	for k, _ := range ub.BalanceMap {
-		ub.BalanceMap[k] = Balances{&Balance{Value: 0}}
+		ub.BalanceMap[k] = Balances{&Balance{Value: dec.New()}}
 	}
 	ub.InitCounters()
 	ub.ResetActionTriggers(nil)
 	return nil
 }
 
-func callUrl(ub *Account, sq *StatsQueueTriggered, a *Action, acs Actions) error {
+func callURL(ub *Account, sq *StatsQueueTriggered, a *Action, acs Actions) error {
 	var o interface{}
 	if ub != nil {
 		o = ub
@@ -403,14 +511,15 @@ func callUrl(ub *Account, sq *StatsQueueTriggered, a *Action, acs Actions) error
 	if err != nil {
 		return err
 	}
-	cfg := config.CgrConfig()
-	fallbackPath := path.Join(cfg.HttpFailedDir, fmt.Sprintf("act_%s_%s_%s.json", a.ActionType, a.ExtraParameters, utils.GenUUID()))
-	_, _, err = utils.HttpPoster(a.ExtraParameters, cfg.HttpSkipTlsVerify, jsn, utils.CONTENT_JSON, config.CgrConfig().HttpPosterAttempts, fallbackPath, false)
+	cfg := config.Get()
+	fallbackPath := path.Join(*cfg.General.HttpFailedDir, fmt.Sprintf("act_%s_%s_%s.json", a.ActionType, a.Params, utils.GenUUID()))
+	_, err = utils.NewHTTPPoster(*cfg.General.HttpSkipTlsVerify,
+		cfg.General.ReplyTimeout.D()).Post(a.Params, utils.CONTENT_JSON, jsn, *cfg.General.HttpPosterAttempts, fallbackPath)
 	return err
 }
 
 // Does not block for posts, no error reports
-func callUrlAsync(ub *Account, sq *StatsQueueTriggered, a *Action, acs Actions) error {
+func callURLAsync(ub *Account, sq *StatsQueueTriggered, a *Action, acs Actions) error {
 	var o interface{}
 	if ub != nil {
 		o = ub
@@ -422,16 +531,17 @@ func callUrlAsync(ub *Account, sq *StatsQueueTriggered, a *Action, acs Actions) 
 	if err != nil {
 		return err
 	}
-	cfg := config.CgrConfig()
-	fallbackPath := path.Join(cfg.HttpFailedDir, fmt.Sprintf("act_%s_%s_%s.json", a.ActionType, a.ExtraParameters, utils.GenUUID()))
-	go utils.HttpPoster(a.ExtraParameters, cfg.HttpSkipTlsVerify, jsn, utils.CONTENT_JSON, config.CgrConfig().HttpPosterAttempts, fallbackPath, false)
+	cfg := config.Get()
+	fallbackPath := path.Join(*cfg.General.HttpFailedDir, fmt.Sprintf("act_%s_%s_%s.json", a.ActionType, a.Params, utils.GenUUID()))
+	_, err = utils.NewHTTPPoster(*cfg.General.HttpSkipTlsVerify,
+		cfg.General.ReplyTimeout.D()).Post(a.Params, utils.CONTENT_JSON, jsn, *cfg.General.HttpPosterAttempts, fallbackPath)
 	return nil
 }
 
 // Mails the balance hitting the threshold towards predefined list of addresses
 func mailAsync(ub *Account, sq *StatsQueueTriggered, a *Action, acs Actions) error {
-	cgrCfg := config.CgrConfig()
-	params := strings.Split(a.ExtraParameters, string(utils.CSV_SEP))
+	cfg := config.Get()
+	params := strings.Split(a.Params, string(utils.CSV_SEP))
 	if len(params) == 0 {
 		return errors.New("Unconfigured parameters for mail action")
 	}
@@ -449,21 +559,21 @@ func mailAsync(ub *Account, sq *StatsQueueTriggered, a *Action, acs Actions) err
 		if err != nil {
 			return err
 		}
-		message = []byte(fmt.Sprintf("To: %s\r\nSubject: [CGR Notification] Threshold hit on Balance: %s\r\n\r\nTime: \r\n\t%s\r\n\r\nBalance:\r\n\t%s\r\n\r\nYours faithfully,\r\nCGR Balance Monitor\r\n", toAddrStr, ub.ID, time.Now(), balJsn))
+		message = []byte(fmt.Sprintf("To: %s\r\nSubject: [CGR Notification] Threshold hit on Balance: %s\r\n\r\nTime: \r\n\t%s\r\n\r\nBalance:\r\n\t%s\r\n\r\nYours faithfully,\r\nCGR Balance Monitor\r\n", toAddrStr, ub.FullID(), time.Now(), balJsn))
 	} else if sq != nil {
 		message = []byte(fmt.Sprintf("To: %s\r\nSubject: [CGR Notification] Threshold hit on StatsQueueId: %s\r\n\r\nTime: \r\n\t%s\r\n\r\nStatsQueueId:\r\n\t%s\r\n\r\nMetrics:\r\n\t%+v\r\n\r\nTrigger:\r\n\t%+v\r\n\r\nYours faithfully,\r\nCGR CDR Stats Monitor\r\n",
-			toAddrStr, sq.Id, time.Now(), sq.Id, sq.Metrics, sq.Trigger))
+			toAddrStr, sq.Name, time.Now(), sq.Name, sq.Metrics, sq.Trigger))
 	}
-	auth := smtp.PlainAuth("", cgrCfg.MailerAuthUser, cgrCfg.MailerAuthPass, strings.Split(cgrCfg.MailerServer, ":")[0]) // We only need host part, so ignore port
+	auth := smtp.PlainAuth("", *cfg.Mailer.AuthUser, *cfg.Mailer.AuthPassword, strings.Split(*cfg.Mailer.Server, ":")[0]) // We only need host part, so ignore port
 	go func() {
 		for i := 0; i < 5; i++ { // Loop so we can increase the success rate on best effort
-			if err := smtp.SendMail(cgrCfg.MailerServer, auth, cgrCfg.MailerFromAddr, toAddrs, message); err == nil {
+			if err := smtp.SendMail(*cfg.Mailer.Server, auth, *cfg.Mailer.FromAddress, toAddrs, message); err == nil {
 				break
 			} else if i == 4 {
 				if ub != nil {
-					utils.Logger.Warning(fmt.Sprintf("<Triggers> WARNING: Failed emailing, params: [%s], error: [%s], BalanceId: %s", a.ExtraParameters, err.Error(), ub.ID))
+					utils.Logger.Warn("<Triggers> WARNING: Failed emailing", zap.String("params", a.Params), zap.Error(err), zap.String("BalanceID", ub.FullID()))
 				} else if sq != nil {
-					utils.Logger.Warning(fmt.Sprintf("<Triggers> WARNING: Failed emailing, params: [%s], error: [%s], StatsQueueTriggeredId: %s", a.ExtraParameters, err.Error(), sq.Id))
+					utils.Logger.Warn("<Triggers> WARNING: Failed emailing", zap.String("params", a.Params), zap.Error(err), zap.String("StatsQueueTriggeredId", sq.Name))
 				}
 				break
 			}
@@ -474,42 +584,42 @@ func mailAsync(ub *Account, sq *StatsQueueTriggered, a *Action, acs Actions) err
 }
 
 func setddestinations(ub *Account, sq *StatsQueueTriggered, a *Action, acs Actions) error {
-	var ddcDestId string
+	var ddcDestID string
 	for _, bchain := range ub.BalanceMap {
 		for _, b := range bchain {
-			for destId := range b.DestinationIDs {
-				if strings.HasPrefix(destId, "*ddc") {
-					ddcDestId = destId
+			for destName := range b.DestinationIDs {
+				if strings.HasPrefix(destName, "*ddc") {
+					ddcDestID = destName
 					break
 				}
 			}
-			if ddcDestId != "" {
+			if ddcDestID != "" {
 				break
 			}
 		}
-		if ddcDestId != "" {
+		if ddcDestID != "" {
 			break
 		}
 	}
-	if ddcDestId != "" {
+	if ddcDestID != "" {
+		// remove previous destinations with that name
+		if err := ratingStorage.RemoveDestinations(ub.Tenant, "", ddcDestID); err != nil {
+			return err
+		}
 		// make slice from prefixes
-		prefixes := make([]string, len(sq.Metrics))
+		destinations := make([]*Destination, len(sq.Metrics))
 		i := 0
 		for p := range sq.Metrics {
-			prefixes[i] = p
+			destinations[i] = &Destination{Tenant: sq.Tenant, Code: p, Name: ddcDestID}
 			i++
 		}
-		newDest := &Destination{Id: ddcDestId, Prefixes: prefixes}
-		oldDest, err := ratingStorage.GetDestination(ddcDestId, utils.CACHED)
-		// update destid in storage
-		ratingStorage.SetDestination(newDest)
-
-		if err == nil && oldDest != nil {
-			err = ratingStorage.UpdateReverseDestination(oldDest, newDest)
-			if err != nil {
+		for _, dest := range destinations {
+			// update dest in storage
+			if err := ratingStorage.SetDestination(dest); err != nil {
 				return err
 			}
 		}
+
 	} else {
 		return utils.ErrNotFound
 	}
@@ -517,55 +627,34 @@ func setddestinations(ub *Account, sq *StatsQueueTriggered, a *Action, acs Actio
 }
 
 func removeAccountAction(ub *Account, sq *StatsQueueTriggered, a *Action, acs Actions) error {
-	var accID string
+	var accTenant, accName string
 	if ub != nil {
-		accID = ub.ID
+		accTenant = ub.Tenant
+		accName = ub.Name
 	} else {
 		accountInfo := struct {
 			Tenant  string
 			Account string
 		}{}
-		if a.ExtraParameters != "" {
-			if err := json.Unmarshal([]byte(a.ExtraParameters), &accountInfo); err != nil {
+		if a.Params != "" {
+			if err := json.Unmarshal([]byte(a.Params), &accountInfo); err != nil {
 				return err
 			}
 		}
-		accID = utils.AccountKey(accountInfo.Tenant, accountInfo.Account)
+		accTenant = accountInfo.Tenant
+		accName = accountInfo.Account
 	}
-	if accID == "" {
+	if accTenant == "" || accName == "" {
 		return utils.ErrInvalidKey
 	}
-	if err := accountingStorage.RemoveAccount(accID); err != nil {
-		utils.Logger.Err(fmt.Sprintf("Could not remove account Id: %s: %v", accID, err))
+	if err := accountingStorage.RemoveAccount(accTenant, accName); err != nil {
+		utils.Logger.Error("Could not remove account Id: ", zap.String("tenant", accTenant), zap.String("ID", accName), zap.Error(err))
 		return err
 	}
-	_, err := Guardian.Guard(func() (interface{}, error) {
-		// clean the account id from all action plans
-		allAPs, err := ratingStorage.GetAllActionPlans()
-		if err != nil && err != utils.ErrNotFound {
-			utils.Logger.Err(fmt.Sprintf("Could not get action plans: %s: %v", accID, err))
-			return 0, err
-		}
-		//var dirtyAps []string
-		for key, ap := range allAPs {
-			if _, exists := ap.AccountIDs[accID]; !exists {
-				// save action plan
-				delete(ap.AccountIDs, key)
-				ratingStorage.SetActionPlan(key, ap, true)
-				//dirtyAps = append(dirtyAps, utils.ACTION_PLAN_PREFIX+key)
-			}
-		}
-		/*if len(dirtyAps) > 0 {
-			// cache
-			ratingStorage.CacheRatingPrefixValues("RemoveAccountAction", map[string][]string{
-				utils.ACTION_PLAN_PREFIX: dirtyAps})
-		}*/
-		return 0, nil
+	if err := ratingStorage.RemoveActionPlanBindings(ub.Tenant, ub.Name, ""); err != nil {
+		return err
+	}
 
-	}, 0, utils.ACTION_PLAN_PREFIX)
-	if err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -573,13 +662,17 @@ func removeBalanceAction(ub *Account, sq *StatsQueueTriggered, a *Action, acs Ac
 	if ub == nil {
 		return fmt.Errorf("nil account for %s action", utils.ToJSON(a))
 	}
-	if _, exists := ub.BalanceMap[a.Balance.GetType()]; !exists {
+	if _, exists := ub.BalanceMap[a.TOR]; !exists {
 		return utils.ErrNotFound
 	}
-	bChain := ub.BalanceMap[a.Balance.GetType()]
+	bChain := ub.BalanceMap[a.TOR]
 	found := false
 	for i := 0; i < len(bChain); i++ {
-		if bChain[i].MatchFilter(a.Balance, false) {
+		match, err := a.getFilter().Query(bChain[i], false)
+		if err != nil {
+			utils.Logger.Warn(fmt.Sprintf("<removeBalanceAction> action filter (%s) errored : (%s)", a.Filter1, err.Error()))
+		}
+		if match {
 			// delete without preserving order
 			bChain[i] = bChain[len(bChain)-1]
 			bChain = bChain[:len(bChain)-1]
@@ -587,7 +680,7 @@ func removeBalanceAction(ub *Account, sq *StatsQueueTriggered, a *Action, acs Ac
 			found = true
 		}
 	}
-	ub.BalanceMap[a.Balance.GetType()] = bChain
+	ub.BalanceMap[a.TOR] = bChain
 	if !found {
 		return utils.ErrNotFound
 	}
@@ -598,12 +691,13 @@ func setBalanceAction(acc *Account, sq *StatsQueueTriggered, a *Action, acs Acti
 	if acc == nil {
 		return fmt.Errorf("nil account for %s action", utils.ToJSON(a))
 	}
-	return acc.setBalanceAction(a)
+	err := acc.setBalanceAction(a)
+	return err
 }
 
 func transferMonetaryDefaultAction(acc *Account, sq *StatsQueueTriggered, a *Action, acs Actions) error {
 	if acc == nil {
-		utils.Logger.Err("*transfer_monetary_default called without account")
+		utils.Logger.Error("*transfer_monetary_default called without account")
 		return utils.ErrAccountNotFound
 	}
 	if _, exists := acc.BalanceMap[utils.MONETARY]; !exists {
@@ -612,12 +706,16 @@ func transferMonetaryDefaultAction(acc *Account, sq *StatsQueueTriggered, a *Act
 	defaultBalance := acc.GetDefaultMoneyBalance()
 	bChain := acc.BalanceMap[utils.MONETARY]
 	for _, balance := range bChain {
-		if balance.Uuid != defaultBalance.Uuid &&
+		match, err := a.getFilter().Query(balance, false)
+		if err != nil {
+			utils.Logger.Warn(fmt.Sprintf("<transferMonetaryDefaultAction> action filter (%s) errored : (%s)", a.Filter1, err.Error()))
+		}
+		if balance.UUID != defaultBalance.UUID &&
 			balance.ID != defaultBalance.ID && // extra caution
-			balance.MatchFilter(a.Balance, false) {
-			if balance.Value > 0 {
-				defaultBalance.Value += balance.Value
-				balance.Value = 0
+			match {
+			if balance.Value.GtZero() {
+				defaultBalance.GetValue().AddS(balance.GetValue())
+				balance.SetValue(dec.Zero)
 			}
 		}
 	}
@@ -652,9 +750,9 @@ func cgrRPCAction(account *Account, sq *StatsQueueTriggered, a *Action, acs Acti
 	// parse template
 	tmpl := template.New("extra_params")
 	tmpl.Delims("<<", ">>")
-	t, err := tmpl.Parse(a.ExtraParameters)
+	t, err := tmpl.Parse(a.Params)
 	if err != nil {
-		utils.Logger.Err(fmt.Sprintf("error parsing *cgr_rpc template: %s", err.Error()))
+		utils.Logger.Error(fmt.Sprintf("error parsing *cgr_rpc template: %s", err.Error()))
 		return err
 	}
 	var buf bytes.Buffer
@@ -664,22 +762,25 @@ func cgrRPCAction(account *Account, sq *StatsQueueTriggered, a *Action, acs Acti
 		Action  *Action
 		Actions Actions
 	}{account, sq, a, acs}); err != nil {
-		utils.Logger.Err(fmt.Sprintf("error executing *cgr_rpc template %s:", err.Error()))
+		utils.Logger.Error(fmt.Sprintf("error executing *cgr_rpc template %s:", err.Error()))
 		return err
 	}
 	processedExtraParam := buf.String()
-	//utils.Logger.Info("ExtraParameters: " + parsedExtraParameters)
-	req := RPCRequest{}
-	if err := json.Unmarshal([]byte(processedExtraParam), &req); err != nil {
+	//utils.Logger.Info("Params: " + parsedParams)
+	x := struct {
+		RpcRequest *RPCRequest
+	}{}
+	if err := json.Unmarshal([]byte(processedExtraParam), &x); err != nil {
 		return err
 	}
+	req := x.RpcRequest
 	params, err := utils.GetRpcParams(req.Method)
 	if err != nil {
 		return err
 	}
 	var client rpcclient.RpcClientConnection
 	if req.Address != utils.MetaInternal {
-		if client, err = rpcclient.NewRpcClient("tcp", req.Address, req.Attempts, 0, config.CgrConfig().ConnectTimeout, config.CgrConfig().ReplyTimeout, req.Transport, nil); err != nil {
+		if client, err = rpcclient.NewRpcClient("tcp", req.Address, req.Attempts, 0, config.Get().General.ConnectTimeout.D(), config.Get().General.ReplyTimeout.D(), req.Transport, nil, false); err != nil {
 			return err
 		}
 	} else {
@@ -713,19 +814,9 @@ func cgrRPCAction(account *Account, sq *StatsQueueTriggered, a *Action, acs Acti
 // Structure to store actions according to weight
 type Actions []*Action
 
-func (apl Actions) Len() int {
-	return len(apl)
-}
-
-func (apl Actions) Swap(i, j int) {
-	apl[i], apl[j] = apl[j], apl[i]
-}
-
-// we need higher weights earlyer in the list
-func (apl Actions) Less(j, i int) bool {
-	return apl[i].Weight < apl[j].Weight
-}
-
 func (apl Actions) Sort() {
-	sort.Sort(apl)
+	sort.Slice(apl, func(j, i int) bool {
+		// we need higher weights earlyer in the list
+		return apl[i].Weight < apl[j].Weight
+	})
 }

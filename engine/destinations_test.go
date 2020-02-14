@@ -10,9 +10,9 @@ import (
 )
 
 func TestDestinationStoreRestore(t *testing.T) {
-	nationale := &Destination{Id: "nat", Prefixes: []string{"0257", "0256", "0723"}}
+	nationale := &Destination{Tenant: "test", Name: "nat", Code: "0257"}
 	s, _ := json.Marshal(nationale)
-	d1 := &Destination{Id: "nat"}
+	d1 := &Destination{Name: "nat"}
 	json.Unmarshal(s, d1)
 	s1, _ := json.Marshal(d1)
 	if string(s1) != string(s) {
@@ -21,17 +21,30 @@ func TestDestinationStoreRestore(t *testing.T) {
 }
 
 func TestDestinationStorageStore(t *testing.T) {
-	nationale := &Destination{Id: "nat", Prefixes: []string{"0257", "0256", "0723"}}
-	err := ratingStorage.SetDestination(nationale)
-	if err != nil {
+	nationale1 := &Destination{Tenant: "test", Name: "nat", Code: "0257"}
+	nationale2 := &Destination{Tenant: "test", Name: "nat", Code: "0256"}
+	nationale3 := &Destination{Tenant: "test", Name: "nat", Code: "0723"}
+
+	if err := ratingStorage.SetDestination(nationale1); err != nil {
 		t.Error("Error storing destination: ", err)
 	}
-	result, err := ratingStorage.GetDestination(nationale.Id, utils.CACHED)
-	if nationale.containsPrefix("0257") == 0 || nationale.containsPrefix("0256") == 0 || nationale.containsPrefix("0723") == 0 {
-		t.Errorf("Expected %q was %q", nationale, result)
+	if err := ratingStorage.SetDestination(nationale2); err != nil {
+		t.Error("Error storing destination: ", err)
+	}
+	if err := ratingStorage.SetDestination(nationale3); err != nil {
+		t.Error("Error storing destination: ", err)
+	}
+
+	result, err := ratingStorage.GetDestinations("test", "", nationale1.Name, utils.DestExact, utils.CACHED)
+	if err != nil {
+		t.Error("error getting destinations: ", err)
+	}
+	if result[0].Code != "0257" || result[1].Code != "0256" || result[2].Code != "0723" {
+		t.Errorf("bad destinations back: %v", result)
 	}
 }
 
+/*
 func TestDestinationContainsPrefix(t *testing.T) {
 	nationale := &Destination{Id: "nat", Prefixes: []string{"0257", "0256", "0723"}}
 	precision := nationale.containsPrefix("0256")
@@ -55,83 +68,118 @@ func TestDestinationContainsPrefixWrong(t *testing.T) {
 		t.Error("Should not contain prefix: ", nationale)
 	}
 }
+*/
 
 func TestDestinationGetExists(t *testing.T) {
-	d, err := ratingStorage.GetDestination("NAT", utils.CACHED)
-	if err != nil || d == nil {
+	d, err := ratingStorage.GetDestinations("test", "", "NAT", utils.DestExact, utils.CACHED)
+	if err != nil || d == nil || len(d) == 0 {
 		t.Error("Could not get destination: ", d)
 	}
 }
 
-func TestDestinationReverseGetExistsCache(t *testing.T) {
-	ratingStorage.GetReverseDestination("0256", utils.CACHED)
-	if _, ok := cache2go.Get(utils.REVERSE_DESTINATION_PREFIX + "0256"); !ok {
-		t.Error("Destination not cached:", err)
+func TestDestinationGetExistsCache(t *testing.T) {
+	ratingStorage.GetDestinations("test", "0256", "", utils.DestExact, utils.CACHED)
+	if _, ok := cache2go.Get("test", utils.DESTINATION_PREFIX+utils.ConcatKey("0256", "", utils.DestExact)); !ok {
+		t.Error("Destination not cached")
 	}
 }
 
-func TestDestinationGetNotExists(t *testing.T) {
-	d, err := ratingStorage.GetDestination("not existing", utils.CACHED)
-	if d != nil {
+func TestDestinationGetCodeNotExists(t *testing.T) {
+	d, err := ratingStorage.GetDestinations("test", "not existing", "", utils.DestExact, utils.CACHED)
+	if len(d) != 0 {
+		t.Error("Got false destination: ", d, err)
+	}
+}
+
+func TestDestinationGetNameNotExists(t *testing.T) {
+	d, err := ratingStorage.GetDestinations("test", "", "not existing", utils.DestExact, utils.CACHED)
+	if len(d) != 0 {
 		t.Error("Got false destination: ", d, err)
 	}
 }
 
 func TestDestinationGetNotExistsCache(t *testing.T) {
-	ratingStorage.GetDestination("not existing", utils.CACHED)
-	if d, ok := cache2go.Get("not existing"); ok {
+	ratingStorage.GetDestinations("test", "not existing", "", utils.DestExact, utils.CACHED)
+	if d, ok := cache2go.Get("test", "not existing"); ok {
 		t.Error("Bad destination cached: ", d)
 	}
 }
 
-func TestCachedDestHasPrefix(t *testing.T) {
-	if !CachedDestHasPrefix("NAT", "0256") {
+func TestDestinationCachedDestHasPrefix(t *testing.T) {
+	if !CachedDestHasPrefix("test", "NAT", "0256") {
 		t.Error("Could not find prefix in destination")
 	}
 }
 
-func TestCachedDestHasWrongPrefix(t *testing.T) {
-	if CachedDestHasPrefix("NAT", "771") {
+func TestDestinationCachedDestHasWrongPrefix(t *testing.T) {
+	if CachedDestHasPrefix("test", "NAT", "771") {
 		t.Error("Prefix should not belong to destination")
 	}
 }
 
-func TestNonCachedDestRightPrefix(t *testing.T) {
-	if CachedDestHasPrefix("FAKE", "0256") {
+func TestDestinationNonCachedDestRightPrefix(t *testing.T) {
+	if CachedDestHasPrefix("test", "FAKE", "0256") {
 		t.Error("Destination should not belong to prefix")
 	}
 }
 
-func TestNonCachedDestWrongPrefix(t *testing.T) {
-	if CachedDestHasPrefix("FAKE", "771") {
+func TestDestinationNonCachedDestWrongPrefix(t *testing.T) {
+	if CachedDestHasPrefix("test", "FAKE", "771") {
 		t.Error("Both arguments should be fake")
 	}
 }
 
-/*
-func TestCleanStalePrefixes(t *testing.T) {
-	x := struct{}{}
-	cache2go.Set(utils.DESTINATION_PREFIX+"1", map[string]struct{}{"D1": x, "D2": x})
-	cache2go.Set(utils.DESTINATION_PREFIX+"2", map[string]struct{}{"D1": x})
-	cache2go.Set(utils.DESTINATION_PREFIX+"3", map[string]struct{}{"D2": x})
-	CleanStalePrefixes([]string{"D1"})
-	if r, ok := cache2go.Get(utils.DESTINATION_PREFIX + "1"); !ok || len(r.(map[string]struct{})) != 1 {
-		t.Error("Error cleaning stale destination ids", r)
+func TestDestinationStartegyMatching(t *testing.T) {
+	dests, err := ratingStorage.GetDestinations("test", "0723045326", "", utils.DestMatching, utils.CACHED)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if r, ok := cache2go.Get(utils.DESTINATION_PREFIX + "2"); ok {
-		t.Error("Error removing stale prefix: ", r)
+	if len(dests) != 4 {
+		t.Error("error getting matching destinations: ", utils.ToIJSON(dests))
 	}
-	if r, ok := cache2go.Get(utils.DESTINATION_PREFIX + "3"); !ok || len(r.(map[string]struct{})) != 1 {
-		t.Error("Error performing stale cleaning: ", r)
+	if dests.getBest().Code != "0723045" {
+		t.Error("bad ordering in get destinations: ", utils.ToIJSON(dests))
 	}
-}*/
+}
+
+func TestDestinationStartegyMatchingMultiple(t *testing.T) {
+	if err := ratingStorage.SetDestination(&Destination{Tenant: "test", Code: "0723085835", Name: "Liana"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ratingStorage.SetDestination(&Destination{Tenant: "test", Code: "0723045326", Name: "Radu"}); err != nil {
+		t.Fatal(err)
+	}
+	dests, err := ratingStorage.GetDestinations("test", "0723045326", "", utils.DestMatching, utils.CACHED)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dests) != 5 {
+		t.Error("error getting matching destinations: ", utils.ToIJSON(dests))
+	}
+	if dests.getBest().Code != "0723045326" {
+		t.Error("bad ordering in get destinations: ", utils.ToIJSON(dests))
+	}
+}
 
 /********************************* Benchmarks **********************************/
 
 func BenchmarkDestinationStorageStoreRestore(b *testing.B) {
-	nationale := &Destination{Id: "nat", Prefixes: []string{"0257", "0256", "0723"}}
+	nationale1 := &Destination{Tenant: "test", Name: "nat", Code: "0257"}
+	nationale2 := &Destination{Tenant: "test", Name: "nat", Code: "0256"}
+	nationale3 := &Destination{Tenant: "test", Name: "nat", Code: "0723"}
+
 	for i := 0; i < b.N; i++ {
-		ratingStorage.SetDestination(nationale)
-		ratingStorage.GetDestination(nationale.Id, utils.CACHE_SKIP)
+		if err := ratingStorage.SetDestination(nationale1); err != nil {
+			b.Error("Error storing destination: ", err)
+		}
+		if err := ratingStorage.SetDestination(nationale2); err != nil {
+			b.Error("Error storing destination: ", err)
+		}
+		if err := ratingStorage.SetDestination(nationale3); err != nil {
+			b.Error("Error storing destination: ", err)
+		}
+		ratingStorage.GetDestinations("test", "", "nat", utils.DestExact, utils.CACHE_SKIP)
+		ratingStorage.GetDestinations("test", "0256", "nat", utils.DestExact, utils.CACHE_SKIP)
+		ratingStorage.GetDestinations("test", "0257", "", utils.DestExact, utils.CACHE_SKIP)
 	}
 }

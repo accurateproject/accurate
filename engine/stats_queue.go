@@ -1,20 +1,82 @@
 package engine
 
 import (
-	"fmt"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/globalsign/mgo/bson"
+
+	"github.com/accurateproject/accurate/dec"
 	"github.com/accurateproject/accurate/utils"
+	"go.uber.org/zap"
+)
+
+const (
+	purgeCheckInterval = 5 * time.Second
 )
 
 type StatsQueue struct {
-	Cdrs    []*QCdr
-	conf    *CdrStats
-	metrics map[string]Metric
-	mux     sync.Mutex
-	dirty   bool
+	Tenant         string                          `bson:"tenant"`
+	Name           string                          `bson:"name"`
+	TriggerRecords map[string]*ActionTriggerRecord `bson:"trigger_records"`
+	triggers       ActionTriggers
+	conf           *CdrStats
+	metrics        map[string]Metric
+	mux            sync.Mutex
+	itemsCount     int
+	lastSetupTime  time.Time
+	accountingDB   AccountingStorage
+	cdrDB          CdrStorage
+	lastPurgeCheck time.Time // limit purge checks
+}
+
+// Simplified cdr structure containing only the necessary info
+type QCDR struct {
+	ID          bson.ObjectId `bson:"_id"`
+	Tenant      string        `bson:"tenant"`
+	Name        string        `bson:"name"`
+	UniqueID    string        `bson:"unique_id"`
+	RunID       string        `bson:"run_id"`
+	SetupTime   time.Time     `bson:"setup_time"`
+	AnswerTime  time.Time     `bson:"answer_time"`
+	EventTime   time.Time     `bson:"event_time"` // moment of qcdr adding
+	Pdd         time.Duration `bson:"pdd"`
+	Usage       time.Duration `bson:"usage"`
+	Cost        *dec.Dec      `bson:"cost"`
+	Destination string        `bson:"destination"`
+}
+
+func (sq *StatsQueue) getTriggers() ActionTriggers {
+	if sq.triggers != nil {
+		return sq.triggers
+	}
+	for atgName := range sq.conf.TriggerIDs {
+		atg, err := ratingStorage.GetActionTriggers(sq.Tenant, atgName, utils.CACHED)
+		if err != nil || atg == nil {
+			utils.Logger.Error("error getting triggers for ", zap.String("id", atgName), zap.Error(err))
+			continue
+		}
+		atg.SetParentGroup()
+		sq.triggers = append(sq.triggers, atg.ActionTriggers...)
+	}
+	sq.triggers.Sort()
+
+	if len(sq.triggers) > 0 && sq.TriggerRecords == nil {
+		sq.TriggerRecords = make(map[string]*ActionTriggerRecord)
+	}
+	for _, atr := range sq.triggers {
+		if _, found := sq.TriggerRecords[atr.UniqueID]; !found {
+			sq.TriggerRecords[atr.UniqueID] = &ActionTriggerRecord{
+				UniqueID:       atr.UniqueID,
+				Recurrent:      atr.Recurrent,
+				ExpirationDate: atr.ExpirationDate,
+				ActivationDate: atr.ActivationDate,
+			}
+		}
+	}
+
+	return sq.triggers
 }
 
 var METRIC_TRIGGER_MAP = map[string]string{
@@ -34,38 +96,27 @@ var METRIC_TRIGGER_MAP = map[string]string{
 	"*max_ddc": DDC,
 }
 
-// Simplified cdr structure containing only the necessary info
-type QCdr struct {
-	SetupTime  time.Time
-	AnswerTime time.Time
-	EventTime  time.Time
-	Pdd        time.Duration
-	Usage      time.Duration
-	Cost       float64
-	Dest       string
-}
-
-func NewStatsQueue(conf *CdrStats) *StatsQueue {
+func NewStatsQueue(conf *CdrStats, accountingStorage AccountingStorage, cdrStorage CdrStorage) *StatsQueue {
 	if conf == nil {
 		return &StatsQueue{metrics: make(map[string]Metric)}
 	}
-	sq := &StatsQueue{}
-	sq.UpdateConf(conf)
+	sq := &StatsQueue{Tenant: conf.Tenant, accountingDB: accountingStorage, cdrDB: cdrStorage}
+	sq.updateConf(conf)
 	return sq
 }
 
-func (sq *StatsQueue) UpdateConf(conf *CdrStats) {
+func (sq *StatsQueue) updateConf(conf *CdrStats) {
 	sq.mux.Lock()
 	defer sq.mux.Unlock()
 	// check if new conf asks for action trigger reset only
 	if sq.conf != nil && (conf.hasGeneralConfigs() || sq.conf.equalExceptTriggers(conf)) {
-		sq.conf.Triggers = conf.Triggers
+		sq.conf.TriggerIDs = conf.TriggerIDs
 		return
 	}
+	sq.Name = conf.Name
 	sq.conf = conf
-	sq.Cdrs = make([]*QCdr, 0)
 	sq.metrics = make(map[string]Metric, len(conf.Metrics))
-	sq.dirty = true
+	sq.save()
 	for _, m := range conf.Metrics {
 		if metric := CreateMetric(m); metric != nil {
 			sq.metrics[m] = metric
@@ -73,168 +124,229 @@ func (sq *StatsQueue) UpdateConf(conf *CdrStats) {
 	}
 }
 
-func (sq *StatsQueue) Save(rdb RatingStorage, adb AccountingStorage) {
-	sq.mux.Lock()
-	defer sq.mux.Unlock()
-	if sq.dirty {
-		// save the conf
-		if err := rdb.SetCdrStats(sq.conf); err != nil {
-			utils.Logger.Err(fmt.Sprintf("Error saving cdr stats id %s: %v", sq.conf.Id, err))
-			return
-		}
-
-		if err := adb.SetCdrStatsQueue(sq); err != nil {
-			utils.Logger.Err(fmt.Sprintf("Error saving cdr stats queue id %s: %v", sq.GetId(), err))
-			return
-		}
-		sq.dirty = false
+func (sq *StatsQueue) save() {
+	if err := sq.accountingDB.SetCdrStatsQueue(sq); err != nil {
+		utils.Logger.Error("error saving cdr stats queue", zap.String("id", sq.Name), zap.Error(err))
+		return
 	}
 }
 
-func (sq *StatsQueue) Load(saved *StatsQueue) {
+func (sq *StatsQueue) load() error {
 	sq.mux.Lock()
 	defer sq.mux.Unlock()
-	sq.Cdrs = saved.Cdrs
-	for _, qcdr := range saved.Cdrs {
-		sq.appendQcdr(qcdr, false)
+	qcdrIter := sq.accountingDB.Iterator(ColQcr, "$natural", map[string]interface{}{"tenant": sq.Tenant, "name": sq.Name})
+	var qcdr QCDR
+	for qcdrIter.Next(&qcdr) {
+		sq.appendQcdr(&qcdr, false)
 	}
+	err := qcdrIter.Close()
+	if err != nil {
+		return err
+	}
+	sq.purgeObsoleteCdrs()
+	return nil
 }
 
-func (sq *StatsQueue) AppendCDR(cdr *CDR) *QCdr {
+func (sq *StatsQueue) saveStatsQueueQCDR(qcdr *QCDR) error {
+	return sq.accountingDB.PushQCDR(qcdr)
+}
+
+func (sq *StatsQueue) appendCDR(cdr *CDR) {
 	sq.mux.Lock()
 	defer sq.mux.Unlock()
-	var qcdr *QCdr
-	if sq.conf.AcceptCdr(cdr) {
+	var qcdr *QCDR
+	if sq.conf.acceptCdr(cdr) {
 		qcdr = sq.simplifyCdr(cdr)
 		sq.appendQcdr(qcdr, true)
 	}
-	return qcdr
 }
 
-func (sq *StatsQueue) appendQcdr(qcdr *QCdr, runTrigger bool) {
-	qcdr.EventTime = time.Now() //used for TimeWindow
-	sq.Cdrs = append(sq.Cdrs, qcdr)
+func (sq *StatsQueue) appendQcdr(qcdr *QCDR, normalAppend bool) { // normalAppend: apend during cdr rate (not reload)
+	if qcdr.EventTime.IsZero() {
+		qcdr.EventTime = time.Now() //used for TimeWindow
+	}
+	sq.lastSetupTime = qcdr.SetupTime
 	sq.addToMetrics(qcdr)
-	sq.purgeObsoleteCdrs()
-	sq.dirty = true
+	sq.itemsCount++
 	// check for trigger
-	if runTrigger {
-		stats := sq.getStats()
-		sq.conf.Triggers.Sort()
-		for _, at := range sq.conf.Triggers {
+	if normalAppend {
+		if err := sq.saveStatsQueueQCDR(qcdr); err != nil { // do not save items on load
+			utils.Logger.Error("error saving stat queues qcdr: ", zap.Error(err))
+		}
+		sq.purgeObsoleteCdrs()
+		values := sq.metricValues()
+		executed := false
+		for _, at := range sq.getTriggers() {
 			// check is effective
 			if at.IsExpired(time.Now()) || !at.IsActive(time.Now()) {
 				continue
 			}
 
-			if at.Executed {
+			if sq.TriggerRecords[at.UniqueID].Executed {
 				// trigger is marked as executed, so skipp it until
 				// the next reset (see RESET_TRIGGERS action type)
 				continue
 			}
 
-			if at.MinQueuedItems > 0 && len(sq.Cdrs) < at.MinQueuedItems {
+			if at.MinQueuedItems > 0 && sq.itemsCount < at.MinQueuedItems {
 				continue
 			}
 			if strings.HasPrefix(at.ThresholdType, "*min_") {
-				if value, ok := stats[METRIC_TRIGGER_MAP[at.ThresholdType]]; ok {
-					if value > STATS_NA && value <= at.ThresholdValue {
-						at.Execute(nil, sq.Triggered(at))
+				if value, ok := values[METRIC_TRIGGER_MAP[at.ThresholdType]]; ok {
+					if value.Cmp(STATS_NA) > 0 && value.Cmp(at.ThresholdValue) <= 0 {
+						if err := at.Execute(nil, sq.triggered(at)); err != nil {
+							utils.Logger.Error("<cdr_stats> error executing trigger: ", zap.Error(err))
+						}
+						executed = true
 					}
 				}
 			}
 			if strings.HasPrefix(at.ThresholdType, "*max_") {
-				if value, ok := stats[METRIC_TRIGGER_MAP[at.ThresholdType]]; ok {
-					if value > STATS_NA && value >= at.ThresholdValue {
-						at.Execute(nil, sq.Triggered(at))
+				if value, ok := values[METRIC_TRIGGER_MAP[at.ThresholdType]]; ok {
+					if value.Cmp(STATS_NA) > 0 && value.Cmp(at.ThresholdValue) >= 0 {
+						if err := at.Execute(nil, sq.triggered(at)); err != nil {
+							utils.Logger.Error("<cdr_stats> error executing trigger: ", zap.Error(err))
+						}
+						executed = true
 					}
 				}
 			}
 		}
+		if executed {
+			sq.save()
+		}
 	}
 }
 
-func (sq *StatsQueue) addToMetrics(cdr *QCdr) {
+func (sq *StatsQueue) getTriggerLastExecution(triggerID *string) time.Time {
+	if trRec, found := sq.TriggerRecords[*triggerID]; found {
+		return trRec.LastExecutionTime
+	}
+	return time.Time{}
+}
+
+func (sq *StatsQueue) addToMetrics(cdr *QCDR) {
 	//log.Print("AddToMetrics: " + utils.ToIJSON(cdr))
 	for _, metric := range sq.metrics {
-		metric.AddCdr(cdr)
+		metric.AddCDR(cdr)
 	}
 }
 
-func (sq *StatsQueue) removeFromMetrics(cdr *QCdr) {
+func (sq *StatsQueue) removeFromMetrics(cdr *QCDR) {
 	for _, metric := range sq.metrics {
-		metric.RemoveCdr(cdr)
+		//log.Printf("Remove: %s, %+v", k, cdr)
+		metric.RemoveCDR(cdr)
 	}
 }
 
-func (sq *StatsQueue) simplifyCdr(cdr *CDR) *QCdr {
-	return &QCdr{
-		SetupTime:  cdr.SetupTime,
-		AnswerTime: cdr.AnswerTime,
-		Pdd:        cdr.PDD,
-		Usage:      cdr.Usage,
-		Cost:       cdr.Cost,
-		Dest:       cdr.Destination,
+func (sq *StatsQueue) simplifyCdr(cdr *CDR) *QCDR {
+	return &QCDR{
+		Tenant:      sq.Tenant,
+		Name:        sq.Name,
+		UniqueID:    cdr.UniqueID,
+		RunID:       cdr.RunID,
+		SetupTime:   cdr.SetupTime,
+		AnswerTime:  cdr.AnswerTime,
+		Pdd:         cdr.PDD,
+		Usage:       cdr.Usage,
+		Cost:        cdr.GetCost(),
+		Destination: cdr.Destination,
 	}
 }
 
 func (sq *StatsQueue) purgeObsoleteCdrs() {
+	if time.Since(sq.lastPurgeCheck) < purgeCheckInterval {
+		return
+	}
+	sq.lastPurgeCheck = time.Now()
 	if sq.conf.QueueLength > 0 {
-		currentLength := len(sq.Cdrs)
-		if currentLength > sq.conf.QueueLength {
-			for _, cdr := range sq.Cdrs[:currentLength-sq.conf.QueueLength] {
-				sq.removeFromMetrics(cdr)
+		extraItems := sq.itemsCount - sq.conf.QueueLength
+		if extraItems > 0 {
+			qcdrs, err := sq.accountingDB.PopQCDR(sq.Tenant, sq.Name, nil, extraItems)
+			if err != nil {
+				utils.Logger.Error("error poping qcdrs: ", zap.Error(err))
+				return
 			}
-			sq.Cdrs = sq.Cdrs[currentLength-sq.conf.QueueLength:]
+			sq.itemsCount -= len(qcdrs)
+			for _, qcdr := range qcdrs {
+				sq.removeFromMetrics(qcdr)
+			}
 		}
 	}
 	if sq.conf.TimeWindow > 0 {
-		index := -1
-		for i, cdr := range sq.Cdrs {
-			if time.Now().Sub(cdr.EventTime) > sq.conf.TimeWindow {
-				sq.removeFromMetrics(cdr)
-				index = i
-				continue
-			}
-			break
+		obsoleteMarkerTime := time.Now().Add(-sq.conf.TimeWindow)
+		qcdrs, err := sq.accountingDB.PopQCDR(sq.Tenant, sq.Name, map[string]interface{}{"event_time": bson.M{"$lte": obsoleteMarkerTime}}, -1)
+		if err == utils.ErrNotFound {
+			return
 		}
-		if index > -1 {
-			if index < len(sq.Cdrs)-1 {
-				sq.Cdrs = sq.Cdrs[index+1:]
-			} else {
-				sq.Cdrs = make([]*QCdr, 0)
-			}
+		if err != nil {
+			utils.Logger.Error("error poping qcdrs: ", zap.Error(err))
+			return
+		}
+		sq.itemsCount -= len(qcdrs)
+		for _, qcdr := range qcdrs {
+			sq.removeFromMetrics(qcdr)
 		}
 	}
 }
 
-func (sq *StatsQueue) GetStats() map[string]float64 {
+func (sq *StatsQueue) getMetricValues() map[string]*dec.Dec {
 	sq.mux.Lock()
 	defer sq.mux.Unlock()
 	sq.purgeObsoleteCdrs()
-	return sq.getStats()
+	return sq.metricValues()
 }
 
-func (sq *StatsQueue) getStats() map[string]float64 {
-	stat := make(map[string]float64, len(sq.metrics))
+func (sq *StatsQueue) length() int {
+	return sq.itemsCount
+	/*length, err := sq.accountingDB.Count(ColQcr, map[string]interface{}{"tenant": sq.Tenant, "name": sq.Name})
+	if err != nil {
+		length = 0
+		utils.Logger.Error("error getting qcdr count: ", zap.Error(err))
+	}
+	return length*/
+}
+
+func (sq *StatsQueue) resetQCDRs() error {
+	return sq.accountingDB.RemoveQCDRs(sq.Tenant, sq.Name)
+}
+func (sq *StatsQueue) resetMetrics() {
+	sq.metrics = make(map[string]Metric, len(sq.conf.Metrics))
+	for _, m := range sq.conf.Metrics {
+		if metric := CreateMetric(m); metric != nil {
+			sq.metrics[m] = metric
+		}
+	}
+}
+
+func (sq *StatsQueue) getLastSetupTime() time.Time {
+	return sq.lastSetupTime
+}
+
+func (sq *StatsQueue) metricValues() map[string]*dec.Dec {
+	stat := make(map[string]*dec.Dec, len(sq.metrics))
 	for key, metric := range sq.metrics {
 		stat[key] = metric.GetValue()
 	}
 	return stat
 }
 
-func (sq *StatsQueue) GetId() string {
-	return sq.conf.Id
-}
-
 // Convert data into a struct which can be used in actions based on triggers hit
-func (sq *StatsQueue) Triggered(at *ActionTrigger) *StatsQueueTriggered {
-	return &StatsQueueTriggered{Id: sq.conf.Id, Metrics: sq.getStats(), Trigger: at}
+func (sq *StatsQueue) triggered(at *ActionTrigger) *StatsQueueTriggered {
+	return &StatsQueueTriggered{
+		Tenant:         sq.Tenant,
+		Name:           sq.Name,
+		Metrics:        sq.metricValues(),
+		Trigger:        at,
+		TriggerRecords: sq.TriggerRecords,
+	}
 }
 
 // Struct to be passed to triggered actions
 type StatsQueueTriggered struct {
-	Id      string // StatsQueueId
-	Metrics map[string]float64
-	Trigger *ActionTrigger
+	Tenant         string
+	Name           string // StatsQueueId
+	Metrics        map[string]*dec.Dec
+	Trigger        *ActionTrigger
+	TriggerRecords map[string]*ActionTriggerRecord
 }

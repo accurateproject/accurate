@@ -1,4 +1,3 @@
-
 package utils
 
 import (
@@ -44,90 +43,6 @@ func TestDateseriesWeekDayStoreRestoreJson(t *testing.T) {
 	json.Unmarshal(r, &o)
 	if !reflect.DeepEqual(o, wd) {
 		t.Errorf("Expected %v was  %v", wd, o)
-	}
-}
-
-func TestDateseriesYearsSerialize(t *testing.T) {
-	ys := &Years{}
-	yString := ys.Serialize(";")
-	expectString := "*any"
-	if expectString != yString {
-		t.Errorf("Expected: %s, got: %s", expectString, yString)
-	}
-	ys2 := &Years{2012}
-	yString2 := ys2.Serialize(";")
-	expectString2 := "2012"
-	if expectString2 != yString2 {
-		t.Errorf("Expected: %s, got: %s", expectString2, yString2)
-	}
-	ys3 := &Years{2013, 2014, 2015}
-	yString3 := ys3.Serialize(";")
-	expectString3 := "2013;2014;2015"
-	if expectString3 != yString3 {
-		t.Errorf("Expected: %s, got: %s", expectString3, yString3)
-	}
-}
-
-func TestDateseriesMonthsSerialize(t *testing.T) {
-	mths := &Months{}
-	mString := mths.Serialize(";")
-	expectString := "*any"
-	if expectString != mString {
-		t.Errorf("Expected: %s, got: %s", expectString, mString)
-	}
-	mths2 := &Months{time.January}
-	mString2 := mths2.Serialize(";")
-	expectString2 := "1"
-	if expectString2 != mString2 {
-		t.Errorf("Expected: %s, got: %s", expectString2, mString2)
-	}
-	mths3 := &Months{time.January, time.December}
-	mString3 := mths3.Serialize(";")
-	expectString3 := "1;12"
-	if expectString3 != mString3 {
-		t.Errorf("Expected: %s, got: %s", expectString3, mString3)
-	}
-}
-
-func TestDateseriesMonthDaysSerialize(t *testing.T) {
-	mds := &MonthDays{}
-	mdsString := mds.Serialize(";")
-	expectString := "*any"
-	if expectString != mdsString {
-		t.Errorf("Expected: %s, got: %s", expectString, mdsString)
-	}
-	mds2 := &MonthDays{1}
-	mdsString2 := mds2.Serialize(";")
-	expectString2 := "1"
-	if expectString2 != mdsString2 {
-		t.Errorf("Expected: %s, got: %s", expectString2, mdsString2)
-	}
-	mds3 := &MonthDays{1, 2, 3, 4, 5}
-	mdsString3 := mds3.Serialize(";")
-	expectString3 := "1;2;3;4;5"
-	if expectString3 != mdsString3 {
-		t.Errorf("Expected: %s, got: %s", expectString3, mdsString3)
-	}
-}
-
-func TestDateseriesWeekDaysSerialize(t *testing.T) {
-	wds := &WeekDays{}
-	wdsString := wds.Serialize(";")
-	expectString := "*any"
-	if expectString != wdsString {
-		t.Errorf("Expected: %s, got: %s", expectString, wdsString)
-	}
-	wds2 := &WeekDays{time.Monday}
-	wdsString2 := wds2.Serialize(";")
-	expectString2 := "1"
-	if expectString2 != wdsString2 {
-		t.Errorf("Expected: %s, got: %s", expectString2, wdsString2)
-	}
-	wds3 := &WeekDays{time.Monday, time.Saturday, time.Sunday}
-	wdsString3 := wds3.Serialize(";")
-	expectString3 := "1;6;0"
-	if expectString3 != wdsString3 {
-		t.Errorf("Expected: %s, got: %s", expectString3, wdsString3)
 	}
 }
 

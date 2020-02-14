@@ -5,7 +5,7 @@ import "github.com/accurateproject/accurate/utils"
 func init() {
 	c := &CmdRemCdrs{
 		name:      "cdrs_rem",
-		rpcMethod: "ApierV1.RemCdrs",
+		rpcMethod: "ApiV1.RemCdrs",
 	}
 	commands[c.Name()] = c
 	c.CommandExecuter = &CommandExecuter{c}

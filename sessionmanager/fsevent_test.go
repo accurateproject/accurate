@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/dec"
 	"github.com/accurateproject/accurate/engine"
 	"github.com/accurateproject/accurate/utils"
 )
@@ -400,8 +401,7 @@ Task-ID: 2
 Task-Desc: heartbeat
 Task-Group: core
 Task-Runtime: 1349437318`
-	cfg, _ := config.NewDefaultCGRConfig()
-	config.SetCgrConfig(cfg)
+	config.Reset()
 	ev := new(FSEvent).AsEvent(body)
 	setupTime, _ := ev.GetSetupTime("Event-Date-Local", "")
 	answerTime, _ := ev.GetAnswerTime("Event-Date-Local", "")
@@ -458,15 +458,14 @@ Task-Runtime: 1349437318`
 }
 
 func TestParseFsHangup(t *testing.T) {
-	cfg, _ := config.NewDefaultCGRConfig()
-	config.SetCgrConfig(cfg)
+	config.Reset()
 	ev := new(FSEvent).AsEvent(hangupEv)
 	setupTime, _ := ev.GetSetupTime(utils.META_DEFAULT, "")
 	answerTime, _ := ev.GetAnswerTime(utils.META_DEFAULT, "")
 	dur, _ := ev.GetDuration(utils.META_DEFAULT)
 	if ev.GetReqType(utils.META_DEFAULT) != utils.META_PREPAID ||
 		ev.GetDirection(utils.META_DEFAULT) != "*out" ||
-		ev.GetTenant(utils.META_DEFAULT) != "cgrates.org" ||
+		ev.GetTenant(utils.META_DEFAULT) != "accurate" ||
 		ev.GetCategory(utils.META_DEFAULT) != "call" ||
 		ev.GetAccount(utils.META_DEFAULT) != "1001" ||
 		ev.GetSubject(utils.META_DEFAULT) != "1001" ||
@@ -479,7 +478,7 @@ func TestParseFsHangup(t *testing.T) {
 		t.Error("Default values not matching",
 			ev.GetReqType(utils.META_DEFAULT) != utils.META_PREPAID,
 			ev.GetDirection(utils.META_DEFAULT) != "*out",
-			ev.GetTenant(utils.META_DEFAULT) != "cgrates.org",
+			ev.GetTenant(utils.META_DEFAULT) != "accurate",
 			ev.GetCategory(utils.META_DEFAULT) != "call",
 			ev.GetAccount(utils.META_DEFAULT) != "1001",
 			ev.GetSubject(utils.META_DEFAULT) != "1001",
@@ -493,11 +492,10 @@ func TestParseFsHangup(t *testing.T) {
 }
 
 func TestParseEventValue(t *testing.T) {
-	cfg, _ := config.NewDefaultCGRConfig()
-	config.SetCgrConfig(cfg)
+	config.Reset()
 	ev := new(FSEvent).AsEvent(hangupEv)
-	if cgrid := ev.ParseEventValue(&utils.RSRField{Id: utils.CGRID}, ""); cgrid != "164b0422fdc6a5117031b427439482c6a4f90e41" {
-		t.Error("Unexpected cgrid parsed", cgrid)
+	if uniqueid := ev.ParseEventValue(&utils.RSRField{Id: utils.UniqueID}, ""); uniqueid != "164b0422fdc6a5117031b427439482c6a4f90e41" {
+		t.Error("Unexpected uniqueid parsed", uniqueid)
 	}
 	if tor := ev.ParseEventValue(&utils.RSRField{Id: utils.TOR}, ""); tor != utils.VOICE {
 		t.Error("Unexpected tor parsed", tor)
@@ -517,7 +515,7 @@ func TestParseEventValue(t *testing.T) {
 	if parsed := ev.ParseEventValue(&utils.RSRField{Id: utils.DIRECTION}, ""); parsed != utils.OUT {
 		t.Error("Unexpected result parsed", parsed)
 	}
-	if parsed := ev.ParseEventValue(&utils.RSRField{Id: utils.TENANT}, ""); parsed != "cgrates.org" {
+	if parsed := ev.ParseEventValue(&utils.RSRField{Id: utils.TENANT}, ""); parsed != "accurate" {
 		t.Error("Unexpected result parsed", parsed)
 	}
 	if parsed := ev.ParseEventValue(&utils.RSRField{Id: utils.CATEGORY}, ""); parsed != "call" {
@@ -612,26 +610,25 @@ Caller-Username: 04021292812`
 */
 
 func TestFsEvAsStoredCdr(t *testing.T) {
-	cfg, _ := config.NewDefaultCGRConfig()
-	config.SetCgrConfig(cfg)
+	config.Reset()
 	ev := new(FSEvent).AsEvent(hangupEv)
 	setupTime, _ := utils.ParseTimeDetectLayout("1436280728", "")
 	aTime, _ := utils.ParseTimeDetectLayout("1436280728", "")
-	eStoredCdr := &engine.CDR{CGRID: "164b0422fdc6a5117031b427439482c6a4f90e41",
+	eStoredCdr := &engine.CDR{UniqueID: "164b0422fdc6a5117031b427439482c6a4f90e41",
 		ToR: utils.VOICE, OriginID: "e3133bf7-dcde-4daf-9663-9a79ffcef5ad", OriginHost: "10.0.3.15", Source: "FS_CHANNEL_HANGUP_COMPLETE", RequestType: utils.META_PREPAID,
-		Direction: utils.OUT, Tenant: "cgrates.org", Category: "call", Account: "1001", Subject: "1001",
+		Direction: utils.OUT, Tenant: "accurate", Category: "call", Account: "1001", Subject: "1001",
 		Destination: "1003", SetupTime: setupTime, AnswerTime: aTime,
 		Usage: time.Duration(66) * time.Second, PDD: time.Duration(28) * time.Millisecond, Supplier: "supplier1",
-		DisconnectCause: "NORMAL_CLEARING", ExtraFields: make(map[string]string), Cost: -1}
+		DisconnectCause: "NORMAL_CLEARING", ExtraFields: make(map[string]string), Cost: dec.NewVal(-1, 0)}
 	if storedCdr := ev.AsStoredCdr(""); !reflect.DeepEqual(eStoredCdr, storedCdr) {
 		t.Errorf("Expecting: %+v, received: %+v", eStoredCdr, storedCdr)
 	}
 }
 
 func TestFsEvGetExtraFields(t *testing.T) {
-	cfg, _ := config.NewDefaultCGRConfig()
-	cfg.SmFsConfig.ExtraFields = []*utils.RSRField{&utils.RSRField{Id: "Channel-Read-Codec-Name"}, &utils.RSRField{Id: "Channel-Write-Codec-Name"}, &utils.RSRField{Id: "NonExistingHeader"}}
-	config.SetCgrConfig(cfg)
+	config.Reset()
+	cfg := config.Get()
+	cfg.SmFreeswitch.ExtraFields = []*utils.RSRField{&utils.RSRField{Id: "Channel-Read-Codec-Name"}, &utils.RSRField{Id: "Channel-Write-Codec-Name"}, &utils.RSRField{Id: "NonExistingHeader"}}
 	ev := new(FSEvent).AsEvent(hangupEv)
 	expectedExtraFields := map[string]string{"Channel-Read-Codec-Name": "SPEEX", "Channel-Write-Codec-Name": "SPEEX", "NonExistingHeader": ""}
 	if extraFields := ev.GetExtraFields(); !reflect.DeepEqual(expectedExtraFields, extraFields) {

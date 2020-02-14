@@ -8,6 +8,7 @@ import (
 
 	"github.com/accurateproject/accurate/engine"
 	"github.com/accurateproject/accurate/utils"
+	"go.uber.org/zap"
 )
 
 type Scheduler struct {
@@ -93,20 +94,16 @@ func (s *Scheduler) loadActionPlans() {
 		}()
 	}
 
-	actionPlans, err := s.storage.GetAllActionPlans()
-	if err != nil && err != utils.ErrNotFound {
-		utils.Logger.Warning(fmt.Sprintf("<Scheduler> Cannot get action plans: %v", err))
-	}
-	utils.Logger.Info(fmt.Sprintf("<Scheduler> processing %d action plans", len(actionPlans)))
+	aplIter := s.storage.Iterator(engine.ColApl, "", nil)
+
 	// recreate the queue
 	s.queue = engine.ActionTimingPriorityList{}
-	for _, actionPlan := range actionPlans {
-		if actionPlan == nil {
-			continue
-		}
+	var actionPlan engine.ActionPlan
+	for aplIter.Next(&actionPlan) {
+		actionPlan.SetParentActionPlan()
 		for _, at := range actionPlan.ActionTimings {
 			if at.Timing == nil {
-				utils.Logger.Warning(fmt.Sprintf("<Scheduler> Nil timing on action plan: %+v, discarding!", at))
+				utils.Logger.Warn("<Scheduler> Nil timing on action plan, discarding!", zap.Any("AT", at))
 				continue
 			}
 			if at.IsASAP() {
@@ -117,11 +114,12 @@ func (s *Scheduler) loadActionPlans() {
 				// the task is obsolete, do not add it to the queue
 				continue
 			}
-			at.SetAccountIDs(actionPlan.AccountIDs) // copy the accounts
-			at.SetActionPlanID(actionPlan.Id)
 			s.queue = append(s.queue, at)
 
 		}
+	}
+	if err := aplIter.Close(); err != nil {
+		utils.Logger.Warn("<Scheduler> Cannot get action plans", zap.Error(err))
 	}
 	sort.Sort(s.queue)
 	utils.Logger.Info(fmt.Sprintf("<Scheduler> queued %d action plans", len(s.queue)))

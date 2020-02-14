@@ -2,9 +2,9 @@
 
 1. Overview
 ===========
-Starting as a pure **billing engine**, CGRateS has evolved over the years into a reliable **real-time charging framework** able to accommodate various business cases in a *generic way*.
+Starting as a pure **billing engine**, AccuRate has evolved over the years into a reliable **real-time charging framework** able to accommodate various business cases in a *generic way*.
 Meant to be pluggable into existing billing infrastructure and as non-intrusive as possible,
-CGRateS passes the decisions about logic flow to system administrators and incorporates as less as possible business logic.
+AccuRate passes the decisions about logic flow to system administrators and incorporates as less as possible business logic.
 
 Being an *"engine style"* the project focuses on providing best ratio between **functionality** (
 over 15 daemons/services implemented,
@@ -26,14 +26,14 @@ built-in balancer
 )
 however not loosing focus of **quality** (over 1300 tests part of the build environment).
 
-Modular and flexible, CGRateS provides APIs over a variety of simultaneously accessible communication interfaces:
+Modular and flexible, AccuRate provides APIs over a variety of simultaneously accessible communication interfaces:
  - **In-process**           : optimal when there is no need to split services over different processes.
  - **JSON over TCP**        : most preferred due to its simplicity and readability.
  - **JSON over HTTP**       : popular due to fast interoperability development.
  - **JSON over Websockets** : useful where 2 ways interaction over same TCP socket is required.
  - **GOB over TCP**         : slightly faster than JSON one but only accessible for the moment out of Go (`<https://golang.org/>`_).
 
-CGRateS is capable of four charging modes
+AccuRate is capable of four charging modes
 
 - \*prepaid
    - Session events monitored in real-time
@@ -58,7 +58,7 @@ CGRateS is capable of four charging modes
    - Specific mode for Wholesale business processing high-throughput CDRs.
    - Least CPU usage out of the four modes (fastest charging)
 
-2. CGRateS Subsystems
+2. AccuRate Subsystems
 =====================
 
 
@@ -202,13 +202,13 @@ CGRateS is capable of four charging modes
 - Linux inotify support for instant file processing or delayed folder monitoring
 
 
-3. CGRateS Peripherals
+3. AccuRate Peripherals
 ======================
 Packaged together due to common usage
 
 3.1. cgr-engine
 ---------------
-- Configured via .json files, encorporating CGRateS subsystems mentioned above
+- Configured via .json files, encorporating AccuRate subsystems mentioned above
 - Can start as many / less services as needed communicating over internal or external sockets
 - Multiple cgr-engine processes can be started on the same host
 - Asynchronous service runs (services synchronize later inside process via specific communication channels, however they all run independent of each other).
@@ -222,7 +222,7 @@ Packaged together due to common usage
 
 3.3. cgr-loader
 ---------------
-- Loads TariffPlan data out of .csv files into CGRateS live database or imports it into offline one for offline management
+- Loads TariffPlan data out of .csv files into AccuRate live database or imports it into offline one for offline management
 - Automatic cache reloads with optimizations for data loaded
 
 3.4. cgr-tester
@@ -231,12 +231,12 @@ Packaged together due to common usage
 
 3.5. cgr-admin (`<https://github.com/accurateproject/cgradmin>`_)
 ----------------------------------------------------
-- PoC web interface demonstrating recommended way to interact with CGRateS from an external GUI.
+- PoC web interface demonstrating recommended way to interact with AccuRate from an external GUI.
 
-4. Fraud detection within CGRateS
+4. Fraud detection within AccuRate
 =================================
-- Due to its importance in billing, CGRateS has invested considerable efforts into fraud detection and automatic mitigation.
-- For redundancy and reliability purposes, there are two mechanisms available within CGRateS to detect fraud.
+- Due to its importance in billing, AccuRate has invested considerable efforts into fraud detection and automatic mitigation.
+- For redundancy and reliability purposes, there are two mechanisms available within AccuRate to detect fraud.
 
 4.1. Fraud detection within Accounting:
 ---------------------------------------

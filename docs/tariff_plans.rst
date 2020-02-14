@@ -1,7 +1,7 @@
 4.2. Tariff Plans
 =================
-Major concept within CGRateS architecture, implement mechanisms to load rating as well as account data into CGRateS. 
-For importing the data into CGRateS database(s) we are using **csv** *files*. 
+Major concept within AccuRate architecture, implement mechanisms to load rating as well as account data into AccuRate. 
+For importing the data into AccuRate database(s) we are using **csv** *files*. 
 The import process can be started as many times it is desired with one ore more csv files
 and the existing values are overwritten.
 
@@ -185,7 +185,7 @@ described once and various combinations are made possible.
 4.2.6. Rating profiles
 ~~~~~~~~~~~~~~~~~~~~~~
 The *rating profile* **describes** the prices to be applied for various calls to
-various destinations in various time frames. When a call is made the CGRateS
+various destinations in various time frames. When a call is made the AccuRate
 system will locate the rates to be applied to the call using the rating profiles.
 
 ::

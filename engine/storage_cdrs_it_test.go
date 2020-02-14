@@ -1,3 +1,5 @@
+// +build integration
+
 package engine
 
 import (
@@ -16,13 +18,12 @@ import (
 var testIntegration = flag.Bool("integration", false, "Perform the tests in integration mode, not by default.") // This flag will be passed here via "go test -local" args
 
 func TestITCDRsMySQL(t *testing.T) {
-	if !*testIntegration {
-		return
-	}
-	cfg, err := config.NewCGRConfigFromFolder(path.Join(*dataDir, "conf", "samples", "storage", "mysql"))
+	config.Reset()
+	err := config.LoadPath(path.Join(*dataDir, "conf", "samples", "storage", "mysql"))
 	if err != nil {
 		t.Error(err)
 	}
+	cfg := config.Get()
 	if err := testGetCDRs(cfg); err != nil {
 		t.Error(err)
 	}
@@ -35,13 +36,12 @@ func TestITCDRsMySQL(t *testing.T) {
 }
 
 func TestITCDRsPSQL(t *testing.T) {
-	if !*testIntegration {
-		return
-	}
-	cfg, err := config.NewCGRConfigFromFolder(path.Join(*dataDir, "conf", "samples", "storage", "postgres"))
+	config.Reset()
+	err := config.LoadPath(path.Join(*dataDir, "conf", "samples", "storage", "postgres"))
 	if err != nil {
 		t.Error(err)
 	}
+	cfg := config.Get()
 	if err := testGetCDRs(cfg); err != nil {
 		t.Error(err)
 	}
@@ -54,13 +54,12 @@ func TestITCDRsPSQL(t *testing.T) {
 }
 
 func TestITCDRsMongo(t *testing.T) {
-	if !*testIntegration {
-		return
-	}
-	cfg, err := config.NewCGRConfigFromFolder(path.Join(*dataDir, "conf", "samples", "storage", "mongo"))
+	config.Reset()
+	err := config.LoadPath(path.Join(*dataDir, "conf", "samples", "storage", "mongo"))
 	if err != nil {
 		t.Error(err)
 	}
+	cfg := config.Get()
 	if err := testGetCDRs(cfg); err != nil {
 		t.Error(err)
 	}
@@ -73,17 +72,17 @@ func TestITCDRsMongo(t *testing.T) {
 }
 
 // helper function to populate CDRs and check if they were stored in storDb
-func testSetCDR(cfg *config.CGRConfig) error {
+func testSetCDR(cfg *config.Config) error {
 	if err := InitStorDb(cfg); err != nil {
 		return err
 	}
-	cdrStorage, err := ConfigureCdrStorage(cfg.StorDBType, cfg.StorDBHost, cfg.StorDBPort, cfg.StorDBName, cfg.StorDBUser, cfg.StorDBPass,
-		cfg.StorDBMaxOpenConns, cfg.StorDBMaxIdleConns, cfg.StorDBCDRSIndexes)
+	cdrStorage, err := ConfigureCdrStorage(*cfg.StorDb.Type, *cfg.StorDb.Host, *cfg.StorDb.Port, *cfg.StorDb.Name, *cfg.StorDb.User, *cfg.StorDb.Password,
+		*cfg.StorDb.MaxOpenConns, *cfg.StorDb.MaxIdleConns, cfg.StorDb.CdrsIndexes)
 	if err != nil {
 		return err
 	}
 	rawCDR := &CDR{
-		CGRID:           utils.Sha1("testevent1", time.Date(2015, 12, 12, 14, 52, 0, 0, time.UTC).String()),
+		UniqueID:        utils.Sha1("testevent1", time.Date(2015, 12, 12, 14, 52, 0, 0, time.UTC).String()),
 		RunID:           utils.MetaRaw,
 		OrderID:         time.Now().UnixNano(),
 		OriginHost:      "127.0.0.1",
@@ -109,13 +108,13 @@ func testSetCDR(cfg *config.CGRConfig) error {
 	if err := cdrStorage.SetCDR(rawCDR, false); err != nil {
 		return fmt.Errorf("rawCDR: %+v, SetCDR err: %s", rawCDR, err.Error())
 	}
-	if cdrs, _, err := cdrStorage.GetCDRs(&utils.CDRsFilter{CGRIDs: []string{rawCDR.CGRID}, RunIDs: []string{utils.MetaRaw}}, false); err != nil {
+	if cdrs, _, err := cdrStorage.GetCDRs(&utils.CDRsFilter{UniqueIDs: []string{rawCDR.UniqueID}, RunIDs: []string{utils.MetaRaw}}, false); err != nil {
 		return fmt.Errorf("rawCDR: %+v, GetCDRs err: %s", rawCDR, err.Error())
 	} else if len(cdrs) != 1 {
 		return fmt.Errorf("rawCDR %+v, Unexpected number of CDRs returned: %d", rawCDR, len(cdrs))
 	}
 	ratedCDR := &CDR{
-		CGRID:           utils.Sha1("testevent1", time.Date(2015, 12, 12, 14, 52, 0, 0, time.UTC).String()),
+		UniqueID:        utils.Sha1("testevent1", time.Date(2015, 12, 12, 14, 52, 0, 0, time.UTC).String()),
 		RunID:           utils.META_DEFAULT,
 		OriginHost:      "127.0.0.1",
 		Source:          "testSetCDRs",
@@ -141,7 +140,7 @@ func testSetCDR(cfg *config.CGRConfig) error {
 	if err := cdrStorage.SetCDR(ratedCDR, false); err != nil {
 		return fmt.Errorf("ratedCDR: %+v, SetCDR err: %s", ratedCDR, err.Error())
 	}
-	if cdrs, _, err := cdrStorage.GetCDRs(&utils.CDRsFilter{CGRIDs: []string{ratedCDR.CGRID}, RunIDs: []string{ratedCDR.RunID}}, false); err != nil {
+	if cdrs, _, err := cdrStorage.GetCDRs(&utils.CDRsFilter{UniqueIDs: []string{ratedCDR.UniqueID}, RunIDs: []string{ratedCDR.RunID}}, false); err != nil {
 		return fmt.Errorf("ratedCDR: %+v, GetCDRs err: %s", ratedCDR, err.Error())
 	} else if len(cdrs) != 1 {
 		return fmt.Errorf("ratedCDR %+v, Unexpected number of CDRs returned: %d", ratedCDR, len(cdrs))
@@ -165,7 +164,7 @@ func testSetCDR(cfg *config.CGRConfig) error {
 	if err := cdrStorage.SetCDR(ratedCDR, true); err != nil {
 		return fmt.Errorf("Rerating ratedCDR: %+v, SetCDR err: %s", ratedCDR, err.Error())
 	}
-	if cdrs, _, err := cdrStorage.GetCDRs(&utils.CDRsFilter{CGRIDs: []string{ratedCDR.CGRID}, RunIDs: []string{ratedCDR.RunID}}, false); err != nil {
+	if cdrs, _, err := cdrStorage.GetCDRs(&utils.CDRsFilter{UniqueIDs: []string{ratedCDR.UniqueID}, RunIDs: []string{ratedCDR.RunID}}, false); err != nil {
 		return fmt.Errorf("Rerating ratedCDR: %+v, GetCDRs err: %s", ratedCDR, err.Error())
 	} else if len(cdrs) != 1 {
 		return fmt.Errorf("Rerating ratedCDR %+v, Unexpected number of CDRs returned: %d", ratedCDR, len(cdrs))
@@ -183,12 +182,12 @@ func testSetCDR(cfg *config.CGRConfig) error {
 	return nil
 }
 
-func testSMCosts(cfg *config.CGRConfig) error {
+func testSMCosts(cfg *config.Config) error {
 	if err := InitStorDb(cfg); err != nil {
 		return err
 	}
-	cdrStorage, err := ConfigureCdrStorage(cfg.StorDBType, cfg.StorDBHost, cfg.StorDBPort, cfg.StorDBName, cfg.StorDBUser, cfg.StorDBPass,
-		cfg.StorDBMaxOpenConns, cfg.StorDBMaxIdleConns, cfg.StorDBCDRSIndexes)
+	cdrStorage, err := ConfigureCdrStorage(*cfg.StorDb.Type, *cfg.StorDb.Host, *cfg.StorDb.Port, *cfg.StorDb.Name, *cfg.StorDb.User, *cfg.StorDb.Password,
+		*cfg.StorDb.MaxOpenConns, *cfg.StorDb.MaxIdleConns, cfg.StorDb.CdrsIndexes)
 	if err != nil {
 		return err
 	}
@@ -205,7 +204,7 @@ func testSMCosts(cfg *config.CGRConfig) error {
 		},
 		TOR: utils.VOICE,
 	}
-	if err := cdrStorage.SetSMCost(&SMCost{CGRID: "164b0422fdc6a5117031b427439482c6a4f90e41", RunID: utils.META_DEFAULT, OriginHost: "localhost", OriginID: "12345",
+	if err := cdrStorage.SetSMCost(&SMCost{UniqueID: "164b0422fdc6a5117031b427439482c6a4f90e41", RunID: utils.META_DEFAULT, OriginHost: "localhost", OriginID: "12345",
 		CostSource: utils.UNIT_TEST, CostDetails: cc}); err != nil {
 		return err
 	}
@@ -218,7 +217,7 @@ func testSMCosts(cfg *config.CGRConfig) error {
 	}
 	// Test query per prefix
 	for i := 0; i < 3; i++ {
-		if err := cdrStorage.SetSMCost(&SMCost{CGRID: "164b0422fdc6a5117031b427439482c6a4f90e5" + strconv.Itoa(i), RunID: utils.META_DEFAULT, OriginHost: "localhost", OriginID: "abc" + strconv.Itoa(i),
+		if err := cdrStorage.SetSMCost(&SMCost{UniqueID: "164b0422fdc6a5117031b427439482c6a4f90e5" + strconv.Itoa(i), RunID: utils.META_DEFAULT, OriginHost: "localhost", OriginID: "abc" + strconv.Itoa(i),
 			CostSource: utils.UNIT_TEST, CostDetails: cc}); err != nil {
 			return err
 		}
@@ -231,12 +230,12 @@ func testSMCosts(cfg *config.CGRConfig) error {
 	return nil
 }
 
-func testGetCDRs(cfg *config.CGRConfig) error {
+func testGetCDRs(cfg *config.Config) error {
 	if err := InitStorDb(cfg); err != nil {
 		return err
 	}
-	cdrStorage, err := ConfigureCdrStorage(cfg.StorDBType, cfg.StorDBHost, cfg.StorDBPort, cfg.StorDBName, cfg.StorDBUser, cfg.StorDBPass,
-		cfg.StorDBMaxOpenConns, cfg.StorDBMaxIdleConns, cfg.StorDBCDRSIndexes)
+	cdrStorage, err := ConfigureCdrStorage(*cfg.StorDb.Type, *cfg.StorDb.Host, *cfg.StorDb.Port, *cfg.StorDb.Name, *cfg.StorDb.User, *cfg.StorDb.Password,
+		*cfg.StorDb.MaxOpenConns, *cfg.StorDb.MaxIdleConns, cfg.StorDb.CdrsIndexes)
 	if err != nil {
 		return err
 	}
@@ -248,7 +247,7 @@ func testGetCDRs(cfg *config.CGRConfig) error {
 	}
 	cdrs := []*CDR{
 		&CDR{
-			CGRID:           utils.Sha1("testevent1", time.Date(2015, 12, 12, 14, 52, 0, 0, time.UTC).String()),
+			UniqueID:        utils.Sha1("testevent1", time.Date(2015, 12, 12, 14, 52, 0, 0, time.UTC).String()),
 			RunID:           utils.MetaRaw,
 			OriginHost:      "127.0.0.1",
 			Source:          "testGetCDRs",
@@ -272,7 +271,7 @@ func testGetCDRs(cfg *config.CGRConfig) error {
 			Cost:            -1,
 		},
 		&CDR{
-			CGRID:           utils.Sha1("testevent1", time.Date(2015, 12, 12, 14, 52, 0, 0, time.UTC).String()),
+			UniqueID:        utils.Sha1("testevent1", time.Date(2015, 12, 12, 14, 52, 0, 0, time.UTC).String()),
 			RunID:           utils.META_DEFAULT,
 			OriginHost:      "127.0.0.1",
 			Source:          "testGetCDRs",
@@ -296,7 +295,7 @@ func testGetCDRs(cfg *config.CGRConfig) error {
 			Cost:            0.17,
 		},
 		&CDR{
-			CGRID:           utils.Sha1("testevent1", time.Date(2015, 12, 12, 14, 52, 0, 0, time.UTC).String()),
+			UniqueID:        utils.Sha1("testevent1", time.Date(2015, 12, 12, 14, 52, 0, 0, time.UTC).String()),
 			RunID:           "run2",
 			OriginHost:      "127.0.0.1",
 			Source:          "testGetCDRs",
@@ -320,7 +319,7 @@ func testGetCDRs(cfg *config.CGRConfig) error {
 			Cost:            0.17,
 		},
 		&CDR{
-			CGRID:           utils.Sha1("testevent2", time.Date(2015, 12, 29, 12, 58, 0, 0, time.UTC).String()),
+			UniqueID:        utils.Sha1("testevent2", time.Date(2015, 12, 29, 12, 58, 0, 0, time.UTC).String()),
 			RunID:           utils.META_DEFAULT,
 			OriginHost:      "192.168.1.12",
 			Source:          "testGetCDRs",
@@ -344,7 +343,7 @@ func testGetCDRs(cfg *config.CGRConfig) error {
 			Cost:            0,
 		},
 		&CDR{
-			CGRID:           utils.Sha1("testevent3", time.Date(2015, 12, 28, 12, 58, 0, 0, time.UTC).String()),
+			UniqueID:        utils.Sha1("testevent3", time.Date(2015, 12, 28, 12, 58, 0, 0, time.UTC).String()),
 			RunID:           utils.MetaRaw,
 			OriginHost:      "192.168.1.13",
 			Source:          "testGetCDRs3",
@@ -368,7 +367,7 @@ func testGetCDRs(cfg *config.CGRConfig) error {
 			Cost:            -1,
 		},
 		&CDR{
-			CGRID:           utils.Sha1("testevent3", time.Date(2015, 12, 28, 12, 58, 0, 0, time.UTC).String()),
+			UniqueID:        utils.Sha1("testevent3", time.Date(2015, 12, 28, 12, 58, 0, 0, time.UTC).String()),
 			RunID:           utils.META_DEFAULT,
 			OriginHost:      "192.168.1.13",
 			Source:          "testGetCDRs3",
@@ -393,7 +392,7 @@ func testGetCDRs(cfg *config.CGRConfig) error {
 			ExtraInfo:       "AccountNotFound",
 		},
 		&CDR{
-			CGRID:           utils.Sha1("testevent4", time.Date(2015, 12, 14, 14, 52, 0, 0, time.UTC).String()),
+			UniqueID:        utils.Sha1("testevent4", time.Date(2015, 12, 14, 14, 52, 0, 0, time.UTC).String()),
 			RunID:           utils.MetaRaw,
 			OriginHost:      "192.168.1.14",
 			Source:          "testGetCDRs",
@@ -417,7 +416,7 @@ func testGetCDRs(cfg *config.CGRConfig) error {
 			Cost:            -1,
 		},
 		&CDR{
-			CGRID:           utils.Sha1("testevent4", time.Date(2015, 12, 14, 14, 52, 0, 0, time.UTC).String()),
+			UniqueID:        utils.Sha1("testevent4", time.Date(2015, 12, 14, 14, 52, 0, 0, time.UTC).String()),
 			RunID:           utils.META_DEFAULT,
 			OriginHost:      "192.168.1.14",
 			Source:          "testGetCDRs",
@@ -441,7 +440,7 @@ func testGetCDRs(cfg *config.CGRConfig) error {
 			Cost:            1.205,
 		},
 		&CDR{
-			CGRID:           utils.Sha1("testevent5", time.Date(2015, 12, 15, 18, 22, 0, 0, time.UTC).String()),
+			UniqueID:        utils.Sha1("testevent5", time.Date(2015, 12, 15, 18, 22, 0, 0, time.UTC).String()),
 			RunID:           utils.MetaRaw,
 			OriginHost:      "127.0.0.1",
 			Source:          "testGetCDRs5",
@@ -465,7 +464,7 @@ func testGetCDRs(cfg *config.CGRConfig) error {
 			Cost:            -1,
 		},
 		&CDR{
-			CGRID:           utils.Sha1("testevent5", time.Date(2015, 12, 15, 18, 22, 0, 0, time.UTC).String()),
+			UniqueID:        utils.Sha1("testevent5", time.Date(2015, 12, 15, 18, 22, 0, 0, time.UTC).String()),
 			RunID:           utils.META_DEFAULT,
 			OriginHost:      "127.0.0.1",
 			Source:          "testGetCDRs5",
@@ -527,35 +526,35 @@ func testGetCDRs(cfg *config.CGRConfig) error {
 	} else if len(CDRs) != 2 {
 		return fmt.Errorf("Offset with limit 2, unexpected number of CDRs returned: %+v", CDRs)
 	}
-	// Filter on cgrids
-	if CDRs, _, err := cdrStorage.GetCDRs(&utils.CDRsFilter{CGRIDs: []string{
+	// Filter on uniqueids
+	if CDRs, _, err := cdrStorage.GetCDRs(&utils.CDRsFilter{UniqueIDs: []string{
 		utils.Sha1("testevent1", time.Date(2015, 12, 12, 14, 52, 0, 0, time.UTC).String()),
 		utils.Sha1("testevent3", time.Date(2015, 12, 28, 12, 58, 0, 0, time.UTC).String()),
 	}}, false); err != nil {
 		return err
 	} else if len(CDRs) != 5 {
-		return fmt.Errorf("Filter on CGRIDs, unexpected number of CDRs returned: %+v", CDRs)
+		return fmt.Errorf("Filter on UniqueIDs, unexpected number of CDRs returned: %+v", CDRs)
 	}
-	// Count on CGRIDS
-	if _, count, err := cdrStorage.GetCDRs(&utils.CDRsFilter{CGRIDs: []string{
+	// Count on UniqueIDS
+	if _, count, err := cdrStorage.GetCDRs(&utils.CDRsFilter{UniqueIDs: []string{
 		utils.Sha1("testevent1", time.Date(2015, 12, 12, 14, 52, 0, 0, time.UTC).String()),
 		utils.Sha1("testevent3", time.Date(2015, 12, 28, 12, 58, 0, 0, time.UTC).String()),
 	}, Count: true}, false); err != nil {
 		return err
 	} else if count != 5 {
-		return fmt.Errorf("Count on CGRIDs, unexpected count of CDRs returned: %d", count)
+		return fmt.Errorf("Count on UniqueIDs, unexpected count of CDRs returned: %d", count)
 	}
-	// Filter on cgrids plus reqType
-	if CDRs, _, err := cdrStorage.GetCDRs(&utils.CDRsFilter{CGRIDs: []string{
+	// Filter on uniqueids plus reqType
+	if CDRs, _, err := cdrStorage.GetCDRs(&utils.CDRsFilter{UniqueIDs: []string{
 		utils.Sha1("testevent1", time.Date(2015, 12, 12, 14, 52, 0, 0, time.UTC).String()),
 		utils.Sha1("testevent3", time.Date(2015, 12, 28, 12, 58, 0, 0, time.UTC).String()),
 	}, RequestTypes: []string{utils.META_PREPAID}}, false); err != nil {
 		return err
 	} else if len(CDRs) != 2 {
-		return fmt.Errorf("Filter on cgrids plus reqType, unexpected number of CDRs returned: %+v", CDRs)
+		return fmt.Errorf("Filter on uniqueids plus reqType, unexpected number of CDRs returned: %+v", CDRs)
 	}
 	// Count on multiple filter
-	if _, count, err := cdrStorage.GetCDRs(&utils.CDRsFilter{CGRIDs: []string{
+	if _, count, err := cdrStorage.GetCDRs(&utils.CDRsFilter{UniqueIDs: []string{
 		utils.Sha1("testevent1", time.Date(2015, 12, 12, 14, 52, 0, 0, time.UTC).String()),
 		utils.Sha1("testevent3", time.Date(2015, 12, 28, 12, 58, 0, 0, time.UTC).String()),
 	}, RequestTypes: []string{utils.META_PREPAID}, Count: true}, false); err != nil {

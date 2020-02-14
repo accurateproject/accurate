@@ -1,7 +1,7 @@
 TariffPlans
 ===========
 
-Major concept within CGRateS architecture, implement mechanisms to load rating as well as account data into CGRateS.
+Major concept within AccuRate architecture, implement mechanisms to load rating as well as account data into AccuRate.
 
 Currently TariffPlans can be loaded using 2 different approaches:
 
@@ -14,7 +14,7 @@ Due to complex data definition we have split information necessary on each load 
 
 Each individual CSV file can have any number of rows starting with comment character (#) which will be ignored on processing.
 
-Depending on CGRateS subsystem, following files are required:
+Depending on AccuRate subsystem, following files are required:
 
 Rating
 ~~~~~~

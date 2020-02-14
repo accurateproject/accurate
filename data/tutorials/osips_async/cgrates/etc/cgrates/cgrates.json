@@ -1,12 +1,5 @@
 {
 
-// Real-time Charging System for Telecom & ISP environments
-// Copyright (C) ITsysCOM GmbH
-//
-// This file contains the default configuration hardcoded into CGRateS.
-// This is what you get when you load CGRateS with an empty configuration file.
-
-
 "rals": {
 	"enabled": true,
 	"cdrstats_conns": [
@@ -60,7 +53,7 @@
 		"export_dir": "/tmp/cgr_osipsasync/cgrates/cdre",			// path where the exported CDRs will be placed
 		"header_fields": [],							// template of the exported header fields
 		"content_fields": [								// template of the exported content fields
-			{"tag": "CgrId", "type": "*composed", "value": "CGRID"},
+			{"tag": "UniqueID", "type": "*composed", "value": "UniqueID"},
 			{"tag":"RunId", "type": "*composed", "value": "RunID"},
 			{"tag":"Tor", "type": "*composed", "value": "ToR"},
 			{"tag":"AccId", "type": "*composed", "value": "OriginID"},
@@ -92,7 +85,7 @@
 		"export_directory": "/tmp/cgr_osipsasync/cgrates/cdre",			// path where the exported CDRs will be placed
 		"header_fields": [],							// template of the exported header fields
 		"content_fields": [								// template of the exported content fields
-			{"tag": "CgrId", "type": "*composed", "value": "CGRID"},
+			{"tag": "UniqueID", "type": "*composed", "value": "UniqueID"},
 			{"tag":"AccId", "type": "*composed", "value": "OriginID"},
 			{"tag":"ReqType", "type": "*composed", "value": "RequestType"},
 			{"tag":"Tenant", "type": "*composed", "value": "Tenant"},
@@ -103,15 +96,8 @@
 			{"tag":"Usage", "type": "*composed", "value": "Usage"},
 			{"tag":"Cost", "type": "*composed", "value": "Cost"},
 		],
-		"trailer_fields": [],	
+		"trailer_fields": [],
 	},
-},
-
-
-"sm_opensips": {
-	"enabled": true,					// starts SessionManager service: <true|false>
-	"create_cdr": true,				// create CDR out of events and sends them to CDRS component
-	"debit_interval": "2s",			// interval to perform debits on.
 },
 
 

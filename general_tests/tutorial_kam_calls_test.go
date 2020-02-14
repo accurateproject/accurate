@@ -15,7 +15,7 @@ import (
 	"github.com/accurateproject/accurate/utils"
 )
 
-var tutKamCallsCfg *config.CGRConfig
+var tutKamCallsCfg *config.Config
 var tutKamCallsRpc *rpc.Client
 var tutKamCallsPjSuaListener *os.File
 
@@ -25,12 +25,12 @@ func TestTutKamCallsInitCfg(t *testing.T) {
 	}
 	// Init config first
 	var err error
-	tutKamCallsCfg, err = config.NewCGRConfigFromFolder(path.Join(*dataDir, "tutorials", "kamevapi", "cgrates", "etc", "cgrates"))
-	if err != nil {
+	config.Reset()
+	if err = config.LoadPath(path.Join(*dataDir, "tutorials", "kamevapi", "cgrates", "etc", "cgrates")); err != nil {
 		t.Error(err)
 	}
-	tutKamCallsCfg.DataFolderPath = *dataDir // Share DataFolderPath through config towards StoreDb for Flush()
-	config.SetCgrConfig(tutKamCallsCfg)
+	tutKamCallsCfg = config.Get()
+	tutKamCallsCfg.General.DataFolderPath = *dataDir // Share DataFolderPath through config towards StoreDb for Flush()
 }
 
 // Remove data in both rating and accounting db
@@ -91,7 +91,7 @@ func TestTutKamCallsRpcConn(t *testing.T) {
 		return
 	}
 	var err error
-	tutKamCallsRpc, err = jsonrpc.Dial("tcp", tutKamCallsCfg.RPCJSONListen) // We connect over JSON so we can also troubleshoot if needed
+	tutKamCallsRpc, err = jsonrpc.Dial("tcp", *tutKamCallsCfg.Listen.RpcJson) // We connect over JSON so we can also troubleshoot if needed
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,31 +122,31 @@ func TestTutKamCallsAccountsBefore(t *testing.T) {
 	if err := tutKamCallsRpc.Call("ApierV2.GetAccount", attrs, &reply); err != nil {
 		t.Error("Got error on ApierV2.GetAccount: ", err.Error())
 	} else if reply.BalanceMap[utils.MONETARY].GetTotalValue() != 10.0 { // Make sure we debitted
-		t.Errorf("Calling ApierV1.GetBalance received: %f", reply.BalanceMap[utils.MONETARY].GetTotalValue())
+		t.Errorf("Calling ApierV1.GetBalance received: %v", reply.BalanceMap[utils.MONETARY].GetTotalValue())
 	}
 	attrs = &utils.AttrGetAccount{Tenant: "cgrates.org", Account: "1002"}
 	if err := tutKamCallsRpc.Call("ApierV2.GetAccount", attrs, &reply); err != nil {
 		t.Error("Got error on ApierV2.GetAccount: ", err.Error())
 	} else if reply.BalanceMap[utils.MONETARY].GetTotalValue() != 10.0 { // Make sure we debitted
-		t.Errorf("Calling ApierV1.GetBalance received: %f", reply.BalanceMap[utils.MONETARY].GetTotalValue())
+		t.Errorf("Calling ApierV1.GetBalance received: %v", reply.BalanceMap[utils.MONETARY].GetTotalValue())
 	}
 	attrs = &utils.AttrGetAccount{Tenant: "cgrates.org", Account: "1003"}
 	if err := tutKamCallsRpc.Call("ApierV2.GetAccount", attrs, &reply); err != nil {
 		t.Error("Got error on ApierV2.GetAccount: ", err.Error())
 	} else if reply.BalanceMap[utils.MONETARY].GetTotalValue() != 10.0 { // Make sure we debitted
-		t.Errorf("Calling ApierV1.GetBalance received: %f", reply.BalanceMap[utils.MONETARY].GetTotalValue())
+		t.Errorf("Calling ApierV1.GetBalance received: %v", reply.BalanceMap[utils.MONETARY].GetTotalValue())
 	}
 	attrs = &utils.AttrGetAccount{Tenant: "cgrates.org", Account: "1004"}
 	if err := tutKamCallsRpc.Call("ApierV2.GetAccount", attrs, &reply); err != nil {
 		t.Error("Got error on ApierV2.GetAccount: ", err.Error())
 	} else if reply.BalanceMap[utils.MONETARY].GetTotalValue() != 10.0 { // Make sure we debitted
-		t.Errorf("Calling ApierV1.GetBalance received: %f", reply.BalanceMap[utils.MONETARY].GetTotalValue())
+		t.Errorf("Calling ApierV1.GetBalance received: %v", reply.BalanceMap[utils.MONETARY].GetTotalValue())
 	}
 	attrs = &utils.AttrGetAccount{Tenant: "cgrates.org", Account: "1007"}
 	if err := tutKamCallsRpc.Call("ApierV2.GetAccount", attrs, &reply); err != nil {
 		t.Error("Got error on ApierV2.GetAccount: ", err.Error())
 	} else if reply.BalanceMap[utils.MONETARY].GetTotalValue() != 0.0 { // Make sure we debitted
-		t.Errorf("Calling ApierV1.GetBalance received: %f", reply.BalanceMap[utils.MONETARY].GetTotalValue())
+		t.Errorf("Calling ApierV1.GetBalance received: %v", reply.BalanceMap[utils.MONETARY].GetTotalValue())
 	}
 	attrs = &utils.AttrGetAccount{Tenant: "cgrates.org", Account: "1005"}
 	if err := tutKamCallsRpc.Call("ApierV2.GetAccount", attrs, &reply); err == nil || err.Error() != engine.ErrRedisNotFound.Error() {
@@ -212,7 +212,7 @@ func TestTutKamCallsStartPjsuaListener(t *testing.T) {
 		&engine.PjsuaAccount{Id: "sip:1004@127.0.0.1", Username: "1004", Password: "CGRateS.org", Realm: "*", Registrar: "sip:127.0.0.1:5060"},
 		&engine.PjsuaAccount{Id: "sip:1006@127.0.0.1", Username: "1006", Password: "CGRateS.org", Realm: "*", Registrar: "sip:127.0.0.1:5060"},
 		&engine.PjsuaAccount{Id: "sip:1007@127.0.0.1", Username: "1007", Password: "CGRateS.org", Realm: "*", Registrar: "sip:127.0.0.1:5060"}}
-	if tutKamCallsPjSuaListener, err = engine.StartPjsuaListener(acnts, 5070, *waitRater); err != nil {
+	if tutKamCallsPjSuaListener, err = engine.StartPjsuaListener(acnts, 5070, time.Duration(*waitRater)*time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -300,7 +300,7 @@ func TestTutKamCallsAccount1001(t *testing.T) {
 	if err := tutKamCallsRpc.Call("ApierV2.GetAccount", attrs, &reply); err != nil {
 		t.Error("Got error on ApierV2.GetAccount: ", err.Error())
 	} else if reply.BalanceMap[utils.MONETARY].GetTotalValue() == 10.0 { // Make sure we debitted
-		t.Errorf("Calling ApierV1.GetBalance received: %f", reply.BalanceMap[utils.MONETARY].GetTotalValue())
+		t.Errorf("Calling ApierV1.GetBalance received: %v", reply.BalanceMap[utils.MONETARY].GetTotalValue())
 	} else if reply.Disabled == true {
 		t.Error("Account disabled")
 	}
@@ -320,7 +320,7 @@ func TestTutKamCalls1001Cdrs(t *testing.T) {
 	} else if len(reply) != 1 {
 		t.Error("Unexpected number of CDRs returned: ", len(reply))
 	} else {
-		//cgrId = reply[0].CGRID
+		//cgrId = reply[0].UniqueID
 		if reply[0].Source != "KAMAILIO_CGR_CALL_END" {
 			t.Errorf("Unexpected Source for CDR: %+v", reply[0])
 		}
@@ -339,7 +339,7 @@ func TestTutKamCalls1001Cdrs(t *testing.T) {
 	}
 	/*
 		// Make sure call cost contains the matched information
-		if err := tutKamCallsRpc.Call("ApierV2.GetCallCostLog", utils.AttrGetCallCost{CgrId: cgrId}, &cCost); err != nil {
+		if err := tutKamCallsRpc.Call("ApierV2.GetCallCostLog", utils.AttrGetCallCost{UniqueID: cgrId}, &cCost); err != nil {
 			t.Error("Unexpected error: ", err.Error())
 		} else if utils.IsSliceMember([]string{cCost.Timespans[0].MatchedSubject, cCost.Timespans[0].MatchedPrefix, cCost.Timespans[0].MatchedDestId}, "") {
 			t.Errorf("Unexpected Matched* for CallCost: %+v", cCost.Timespans[0])
@@ -351,7 +351,7 @@ func TestTutKamCalls1001Cdrs(t *testing.T) {
 	} else if len(reply) != 1 {
 		t.Error("Unexpected number of CDRs returned: ", len(reply))
 	} else {
-		//cgrId = reply[0].CGRID
+		//cgrId = reply[0].UniqueID
 		if reply[0].RequestType != utils.META_PREPAID {
 			t.Errorf("Unexpected RequestType for CDR: %+v", reply[0])
 		}
@@ -364,7 +364,7 @@ func TestTutKamCalls1001Cdrs(t *testing.T) {
 	}
 	/*
 		// Make sure call cost contains the matched information
-		if err := tutKamCallsRpc.Call("ApierV2.GetCallCostLog", utils.AttrGetCallCost{CgrId: cgrId}, &cCost); err != nil {
+		if err := tutKamCallsRpc.Call("ApierV2.GetCallCostLog", utils.AttrGetCallCost{UniqueID: cgrId}, &cCost); err != nil {
 			t.Error("Unexpected error: ", err.Error())
 		} else if utils.IsSliceMember([]string{cCost.Timespans[0].MatchedSubject, cCost.Timespans[0].MatchedPrefix, cCost.Timespans[0].MatchedDestId}, "") {
 			t.Errorf("Unexpected Matched* for CallCost: %+v", cCost.Timespans[0])

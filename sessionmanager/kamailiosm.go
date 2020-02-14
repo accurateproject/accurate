@@ -3,7 +3,6 @@ package sessionmanager
 import (
 	"errors"
 	"fmt"
-	"log/syslog"
 	"regexp"
 	"time"
 
@@ -14,13 +13,13 @@ import (
 	"github.com/accurateproject/rpcclient"
 )
 
-func NewKamailioSessionManager(smKamCfg *config.SmKamConfig, rater, cdrsrv rpcclient.RpcClientConnection, timezone string) (*KamailioSessionManager, error) {
+func NewKamailioSessionManager(smKamCfg *config.SmKamailio, rater, cdrsrv rpcclient.RpcClientConnection, timezone string) (*KamailioSessionManager, error) {
 	ksm := &KamailioSessionManager{cfg: smKamCfg, rater: rater, cdrsrv: cdrsrv, timezone: timezone, conns: make(map[string]*kamevapi.KamEvapi), sessions: NewSessions()}
 	return ksm, nil
 }
 
 type KamailioSessionManager struct {
-	cfg      *config.SmKamConfig
+	cfg      *config.SmKamailio
 	rater    rpcclient.RpcClientConnection
 	cdrsrv   rpcclient.RpcClientConnection
 	timezone string
@@ -39,31 +38,31 @@ func (self *KamailioSessionManager) onCgrAuth(evData []byte, connId string) {
 	}
 	if kev.MissingParameter(self.timezone) {
 		if kar, err := kev.AsKamAuthReply(0.0, "", utils.ErrMandatoryIeMissing); err != nil {
-			utils.Logger.Err(fmt.Sprintf("<SM-Kamailio> Failed building auth reply %s", err.Error()))
+			utils.Logger.Error(fmt.Sprintf("<SM-Kamailio> Failed building auth reply %s", err.Error()))
 		} else if err = self.conns[connId].Send(kar.String()); err != nil {
-			utils.Logger.Err(fmt.Sprintf("<SM-Kamailio> Failed sending auth reply %s", err.Error()))
+			utils.Logger.Error(fmt.Sprintf("<SM-Kamailio> Failed sending auth reply %s", err.Error()))
 		}
 		return
 	}
 	var remainingDuration float64
 	var errMaxSession error
 	if errMaxSession = self.rater.Call("Responder.GetDerivedMaxSessionTime", kev.AsStoredCdr(self.Timezone()), &remainingDuration); errMaxSession != nil {
-		utils.Logger.Err(fmt.Sprintf("<SM-Kamailio> Could not get max session time, error: %s", errMaxSession.Error()))
+		utils.Logger.Error(fmt.Sprintf("<SM-Kamailio> Could not get max session time, error: %s", errMaxSession.Error()))
 	}
 	var supplStr string
 	var errSuppl error
 	if kev.ComputeLcr() {
 		if supplStr, errSuppl = self.getSuppliers(kev); errSuppl != nil {
-			utils.Logger.Err(fmt.Sprintf("<SM-Kamailio> Could not get suppliers, error: %s", errSuppl.Error()))
+			utils.Logger.Error(fmt.Sprintf("<SM-Kamailio> Could not get suppliers, error: %s", errSuppl.Error()))
 		}
 	}
 	if errMaxSession == nil { // Overwrite the error from maxSessionTime with the one from suppliers if nil
 		errMaxSession = errSuppl
 	}
 	if kar, err := kev.AsKamAuthReply(remainingDuration, supplStr, errMaxSession); err != nil {
-		utils.Logger.Err(fmt.Sprintf("<SM-Kamailio> Failed building auth reply %s", err.Error()))
+		utils.Logger.Error(fmt.Sprintf("<SM-Kamailio> Failed building auth reply %s", err.Error()))
 	} else if err = self.conns[connId].Send(kar.String()); err != nil {
-		utils.Logger.Err(fmt.Sprintf("<SM-Kamailio> Failed sending auth reply %s", err.Error()))
+		utils.Logger.Error(fmt.Sprintf("<SM-Kamailio> Failed sending auth reply %s", err.Error()))
 	}
 }
 
@@ -77,15 +76,15 @@ func (self *KamailioSessionManager) onCgrLcrReq(evData []byte, connId string) {
 	kamLcrReply, errReply := kev.AsKamAuthReply(-1.0, supplStr, err)
 	kamLcrReply.Event = CGR_LCR_REPLY // Hit the CGR_LCR_REPLY event route on Kamailio side
 	if errReply != nil {
-		utils.Logger.Err(fmt.Sprintf("<SM-Kamailio> Failed building auth reply %s", errReply.Error()))
+		utils.Logger.Error(fmt.Sprintf("<SM-Kamailio> Failed building auth reply %s", errReply.Error()))
 	} else if err = self.conns[connId].Send(kamLcrReply.String()); err != nil {
-		utils.Logger.Err(fmt.Sprintf("<SM-Kamailio> Failed sending lcr reply %s", err.Error()))
+		utils.Logger.Error(fmt.Sprintf("<SM-Kamailio> Failed sending lcr reply %s", err.Error()))
 	}
 }
 
 func (self *KamailioSessionManager) getSuppliers(kev KamEvent) (string, error) {
 	cd, err := kev.AsCallDescriptor()
-	cd.CgrID = kev.GetCgrId(self.timezone)
+	cd.UniqueID = kev.GetUniqueID(self.timezone)
 	if err != nil {
 		utils.Logger.Info(fmt.Sprintf("<SM-Kamailio> LCR_PREPROCESS_ERROR error: %s", err.Error()))
 		return "", errors.New("LCR_PREPROCESS_ERROR")
@@ -105,7 +104,7 @@ func (self *KamailioSessionManager) getSuppliers(kev KamEvent) (string, error) {
 func (self *KamailioSessionManager) onCallStart(evData []byte, connId string) {
 	kamEv, err := NewKamEvent(evData)
 	if err != nil {
-		utils.Logger.Err(fmt.Sprintf("<SM-Kamailio> ERROR unmarshalling event: %s, error: %s", evData, err.Error()))
+		utils.Logger.Error(fmt.Sprintf("<SM-Kamailio> ERROR unmarshalling event: %s, error: %s", evData, err.Error()))
 		return
 	}
 	if kamEv.GetReqType(utils.META_DEFAULT) == utils.META_NONE { // Do not process this request
@@ -124,14 +123,14 @@ func (self *KamailioSessionManager) onCallStart(evData []byte, connId string) {
 func (self *KamailioSessionManager) onCallEnd(evData []byte, connId string) {
 	kev, err := NewKamEvent(evData)
 	if err != nil {
-		utils.Logger.Err(fmt.Sprintf("<SM-Kamailio> ERROR unmarshalling event: %s, error: %s", evData, err.Error()))
+		utils.Logger.Error(fmt.Sprintf("<SM-Kamailio> ERROR unmarshalling event: %s, error: %s", evData, err.Error()))
 		return
 	}
 	if kev.GetReqType(utils.META_DEFAULT) == utils.META_NONE { // Do not process this request
 		return
 	}
 	if kev.MissingParameter(self.timezone) {
-		utils.Logger.Err(fmt.Sprintf("<SM-Kamailio> Mandatory IE missing out of event: %+v", kev))
+		utils.Logger.Error(fmt.Sprintf("<SM-Kamailio> Mandatory IE missing out of event: %+v", kev))
 	}
 	go self.ProcessCdr(kev.AsStoredCdr(self.Timezone()))
 	s := self.sessions.getSession(kev.GetUUID())
@@ -139,7 +138,7 @@ func (self *KamailioSessionManager) onCallEnd(evData []byte, connId string) {
 		return
 	}
 	if err := self.sessions.removeSession(s, kev); err != nil {
-		utils.Logger.Err(err.Error())
+		utils.Logger.Error(err.Error())
 	}
 }
 
@@ -153,12 +152,12 @@ func (self *KamailioSessionManager) Connect() error {
 	}
 	errChan := make(chan error)
 	for _, connCfg := range self.cfg.EvapiConns {
-		connId := utils.GenUUID()
-		if self.conns[connId], err = kamevapi.NewKamEvapi(connCfg.Address, connId, connCfg.Reconnects, eventHandlers, utils.Logger.(*syslog.Writer)); err != nil {
+		connID := utils.GenUUID()
+		if self.conns[connID], err = kamevapi.NewKamEvapi(connCfg.Address, connID, connCfg.Reconnects, eventHandlers); err != nil {
 			return err
 		}
 		go func() { // Start reading in own goroutine, return on error
-			if err := self.conns[connId].ReadEvents(); err != nil {
+			if err := self.conns[connID].ReadEvents(); err != nil {
 				errChan <- err
 			}
 		}()
@@ -171,14 +170,14 @@ func (self *KamailioSessionManager) DisconnectSession(ev engine.Event, connId, n
 	sessionIds := ev.GetSessionIds()
 	disconnectEv := &KamSessionDisconnect{Event: CGR_SESSION_DISCONNECT, HashEntry: sessionIds[0], HashId: sessionIds[1], Reason: notify}
 	if err := self.conns[connId].Send(disconnectEv.String()); err != nil {
-		utils.Logger.Err(fmt.Sprintf("<SM-Kamailio> Failed sending disconnect request, error %s, connection id: %s", err.Error(), connId))
+		utils.Logger.Error(fmt.Sprintf("<SM-Kamailio> Failed sending disconnect request, error %s, connection id: %s", err.Error(), connId))
 		return err
 	}
 	return nil
 }
 
 func (self *KamailioSessionManager) DebitInterval() time.Duration {
-	return self.cfg.DebitInterval
+	return self.cfg.DebitInterval.D()
 }
 func (self *KamailioSessionManager) CdrSrv() rpcclient.RpcClientConnection {
 	return self.cdrsrv
@@ -188,12 +187,12 @@ func (self *KamailioSessionManager) Rater() rpcclient.RpcClientConnection {
 }
 
 func (self *KamailioSessionManager) ProcessCdr(cdr *engine.CDR) error {
-	if !self.cfg.CreateCdr {
+	if !*self.cfg.CreateCdr {
 		return nil
 	}
 	var reply string
 	if err := self.cdrsrv.Call("CdrsV1.ProcessCDR", cdr, &reply); err != nil {
-		utils.Logger.Err(fmt.Sprintf("<SM-Kamailio> Failed processing CDR, cgrid: %s, accid: %s, error: <%s>", cdr.CGRID, cdr.OriginID, err.Error()))
+		utils.Logger.Error(fmt.Sprintf("<SM-Kamailio> Failed processing CDR, uniqueid: %s, accid: %s, error: <%s>", cdr.UniqueID, cdr.OriginID, err.Error()))
 	}
 	return nil
 }

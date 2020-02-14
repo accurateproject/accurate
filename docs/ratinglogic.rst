@@ -3,7 +3,7 @@ Rating logic
 
 Let's start with the most important function: finding the cost of a certain call. 
 
-The call information comes to CGRateS having the following vital information like  subject, destination, start time and end time. The engine will look up the database for the rates applicable to the received subject and destination. 
+The call information comes to AccuRate having the following vital information like  subject, destination, start time and end time. The engine will look up the database for the rates applicable to the received subject and destination. 
 
 ::
 
@@ -27,7 +27,7 @@ The **FallbackSubject** is used in case the initial call subject is not found in
 
 What are the activation periods?
 
-    At one given time there is a set of prices that applay to different time intervals when a call can be made. In CGRateS one can define multiple such sets that will become active in various point of time called activation time. The activation period is a structure describing different prices for a call on different intervals of time. This structure has an activation time, which specifies the active prices for a period of time by one ore more (usually more than one) rate intervals. 
+    At one given time there is a set of prices that applay to different time intervals when a call can be made. In AccuRate one can define multiple such sets that will become active in various point of time called activation time. The activation period is a structure describing different prices for a call on different intervals of time. This structure has an activation time, which specifies the active prices for a period of time by one ore more (usually more than one) rate intervals. 
 
 ::
 
@@ -111,7 +111,7 @@ The user account contains a map of various balances like money, sms, internet tr
 	Weight 
  }
 
-CGRateS treats special priced or free minutes different from the rest of balances. They will be called free minutes further on but they can have a special price.
+AccuRate treats special priced or free minutes different from the rest of balances. They will be called free minutes further on but they can have a special price.
 
 The free minutes must be handled a little differently because usually they are grouped by specific destinations (e.g. national minutes, ore minutes in the same network). So they are grouped in balances and when a call is made the engine checks all applicable balances to consume minutes according to that call.
 
@@ -119,7 +119,7 @@ When a call cost needs to be debited these minute balances will be queried for c
 
 A standard debit operation consist of selecting a certaing balance type and taking all balances from that list in the weight order to be debited till the total amount is consumed.
 
-CGRateS provide api for adding/substracting user's money credit. The prepaid and postpaid are uniformly treated except that the prepaid is checked to be always greater than zero and the postpaid can go bellow zero.
+AccuRate provide api for adding/substracting user's money credit. The prepaid and postpaid are uniformly treated except that the prepaid is checked to be always greater than zero and the postpaid can go bellow zero.
 
 Both prepaid and postpaid can have a limited number of free SMS and Internet traffic per month and this budget is replenished at regular intervals based on the user tariff plan or as the user buys more free SMSs (for example).
 

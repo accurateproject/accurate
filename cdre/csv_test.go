@@ -8,22 +8,22 @@ import (
 	"time"
 
 	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/dec"
 	"github.com/accurateproject/accurate/engine"
 	"github.com/accurateproject/accurate/utils"
 )
 
 func TestCsvCdrWriter(t *testing.T) {
 	writer := &bytes.Buffer{}
-	cfg, _ := config.NewDefaultCGRConfig()
+	cfg := config.Get()
 	storedCdr1 := &engine.CDR{
-		CGRID: utils.Sha1("dsafdsaf", time.Unix(1383813745, 0).UTC().String()), ToR: utils.VOICE, OriginID: "dsafdsaf", OriginHost: "192.168.1.1",
+		UniqueID: utils.Sha1("dsafdsaf", time.Unix(1383813745, 0).UTC().String()), ToR: utils.VOICE, OriginID: "dsafdsaf", OriginHost: "192.168.1.1",
 		RequestType: utils.META_RATED, Direction: "*out", Tenant: "cgrates.org",
 		Category: "call", Account: "1001", Subject: "1001", Destination: "1002", SetupTime: time.Unix(1383813745, 0).UTC(), AnswerTime: time.Unix(1383813746, 0).UTC(),
 		Usage: time.Duration(10) * time.Second, RunID: utils.DEFAULT_RUNID,
-		ExtraFields: map[string]string{"extra1": "val_extra1", "extra2": "val_extra2", "extra3": "val_extra3"}, Cost: 1.01,
+		ExtraFields: map[string]string{"extra1": "val_extra1", "extra2": "val_extra2", "extra3": "val_extra3"}, Cost: dec.NewFloat(1.01),
 	}
-	cdre, err := NewCdrExporter([]*engine.CDR{storedCdr1}, nil, cfg.CdreProfiles["*default"], utils.CSV, ',', "firstexport", 0.0, 0.0, 0.0, 0.0, 0.0, 0, 4,
-		cfg.RoundingDecimals, "", 0, cfg.HttpSkipTlsVerify, "")
+	cdre, err := NewCdrExporter([]*engine.CDR{storedCdr1}, nil, (*cfg.Cdre)["*default"], utils.CSV, ',', "firstexport", 0.0, 0.0, 0.0, 0.0, 0.0, *cfg.General.RoundingDecimals, *cfg.General.HttpSkipTlsVerify)
 	if err != nil {
 		t.Error("Unexpected error received: ", err)
 	}
@@ -36,22 +36,23 @@ func TestCsvCdrWriter(t *testing.T) {
 	if result != expected {
 		t.Errorf("Expected: \n%s received: \n%s.", expected, result)
 	}
-	if cdre.TotalCost() != 1.01 {
-		t.Error("Unexpected TotalCost: ", cdre.TotalCost())
+	if cdre.GetTotalCost().Cmp(dec.NewFloat(1.01)) != 0 {
+		t.Error("Unexpected TotalCost: ", cdre.GetTotalCost())
 	}
 }
 
 func TestAlternativeFieldSeparator(t *testing.T) {
 	writer := &bytes.Buffer{}
-	cfg, _ := config.NewDefaultCGRConfig()
-	storedCdr1 := &engine.CDR{CGRID: utils.Sha1("dsafdsaf", time.Unix(1383813745, 0).UTC().String()), ToR: utils.VOICE, OriginID: "dsafdsaf", OriginHost: "192.168.1.1",
+	config.Reset()
+	cfg := config.Get()
+	storedCdr1 := &engine.CDR{UniqueID: utils.Sha1("dsafdsaf", time.Unix(1383813745, 0).UTC().String()), ToR: utils.VOICE, OriginID: "dsafdsaf", OriginHost: "192.168.1.1",
 		RequestType: utils.META_RATED, Direction: "*out", Tenant: "cgrates.org",
 		Category: "call", Account: "1001", Subject: "1001", Destination: "1002", SetupTime: time.Unix(1383813745, 0).UTC(), AnswerTime: time.Unix(1383813746, 0).UTC(),
 		Usage: time.Duration(10) * time.Second, RunID: utils.DEFAULT_RUNID,
-		ExtraFields: map[string]string{"extra1": "val_extra1", "extra2": "val_extra2", "extra3": "val_extra3"}, Cost: 1.01,
+		ExtraFields: map[string]string{"extra1": "val_extra1", "extra2": "val_extra2", "extra3": "val_extra3"}, Cost: dec.NewFloat(1.01),
 	}
-	cdre, err := NewCdrExporter([]*engine.CDR{storedCdr1}, nil, cfg.CdreProfiles["*default"], utils.CSV, '|',
-		"firstexport", 0.0, 0.0, 0.0, 0.0, 0.0, 0, 4, cfg.RoundingDecimals, "", 0, cfg.HttpSkipTlsVerify, "")
+	cdre, err := NewCdrExporter([]*engine.CDR{storedCdr1}, nil, (*cfg.Cdre)["*default"], utils.CSV, '|',
+		"firstexport", 0.0, 0.0, 0.0, 0.0, 0.0, *cfg.General.RoundingDecimals, *cfg.General.HttpSkipTlsVerify)
 	if err != nil {
 		t.Error("Unexpected error received: ", err)
 	}
@@ -64,7 +65,7 @@ func TestAlternativeFieldSeparator(t *testing.T) {
 	if result != expected {
 		t.Errorf("Expected: \n%s received: \n%s.", expected, result)
 	}
-	if cdre.TotalCost() != 1.01 {
-		t.Error("Unexpected TotalCost: ", cdre.TotalCost())
+	if cdre.GetTotalCost().Cmp(dec.NewFloat(1.01)) != 0 {
+		t.Error("Unexpected TotalCost: ", cdre.GetTotalCost())
 	}
 }

@@ -1,6 +1,10 @@
 package engine
 
-import "github.com/accurateproject/accurate/utils"
+import (
+	"github.com/accurateproject/accurate/dec"
+	"github.com/accurateproject/accurate/utils"
+	"go.uber.org/zap"
+)
 
 // Amount of a trafic of a certain type
 type UnitCounter struct {
@@ -9,15 +13,33 @@ type UnitCounter struct {
 }
 
 type CounterFilter struct {
-	Value  float64
-	Filter *BalanceFilter
+	UniqueID string
+	Value    *dec.Dec
+	Filter   string
+	filter   *utils.StructQ
+}
+
+func (cf *CounterFilter) getValue() *dec.Dec {
+	if cf.Value == nil {
+		cf.Value = dec.New()
+	}
+	return cf.Value
+}
+
+func (cf *CounterFilter) getFilter() *utils.StructQ {
+	if cf.filter != nil {
+		return cf.filter
+	}
+	// ignore error as its hould be checked at load time
+	cf.filter, _ = utils.NewStructQ(cf.Filter)
+	return cf.filter
 }
 
 type CounterFilters []*CounterFilter
 
 func (cfs CounterFilters) HasCounter(cf *CounterFilter) bool {
 	for _, c := range cfs {
-		if c.Filter.Equal(cf.Filter) {
+		if c.UniqueID == cf.UniqueID {
 			return true
 		}
 	}
@@ -32,7 +54,7 @@ func (uc *UnitCounter) CopyCounterValues(oldUc *UnitCounter) bool {
 	}
 	for _, c := range uc.Counters {
 		for _, oldC := range oldUc.Counters {
-			if c.Filter.Equal(oldC.Filter) {
+			if c.Filter == oldC.Filter {
 				c.Value = oldC.Value
 				break
 			}
@@ -43,7 +65,7 @@ func (uc *UnitCounter) CopyCounterValues(oldUc *UnitCounter) bool {
 
 type UnitCounters map[string][]*UnitCounter
 
-func (ucs UnitCounters) addUnits(amount float64, kind string, cc *CallCost, b *Balance) {
+func (ucs UnitCounters) addUnits(amount *dec.Dec, kind string, cc *CallCost, b *Balance) {
 	counters, found := ucs[kind]
 	if !found {
 		return
@@ -56,14 +78,26 @@ func (ucs UnitCounters) addUnits(amount float64, kind string, cc *CallCost, b *B
 			uc.CounterType = utils.COUNTER_EVENT
 		}
 		for _, c := range uc.Counters {
-			if uc.CounterType == utils.COUNTER_EVENT && cc != nil && cc.MatchCCFilter(c.Filter) {
-				c.Value += amount
-				continue
+			if uc.CounterType == utils.COUNTER_EVENT && cc != nil {
+				match, err := cc.MatchCCFilter(c.getFilter())
+				if err != nil {
+					utils.Logger.Error("<addUnits> counter filter error", zap.String("filter", c.Filter), zap.Error(err))
+				}
+				if match {
+					c.getValue().AddS(amount)
+					continue
+				}
 			}
 
-			if uc.CounterType == utils.COUNTER_BALANCE && b != nil && b.MatchFilter(c.Filter, true) {
-				c.Value += amount
-				continue
+			if uc.CounterType == utils.COUNTER_BALANCE && b != nil {
+				match, err := c.getFilter().Query(b, false)
+				if err != nil {
+					utils.Logger.Error("<addUnits> counter filter error", zap.String("filter", c.Filter), zap.Error(err))
+				}
+				if match {
+					c.getValue().AddS(amount)
+					continue
+				}
 			}
 		}
 
@@ -72,7 +106,7 @@ func (ucs UnitCounters) addUnits(amount float64, kind string, cc *CallCost, b *B
 
 func (ucs UnitCounters) resetCounters(a *Action) {
 	for key, counters := range ucs {
-		if a != nil && a.Balance.Type != nil && a.Balance.GetType() != key {
+		if a != nil && a.TOR != "" && a.TOR != key {
 			continue
 		}
 		for _, c := range counters {
@@ -80,8 +114,16 @@ func (ucs UnitCounters) resetCounters(a *Action) {
 				continue
 			}
 			for _, cf := range c.Counters {
-				if a == nil || a.Balance == nil || cf.Filter.Equal(a.Balance) {
-					cf.Value = 0
+				var match bool
+				var err error
+				if a != nil && a.Filter1 != "" {
+					match, err = a.getFilter().Query(cf, false)
+					if err != nil {
+						utils.Logger.Warn("<resetCounters> action ", zap.String("filter", a.Filter1), zap.Error(err))
+					}
+				}
+				if a == nil || a.Filter1 == "" || match {
+					cf.getValue().Set(dec.Zero)
 				}
 			}
 		}

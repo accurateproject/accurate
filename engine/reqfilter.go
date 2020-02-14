@@ -47,6 +47,7 @@ type RFStatSThreshold struct {
 // RequestFilter filters requests coming into various places
 // Pass rule: default negative, one mathing rule should pass the filter
 type RequestFilter struct {
+	Tenant             string
 	Type               string              // Filter type (*string, *timing, *rsr_filters, *cdr_stats)
 	FieldName          string              // Name of the field providing us the Values to check (used in case of some )
 	Values             []string            // Filter definition
@@ -149,14 +150,11 @@ func (fltr *RequestFilter) passDestinations(req interface{}, extraFieldsLabel st
 		}
 		return false, err
 	}
-	for _, p := range utils.SplitPrefix(dst, MIN_PREFIX_MATCH) {
-		if destIDs, err := ratingStorage.GetReverseDestination(p, utils.CACHED); err == nil {
-			for _, dID := range destIDs {
-				for _, valDstID := range fltr.Values {
-					if valDstID == dID {
-						return true, nil
-					}
-				}
+	if dests, err := ratingStorage.GetDestinations(fltr.Tenant, dst, "", utils.DestMatching, utils.CACHED); err == nil {
+		destNames := dests.getNames()
+		for _, valDstID := range fltr.Values {
+			if destNames[valDstID] {
+				return true, nil
 			}
 		}
 	}
@@ -183,7 +181,7 @@ func (fltr *RequestFilter) passCDRStats(req interface{}, extraFieldsLabel string
 	}
 	for _, threshold := range fltr.cdrStatSThresholds {
 		statValues := make(map[string]float64)
-		if err := cdrStats.Call("CDRStatsV1.GetValues", threshold.QueueID, &statValues); err != nil {
+		if err := cdrStats.Call("CDRStatsV1.GetValues", utils.AttrStatsQueueID{Tenant: "//FIXME: threshold.Tenant", ID: threshold.QueueID}, &statValues); err != nil {
 			return false, err
 		}
 		if val, hasIt := statValues[threshold.ThresholdType[len(MetaMinCapPrefix):]]; !hasIt {

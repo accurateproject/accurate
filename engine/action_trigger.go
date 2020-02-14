@@ -1,57 +1,96 @@
 package engine
 
 import (
-	"encoding/json"
 	"fmt"
 	"sort"
 	"time"
 
+	"github.com/accurateproject/accurate/dec"
 	"github.com/accurateproject/accurate/utils"
+	"go.uber.org/zap"
 )
 
-type ActionTrigger struct {
-	ID            string // original csv tag
-	UniqueID      string // individual id
-	ThresholdType string //*min_event_counter, *max_event_counter, *min_balance_counter, *max_balance_counter, *min_balance, *max_balance, *balance_expired
-	// stats: *min_asr, *max_asr, *min_acd, *max_acd, *min_tcd, *max_tcd, *min_acc, *max_acc, *min_tcc, *max_tcc, *min_ddc, *max_ddc
-	ThresholdValue float64
-	Recurrent      bool          // reset excuted flag each run
-	MinSleep       time.Duration // Minimum duration between two executions in case of recurrent triggers
-	ExpirationDate time.Time
-	ActivationDate time.Time
-	//BalanceType       string // *monetary/*voice etc
-	Balance           *BalanceFilter
-	Weight            float64
-	ActionsID         string
-	MinQueuedItems    int // Trigger actions only if this number is hit (stats only)
-	Executed          bool
-	LastExecutionTime time.Time
+type ActionTriggerGroup struct {
+	Tenant         string         `bson:"tenant"`
+	Name           string         `bson:"name"` // original csv tag
+	ActionTriggers ActionTriggers `bson:"action_triggers"`
 }
 
-func (at *ActionTrigger) Execute(ub *Account, sq *StatsQueueTriggered) (err error) {
+// SetParentActionPlan populates parent to all action timings
+func (atrg *ActionTriggerGroup) SetParentGroup() {
+	for _, atr := range atrg.ActionTriggers {
+		atr.parentGroup = atrg
+	}
+}
+
+type ActionTrigger struct {
+	UniqueID      string `bson:"unique_id"`      // individual id
+	ThresholdType string `bson:"threshold_type"` //*min_event_counter, *max_event_counter, *min_balance_counter, *max_balance_counter, *min_balance, *max_balance, *balance_expired
+	// stats: `bson:""` *min_asr, *max_asr, *min_acd, *max_acd, *min_tcd, *max_tcd, *min_acc, *max_acc, *min_tcc, *max_tcc, *min_ddc, *max_ddc
+	ThresholdValue *dec.Dec      `bson:"threshold_value"`
+	Recurrent      bool          `bson:"recurrent"` // reset excuted flag each run
+	MinSleep       time.Duration `bson:"min_sleep"` // Minimum duration between two executions in case of recurrent triggers
+	ExpirationDate time.Time     `bson:"expiration_date"`
+	ActivationDate time.Time     `bson:"activation_date"`
+	TOR            string        `bson:"trigger_type"` // free string can be used to select balance type
+	Filter         string        `bson:"filter"`
+	Weight         float64       `bson:"weight"`
+	ActionsID      string        `bson:"actions_id"`
+	MinQueuedItems int           `bson:"min_queued_items"` // Trigger actions only if this number is hit (stats only)
+	parentGroup    *ActionTriggerGroup
+	filter         *utils.StructQ
+}
+
+type ActionTriggerRecord struct {
+	UniqueID          string    `bson:"unique_id"` // for query matching
+	Recurrent         bool      `bson:"recurrent"`
+	Executed          bool      `bson:"executed"`
+	ExpirationDate    time.Time `bson:"expiration_date"`
+	ActivationDate    time.Time `bson:"activation_date"`
+	LastExecutionTime time.Time `bson:"last_execution_time"`
+}
+
+func (at *ActionTrigger) getFilter() (*utils.StructQ, error) {
+	if at.filter != nil {
+		return at.filter, nil
+	}
+	var err error
+	at.filter, err = utils.NewStructQ(at.Filter)
+	return at.filter, err
+}
+
+func (at *ActionTrigger) Execute(acc *Account, sq *StatsQueueTriggered) (err error) {
 	// check for min sleep time
-	if at.Recurrent && !at.LastExecutionTime.IsZero() && time.Since(at.LastExecutionTime) < at.MinSleep {
+	var trRec *ActionTriggerRecord
+	if acc != nil {
+		trRec = acc.TriggerRecords[at.UniqueID]
+	}
+	if sq != nil {
+		trRec = sq.TriggerRecords[at.UniqueID]
+	}
+	lastExecutionTime := trRec.LastExecutionTime
+	if at.Recurrent && !lastExecutionTime.IsZero() && time.Since(lastExecutionTime) < at.MinSleep {
 		return
 	}
-	at.LastExecutionTime = time.Now()
-	if ub != nil && ub.Disabled {
-		return fmt.Errorf("User %s is disabled and there are triggers in action!", ub.ID)
+	trRec.LastExecutionTime = time.Now()
+	if acc != nil && acc.Disabled {
+		return fmt.Errorf("User %s is disabled and there are triggers in action!", acc.FullID())
 	}
 	// does NOT need to Lock() because it is triggered from a method that took the Lock
-	var aac Actions
-	aac, err = ratingStorage.GetActions(at.ActionsID, utils.CACHED)
-	if err != nil {
-		utils.Logger.Err(fmt.Sprintf("Failed to get actions: %v", err))
+	var aag *ActionGroup
+	aag, err = ratingStorage.GetActionGroup(at.parentGroup.Tenant, at.ActionsID, utils.CACHED)
+	if err != nil || aag == nil {
+		utils.Logger.Error("Failed to get actions: ", zap.String("tenant", at.parentGroup.Tenant), zap.String("id", at.ActionsID), zap.Error(err))
 		return
 	}
-	aac.Sort()
-	at.Executed = true
+	aag.Actions.Sort()
+	trRec.Executed = true
 	transactionFailed := false
 	removeAccountActionFound := false
-	for _, a := range aac {
+	for _, a := range aag.Actions {
 		// check action filter
-		if len(a.Filter) > 0 {
-			matched, err := ub.matchActionFilter(a.Filter)
+		if len(a.ExecFilter) > 0 {
+			matched, err := acc.matchActionFilter(a.ExecFilter)
 			if err != nil {
 				return err
 			}
@@ -59,25 +98,16 @@ func (at *ActionTrigger) Execute(ub *Account, sq *StatsQueueTriggered) (err erro
 				continue
 			}
 		}
-		if a.Balance == nil {
-			a.Balance = &BalanceFilter{}
-		}
-		if a.ExpirationString != "" { // if it's *unlimited then it has to be zero time'
-			if expDate, parseErr := utils.ParseDate(a.ExpirationString); parseErr == nil {
-				a.Balance.ExpirationDate = &time.Time{}
-				*a.Balance.ExpirationDate = expDate
-			}
-		}
 
 		actionFunction, exists := getActionFunc(a.ActionType)
 		if !exists {
-			utils.Logger.Err(fmt.Sprintf("Function type %v not available, aborting execution!", a.ActionType))
+			utils.Logger.Error("Function type %v not available, aborting execution!", zap.String("action type", a.ActionType))
 			transactionFailed = false
 			break
 		}
-		//go utils.Logger.Info(fmt.Sprintf("Executing %v, %v: %v", ub, sq, a))
-		if err := actionFunction(ub, sq, a, aac); err != nil {
-			utils.Logger.Err(fmt.Sprintf("Error executing action %s: %v!", a.ActionType, err))
+		//go utils.Logger.Info(fmt.Sprintf("Executing %v, %v: %v", acc, sq, a))
+		if err := actionFunction(acc, sq, a, aag.Actions); err != nil {
+			utils.Logger.Error("Error executing action ", zap.String("action type", a.ActionType), zap.Error(err))
 			transactionFailed = false
 			break
 		}
@@ -86,54 +116,19 @@ func (at *ActionTrigger) Execute(ub *Account, sq *StatsQueueTriggered) (err erro
 		}
 	}
 	if transactionFailed || at.Recurrent {
-		at.Executed = false
+		trRec.Executed = false
 	}
-	if !transactionFailed && ub != nil && !removeAccountActionFound {
+	if !transactionFailed && acc != nil && !removeAccountActionFound {
 		Publish(CgrEvent{
 			"EventName": utils.EVT_ACTION_TRIGGER_FIRED,
 			"Uuid":      at.UniqueID,
-			"Id":        at.ID,
+			"Tenant":    at.parentGroup.Tenant,
+			"Id":        at.parentGroup.Name,
 			"ActionIds": at.ActionsID,
 		})
-		accountingStorage.SetAccount(ub)
+		accountingStorage.SetAccount(acc)
 	}
 	return
-}
-
-// returns true if the field of the action timing are equeal to the non empty
-// fields of the action
-func (at *ActionTrigger) Match(a *Action) bool {
-	if a == nil || a.Balance == nil {
-		return true
-	}
-	if a.Balance.Type != nil && a.Balance.GetType() != at.Balance.GetType() {
-		return false
-	}
-	var thresholdType bool
-	if a.ExtraParameters != "" {
-		t := struct {
-			GroupID       string
-			UniqueID      string
-			ThresholdType string
-		}{}
-		json.Unmarshal([]byte(a.ExtraParameters), &t)
-		// check Ids first
-		if t.GroupID != "" {
-			return at.ID == t.GroupID
-		}
-		if t.UniqueID != "" {
-			return at.UniqueID == t.UniqueID
-		}
-		thresholdType = t.ThresholdType == "" || at.ThresholdType == t.ThresholdType
-	}
-
-	return thresholdType && at.Balance.CreateBalance().MatchFilter(a.Balance, false)
-}
-
-func (at *ActionTrigger) CreateBalance() *Balance {
-	b := at.Balance.CreateBalance()
-	b.ID = at.UniqueID
-	return b
 }
 
 // makes a shallow copy of the receiver
@@ -145,7 +140,7 @@ func (at *ActionTrigger) Clone() *ActionTrigger {
 
 func (at *ActionTrigger) Equals(oat *ActionTrigger) bool {
 	// ids only
-	return at.ID == oat.ID && at.UniqueID == oat.UniqueID
+	return at.parentGroup.Name == oat.parentGroup.Name && at.UniqueID == oat.UniqueID
 }
 
 func (at *ActionTrigger) IsActive(t time.Time) bool {
@@ -159,19 +154,9 @@ func (at *ActionTrigger) IsExpired(t time.Time) bool {
 // Structure to store actions according to weight
 type ActionTriggers []*ActionTrigger
 
-func (atpl ActionTriggers) Len() int {
-	return len(atpl)
-}
-
-func (atpl ActionTriggers) Swap(i, j int) {
-	atpl[i], atpl[j] = atpl[j], atpl[i]
-}
-
-//we need higher weights earlyer in the list
-func (atpl ActionTriggers) Less(j, i int) bool {
-	return atpl[i].Weight < atpl[j].Weight
-}
-
 func (atpl ActionTriggers) Sort() {
-	sort.Sort(atpl)
+	sort.Slice(atpl, func(j, i int) bool {
+		//we need higher weights earlyer in the list
+		return atpl[i].Weight < atpl[j].Weight
+	})
 }

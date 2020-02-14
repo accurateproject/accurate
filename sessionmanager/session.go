@@ -2,20 +2,22 @@ package sessionmanager
 
 import (
 	"encoding/json"
-	"fmt"
+	"reflect"
 	"time"
 
+	"github.com/accurateproject/accurate/dec"
 	"github.com/accurateproject/accurate/engine"
 	"github.com/accurateproject/accurate/utils"
+	"go.uber.org/zap"
 )
 
 // Session type holding the call information fields, a session delegate for specific
 // actions and a channel to signal end of the debit loop.
 type Session struct {
-	eventStart     engine.Event  // Store the original event who started this session so we can use it's info later (eg: disconnect, cgrid)
+	eventStart     engine.Event  // Store the original event who started this session so we can use it's info later (eg: disconnect, uniqueid)
 	stopDebit      chan struct{} // Channel to communicate with debit loops when closing the session
 	sessionManager SessionManager
-	connId         string // Reference towards connection id on the session manager side.
+	connID         string // Reference towards connection id on the session manager side.
 	warnMinDur     time.Duration
 	sessionRuns    []*engine.SessionRun
 }
@@ -34,11 +36,11 @@ func (s *Session) SessionRuns() []*engine.SessionRun {
 }
 
 // Creates a new session and in case of prepaid starts the debit loop for each of the session runs individually
-func NewSession(ev engine.Event, connId string, sm SessionManager) *Session {
+func NewSession(ev engine.Event, connID string, sm SessionManager) *Session {
 	s := &Session{eventStart: ev,
 		stopDebit:      make(chan struct{}),
 		sessionManager: sm,
-		connId:         connId,
+		connID:         connID,
 	}
 	if err := sm.Rater().Call("Responder.GetSessionRuns", ev.AsStoredCdr(s.sessionManager.Timezone()), &s.sessionRuns); err != nil || len(s.sessionRuns) == 0 {
 		return nil
@@ -52,7 +54,7 @@ func NewSession(ev engine.Event, connId string, sm SessionManager) *Session {
 // the debit loop method (to be stoped by sending somenthing on stopDebit channel)
 func (s *Session) debitLoop(runIdx int) {
 	nextCd := s.sessionRuns[runIdx].CallDescriptor
-	nextCd.CgrID = s.eventStart.GetCgrId(s.sessionManager.Timezone())
+	nextCd.UniqueID = s.eventStart.GetUniqueID(s.sessionManager.Timezone())
 	index := 0.0
 	debitPeriod := s.sessionManager.DebitInterval()
 	for {
@@ -69,27 +71,27 @@ func (s *Session) debitLoop(runIdx int) {
 		nextCd.DurationIndex += debitPeriod // first presumed duration
 		cc := new(engine.CallCost)
 		if err := s.sessionManager.Rater().Call("Responder.MaxDebit", nextCd, cc); err != nil {
-			utils.Logger.Err(fmt.Sprintf("Could not complete debit opperation: %v", err))
+			utils.Logger.Error("Could not complete debit opperation", zap.Error(err))
 			if err.Error() == utils.ErrUnauthorizedDestination.Error() {
-				s.sessionManager.DisconnectSession(s.eventStart, s.connId, UNAUTHORIZED_DESTINATION)
+				s.sessionManager.DisconnectSession(s.eventStart, s.connID, UNAUTHORIZED_DESTINATION)
 				return
 			}
-			s.sessionManager.DisconnectSession(s.eventStart, s.connId, SYSTEM_ERROR)
+			s.sessionManager.DisconnectSession(s.eventStart, s.connID, SYSTEM_ERROR)
 			return
 		}
 		if cc.GetDuration() == 0 {
-			s.sessionManager.DisconnectSession(s.eventStart, s.connId, INSUFFICIENT_FUNDS)
+			s.sessionManager.DisconnectSession(s.eventStart, s.connID, INSUFFICIENT_FUNDS)
 			return
 		}
 		if s.warnMinDur != time.Duration(0) && cc.GetDuration() <= s.warnMinDur {
-			s.sessionManager.WarnSessionMinDuration(s.eventStart.GetUUID(), s.connId)
+			s.sessionManager.WarnSessionMinDuration(s.eventStart.GetUUID(), s.connID)
 		}
 		s.sessionRuns[runIdx].CallCosts = append(s.sessionRuns[runIdx].CallCosts, cc)
 		nextCd.TimeEnd = cc.GetEndTime() // set debited timeEnd
 		// update call duration with real debited duration
 		nextCd.DurationIndex -= debitPeriod
 		nextCd.DurationIndex += cc.GetDuration()
-		nextCd.MaxCostSoFar += cc.Cost
+		nextCd.GetMaxCostSoFar().AddS(cc.GetCost())
 		time.Sleep(cc.GetDuration())
 		index++
 	}
@@ -99,7 +101,7 @@ func (s *Session) debitLoop(runIdx int) {
 func (s *Session) Close(ev engine.Event) error {
 	close(s.stopDebit) // Close the channel so all the sessionRuns listening will be notified
 	if _, err := ev.GetEndTime(utils.META_DEFAULT, s.sessionManager.Timezone()); err != nil {
-		utils.Logger.Err("Error parsing event stop time.")
+		utils.Logger.Error("Error parsing event stop time.")
 		for idx := range s.sessionRuns {
 			s.sessionRuns[idx].CallDescriptor.TimeEnd = s.sessionRuns[idx].CallDescriptor.TimeStart.Add(s.sessionRuns[idx].CallDescriptor.DurationIndex)
 		}
@@ -114,14 +116,17 @@ func (s *Session) Close(ev engine.Event) error {
 		lastCC := sr.CallCosts[len(sr.CallCosts)-1]
 		lastCC.Timespans.Decompress()
 		// put credit back
-		startTime, err := ev.GetAnswerTime(sr.DerivedCharger.AnswerTimeField, s.sessionManager.Timezone())
+		// the two derived cherger field names were commented out when moved to structq
+		//startTime, err := ev.GetAnswerTime(sr.DerivedCharger.AnswerTimeField, s.sessionManager.Timezone())
+		startTime, err := ev.GetAnswerTime("", s.sessionManager.Timezone())
 		if err != nil {
-			utils.Logger.Crit("Error parsing prepaid call start time from event")
+			utils.Logger.Panic("Error parsing prepaid call start time from event")
 			return err
 		}
-		duration, err := ev.GetDuration(sr.DerivedCharger.UsageField)
+		//duration, err := ev.GetDuration(sr.DerivedCharger.UsageField)
+		duration, err := ev.GetDuration("")
 		if err != nil {
-			utils.Logger.Crit(fmt.Sprintf("Error parsing call duration from event: %s", err.Error()))
+			utils.Logger.Panic("error parsing call duration from event: %s", zap.Error(err))
 			return err
 		}
 		hangupTime := startTime.Add(duration)
@@ -140,45 +145,12 @@ func (s *Session) Refund(lastCC *engine.CallCost, hangupTime time.Time) error {
 	end := lastCC.Timespans[len(lastCC.Timespans)-1].TimeEnd
 	refundDuration := end.Sub(hangupTime)
 	//utils.Logger.Debug(fmt.Sprintf("HANGUPTIME: %s REFUNDDURATION: %s", hangupTime.String(), refundDuration.String()))
-	var refundIncrements engine.Increments
-	for i := len(lastCC.Timespans) - 1; i >= 0; i-- {
-		ts := lastCC.Timespans[i]
-		tsDuration := ts.GetDuration()
-		if refundDuration <= tsDuration {
-
-			lastRefundedIncrementIndex := -1
-			for j := len(ts.Increments) - 1; j >= 0; j-- {
-				increment := ts.Increments[j]
-				if increment.Duration <= refundDuration {
-					refundIncrements = append(refundIncrements, increment)
-					refundDuration -= increment.Duration
-					lastRefundedIncrementIndex = j
-				} else {
-					break //increment duration is larger, cannot refund increment
-				}
-			}
-			if lastRefundedIncrementIndex == 0 {
-				lastCC.Timespans[i] = nil
-				lastCC.Timespans = lastCC.Timespans[:i]
-			} else {
-				ts.SplitByIncrement(lastRefundedIncrementIndex)
-				ts.Cost = ts.CalculateCost()
-			}
-			break // do not go to other timespans
-		} else {
-			refundIncrements = append(refundIncrements, ts.Increments...)
-			// remove the timespan entirely
-			lastCC.Timespans[i] = nil
-			lastCC.Timespans = lastCC.Timespans[:i]
-			// continue to the next timespan with what is left to refund
-			refundDuration -= tsDuration
-		}
-	}
+	refundIncrements := lastCC.TruncateTimespansAtDuration(refundDuration)
 	// show only what was actualy refunded (stopped in timespan)
 	// utils.Logger.Info(fmt.Sprintf("Refund duration: %v", initialRefundDuration-refundDuration))
 	if len(refundIncrements) > 0 {
 		cd := &engine.CallDescriptor{
-			CgrID:       s.eventStart.GetCgrId(s.sessionManager.Timezone()),
+			UniqueID:    s.eventStart.GetUniqueID(s.sessionManager.Timezone()),
 			Direction:   lastCC.Direction,
 			Tenant:      lastCC.Tenant,
 			Category:    lastCC.Category,
@@ -188,7 +160,6 @@ func (s *Session) Refund(lastCC *engine.CallCost, hangupTime time.Time) error {
 			TOR:         lastCC.TOR,
 			Increments:  refundIncrements,
 		}
-		cd.Increments.Compress()
 		//utils.Logger.Info(fmt.Sprintf("Refunding duration %v with cd: %+v", refundDuration, cd))
 		var response float64
 		err := s.sessionManager.Rater().Call("Responder.RefundIncrements", cd, &response)
@@ -197,7 +168,7 @@ func (s *Session) Refund(lastCC *engine.CallCost, hangupTime time.Time) error {
 		}
 	}
 	//utils.Logger.Debug(fmt.Sprintf("REFUND INCR: %s", utils.ToJSON(refundIncrements)))
-	lastCC.Cost -= refundIncrements.GetTotalCost()
+	lastCC.UpdateCost()
 	lastCC.UpdateRatedUsage()
 	lastCC.Timespans.Compress()
 	return nil
@@ -221,18 +192,8 @@ func (s *Session) SaveOperations() {
 		}
 		firstCC.Timespans.Compress()
 
-		firstCC.Round()
-		roundIncrements := firstCC.GetRoundIncrements()
-		if len(roundIncrements) != 0 {
-			cd := firstCC.CreateCallDescriptor()
-			cd.Increments = roundIncrements
-			var response float64
-			if err := s.sessionManager.Rater().Call("Responder.RefundRounding", cd, &response); err != nil {
-				utils.Logger.Err(fmt.Sprintf("<SM> ERROR failed to refund rounding: %v", err))
-			}
-		}
 		smCost := &engine.SMCost{
-			CGRID:       s.eventStart.GetCgrId(s.sessionManager.Timezone()),
+			UniqueID:    s.eventStart.GetUniqueID(s.sessionManager.Timezone()),
 			CostSource:  utils.SESSION_MANAGER_SOURCE,
 			RunID:       sr.DerivedCharger.RunID,
 			OriginHost:  s.eventStart.GetOriginatorIP(utils.META_DEFAULT),
@@ -247,7 +208,7 @@ func (s *Session) SaveOperations() {
 			if err == utils.ErrExists {
 				s.Refund(firstCC, firstCC.Timespans[0].TimeStart)
 			} else {
-				utils.Logger.Err(fmt.Sprintf("<SM> ERROR failed to log call cost: %v", err))
+				utils.Logger.Error("<SM> ERROR failed to log call cost", zap.Error(err))
 			}
 		}
 	}
@@ -261,7 +222,7 @@ func (s *Session) AsActiveSessions() []*ActiveSession {
 	pdd, _ := s.eventStart.GetPdd(utils.META_DEFAULT)
 	for _, sessionRun := range s.sessionRuns {
 		aSession := &ActiveSession{
-			CgrId:       s.eventStart.GetCgrId(s.sessionManager.Timezone()),
+			UniqueID:    s.eventStart.GetUniqueID(s.sessionManager.Timezone()),
 			TOR:         utils.VOICE,
 			OriginID:    s.eventStart.GetUUID(),
 			CdrHost:     s.eventStart.GetOriginatorIP(utils.META_DEFAULT),
@@ -296,9 +257,18 @@ func (s *Session) AsActiveSessions() []*ActiveSession {
 	return aSessions
 }
 
+func (s *Session) AsMapStringIface() (map[string]interface{}, error) {
+	mp := make(map[string]interface{})
+	v := reflect.ValueOf(s).Elem()
+	for i := 0; i < v.NumField(); i++ {
+		mp[v.Type().Field(i).Name] = v.Field(i).Interface()
+	}
+	return mp, nil
+}
+
 // Will be used when displaying active sessions via RPC
 type ActiveSession struct {
-	CgrId         string
+	UniqueID      string
 	TOR           string            // type of record, meta-field, should map to one of the TORs hardcoded inside the server <*voice|*data|*sms|*generic>
 	OriginID      string            // represents the unique accounting id given by the telecom switch generating the CDR
 	CdrHost       string            // represents the IP address of the host generating the CDR (automatically populated by the server)
@@ -323,5 +293,12 @@ type ActiveSession struct {
 	DurationIndex time.Duration // the call duration so far (till TimeEnd)
 	MaxRate       float64
 	MaxRateUnit   time.Duration
-	MaxCostSoFar  float64
+	MaxCostSoFar  *dec.Dec
+}
+
+func (as *ActiveSession) getMaxCostSoFar() *dec.Dec {
+	if as.MaxCostSoFar == nil {
+		as.MaxCostSoFar = dec.New()
+	}
+	return as.MaxCostSoFar
 }

@@ -1,3 +1,5 @@
+//+build integration
+
 package cdrc
 
 import (
@@ -14,9 +16,9 @@ import (
 )
 
 var flatstoreCfgPath string
-var flatstoreCfg *config.CGRConfig
+var flatstoreCfg *config.Config
 var flatstoreRpc *rpc.Client
-var flatstoreCdrcCfg *config.CdrcConfig
+var flatstoreCdrcCfg *config.Cdrc
 
 var fullSuccessfull = `INVITE|2daec40c|548625ac|dd0c4c617a9919d29a6175cdff223a9e@0:0:0:0:0:0:0:0|200|OK|1436454408|*prepaid|1001|1002||3401:2069362475
 BYE|2daec40c|548625ac|dd0c4c617a9919d29a6175cdff223a9e@0:0:0:0:0:0:0:0|200|OK|1436454410|||||3401:2069362475
@@ -39,21 +41,17 @@ var part2 = `INVITE|f9d3d5c3|c863a6e3|214d8f52b566e33a9349b184e72a4ccb@0:0:0:0:0
 INVITE|2daec40c|548625ac|dd0c4c617a9919d29a6175cdff223a9e@0:0:0:0:0:0:0:0|200|OK|1436454408|*prepaid|1001|1002||3401:2069362475`
 
 func TestFlatstoreLclInitCfg(t *testing.T) {
-	if !*testLocal {
-		return
-	}
 	var err error
 	flatstoreCfgPath = path.Join(*dataDir, "conf", "samples", "cdrcflatstore")
-	if flatstoreCfg, err = config.NewCGRConfigFromFolder(flatstoreCfgPath); err != nil {
+	config.Reset()
+	if err = config.LoadPath(flatstoreCfgPath); err != nil {
 		t.Fatal("Got config error: ", err.Error())
 	}
+	flatstoreCfg = config.Get()
 }
 
 // InitDb so we can rely on count
 func TestFlatstoreLclInitCdrDb(t *testing.T) {
-	if !*testLocal {
-		return
-	}
 	if err := engine.InitStorDb(flatstoreCfg); err != nil {
 		t.Fatal(err)
 	}
@@ -61,35 +59,29 @@ func TestFlatstoreLclInitCdrDb(t *testing.T) {
 
 // Creates cdr files and moves them into processing folder
 func TestFlatstoreLclCreateCdrFiles(t *testing.T) {
-	if !*testLocal {
-		return
-	}
 	if flatstoreCfg == nil {
 		t.Fatal("Empty default cdrc configuration")
 	}
-	for _, cdrcCfg := range flatstoreCfg.CdrcProfiles["/tmp/cgr_flatstore/cdrc/in"] {
-		if cdrcCfg.ID == "FLATSTORE" {
+	for _, cdrcCfg := range flatstoreCfg.CdrcProfiles()["/tmp/cgr_flatstore/cdrc/in"] {
+		if *cdrcCfg.ID == "FLATSTORE" {
 			flatstoreCdrcCfg = cdrcCfg
 		}
 	}
-	if err := os.RemoveAll(flatstoreCdrcCfg.CdrInDir); err != nil {
+	if err := os.RemoveAll(*flatstoreCdrcCfg.CdrInDir); err != nil {
 		t.Fatal("Error removing folder: ", flatstoreCdrcCfg.CdrInDir, err)
 	}
-	if err := os.MkdirAll(flatstoreCdrcCfg.CdrInDir, 0755); err != nil {
+	if err := os.MkdirAll(*flatstoreCdrcCfg.CdrInDir, 0755); err != nil {
 		t.Fatal("Error creating folder: ", flatstoreCdrcCfg.CdrInDir, err)
 	}
-	if err := os.RemoveAll(flatstoreCdrcCfg.CdrOutDir); err != nil {
+	if err := os.RemoveAll(*flatstoreCdrcCfg.CdrOutDir); err != nil {
 		t.Fatal("Error removing folder: ", flatstoreCdrcCfg.CdrOutDir, err)
 	}
-	if err := os.MkdirAll(flatstoreCdrcCfg.CdrOutDir, 0755); err != nil {
+	if err := os.MkdirAll(*flatstoreCdrcCfg.CdrOutDir, 0755); err != nil {
 		t.Fatal("Error creating folder: ", flatstoreCdrcCfg.CdrOutDir, err)
 	}
 }
 
 func TestFlatstoreLclStartEngine(t *testing.T) {
-	if !*testLocal {
-		return
-	}
 	if _, err := engine.StopStartEngine(flatstoreCfgPath, *waitRater); err != nil {
 		t.Fatal(err)
 	}
@@ -97,20 +89,14 @@ func TestFlatstoreLclStartEngine(t *testing.T) {
 
 // Connect rpc client to rater
 func TestFlatstoreLclRpcConn(t *testing.T) {
-	if !*testLocal {
-		return
-	}
 	var err error
-	flatstoreRpc, err = jsonrpc.Dial("tcp", flatstoreCfg.RPCJSONListen) // We connect over JSON so we can also troubleshoot if needed
+	flatstoreRpc, err = jsonrpc.Dial("tcp", *flatstoreCfg.Listen.RpcJson) // We connect over JSON so we can also troubleshoot if needed
 	if err != nil {
 		t.Fatal("Could not connect to rater: ", err.Error())
 	}
 }
 
 func TestFlatstoreLclProcessFiles(t *testing.T) {
-	if !*testLocal {
-		return
-	}
 	if err := ioutil.WriteFile(path.Join("/tmp", "acc_1.log"), []byte(fullSuccessfull), 0644); err != nil {
 		t.Fatal(err.Error)
 	}
@@ -125,21 +111,21 @@ func TestFlatstoreLclProcessFiles(t *testing.T) {
 	}
 	//Rename(oldpath, newpath string)
 	for _, fileName := range []string{"acc_1.log", "missed_calls_1.log", "acc_2.log", "acc_3.log"} {
-		if err := os.Rename(path.Join("/tmp", fileName), path.Join(flatstoreCdrcCfg.CdrInDir, fileName)); err != nil {
+		if err := os.Rename(path.Join("/tmp", fileName), path.Join(*flatstoreCdrcCfg.CdrInDir, fileName)); err != nil {
 			t.Fatal(err)
 		}
 	}
 	time.Sleep(time.Duration(2) * time.Second) // Give time for processing to happen and the .unparired file to be written
-	filesInDir, _ := ioutil.ReadDir(flatstoreCdrcCfg.CdrInDir)
+	filesInDir, _ := ioutil.ReadDir(*flatstoreCdrcCfg.CdrInDir)
 	if len(filesInDir) != 0 {
 		t.Errorf("Files in cdrcInDir: %+v", filesInDir)
 	}
-	filesOutDir, _ := ioutil.ReadDir(flatstoreCdrcCfg.CdrOutDir)
+	filesOutDir, _ := ioutil.ReadDir(*flatstoreCdrcCfg.CdrOutDir)
 	if len(filesOutDir) != 5 {
 		t.Errorf("In CdrcOutDir, expecting 5 files, got: %d", len(filesOutDir))
 	}
 	ePartContent := "INVITE|2daec40c|548625ac|dd0c4c617a9919d29a6175cdff223a9e@0:0:0:0:0:0:0:0|200|OK|1436454408|*prepaid|1001|1002||3401:2069362475\n"
-	if partContent, err := ioutil.ReadFile(path.Join(flatstoreCdrcCfg.CdrOutDir, "acc_3.log.unpaired")); err != nil {
+	if partContent, err := ioutil.ReadFile(path.Join(*flatstoreCdrcCfg.CdrOutDir, "acc_3.log.unpaired")); err != nil {
 		t.Error(err)
 	} else if ePartContent != string(partContent) {
 		t.Errorf("Expecting: %s, received: %s", ePartContent, string(partContent))

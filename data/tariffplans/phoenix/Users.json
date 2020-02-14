@@ -1,0 +1,2 @@
+{"Tenant":"t1", "Name":"t1", "Weight":10,
+ "Query":"{'sip_from_host':{'$in':['206.222.29.2','206.222.29.3','206.222.29.4','206.222.29.5','206.222.29.6']}, 'Destination':{'$crepl':['^9023(\\\\d+)','${1}']}, 'Account':{'$usr':'t1'}, 'Tenant':{'$usr':'t1'}, 'Subject':{'$usr':'t1'}, 'direction':{'$usr': 'outbound'}}"}

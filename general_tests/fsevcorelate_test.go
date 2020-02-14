@@ -200,15 +200,16 @@ func TestEvCorelate(t *testing.T) {
 	if answerEv.GetName() != "CHANNEL_ANSWER" {
 		t.Error("Event not parsed correctly: ", answerEv)
 	}
-	cfg, _ := config.NewDefaultCGRConfig()
+	config.Reset()
+	cfg := config.Get()
 	cdrEv, err := engine.NewFSCdr(jsonCdr, cfg)
 	if err != nil {
 		t.Errorf("Error loading cdr: %v", err.Error())
 	} else if cdrEv.AsStoredCdr("").OriginID != "86cfd6e2-dbda-45a3-b59d-f683ec368e8b" {
 		t.Error("Unexpected acntId received", cdrEv.AsStoredCdr("").OriginID)
 	}
-	if answerEv.GetCgrId("") != cdrEv.AsStoredCdr("").CGRID {
-		t.Error("CGRIDs do not match", answerEv.GetCgrId(""), cdrEv.AsStoredCdr("").CGRID)
+	if answerEv.GetUniqueID("") != cdrEv.AsStoredCdr("").UniqueID {
+		t.Error("UniqueIDs do not match", answerEv.GetUniqueID(""), cdrEv.AsStoredCdr("").UniqueID)
 	}
 
 }
@@ -530,8 +531,8 @@ func TestEvCdrCorelate(t *testing.T) {
 	if hangupEv.GetName() != "CHANNEL_HANGUP_COMPLETE" {
 		t.Error("Event not parsed correctly: ", hangupEv)
 	}
-	cfg, _ := config.NewDefaultCGRConfig()
-	config.SetCgrConfig(cfg)
+	config.Reset()
+	cfg := config.Get()
 	evStoredCdr := hangupEv.AsStoredCdr("")
 	cdrEv, err := engine.NewFSCdr(jsonCdr2, cfg)
 	if err != nil {
@@ -540,8 +541,8 @@ func TestEvCdrCorelate(t *testing.T) {
 		t.Error("Unexpected acntId received", cdrEv.AsStoredCdr("").OriginID)
 	}
 	jsnStoredCdr := cdrEv.AsStoredCdr("")
-	if evStoredCdr.CGRID != jsnStoredCdr.CGRID {
-		t.Errorf("evStoredCdr.CGRID: %s, jsnStoredCdr.CGRID: %s", evStoredCdr.CGRID, jsnStoredCdr.CGRID)
+	if evStoredCdr.UniqueID != jsnStoredCdr.UniqueID {
+		t.Errorf("evStoredCdr.UniqueID: %s, jsnStoredCdr.UniqueID: %s", evStoredCdr.UniqueID, jsnStoredCdr.UniqueID)
 	}
 	if evStoredCdr.ToR != jsnStoredCdr.ToR {
 		t.Errorf("evStoredCdr.ToR: %s, jsnStoredCdr.ToR: %s", evStoredCdr.ToR, jsnStoredCdr.ToR)

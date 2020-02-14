@@ -1,4 +1,3 @@
-
 package utils
 
 import (
@@ -70,7 +69,7 @@ type RSRField struct {
 	Id          string             //  Identifier
 	RSRules     []*ReSearchReplace // Rules to use when processing field value
 	staticValue string             // If defined, enforces parsing always to this value
-	filters     []*RSRFilter       // The value to compare when used as filter
+	filters     RSRFilters         // The value to compare when used as filter
 }
 
 // Parse the field value from a string
@@ -100,14 +99,25 @@ func (rsrf *RSRField) RegexpMatched() bool { // Investigate whether we had a reg
 }
 
 func (rsrf *RSRField) FilterPasses(value string) bool {
+	return rsrf.oneFilterPasses(value, true)
+}
+
+func (rsrf *RSRField) FilterPassesUnparsed(value string) bool {
+	return rsrf.oneFilterPasses(value, false)
+}
+
+func (rsrf *RSRField) oneFilterPasses(value string, parse bool) bool {
 	if len(rsrf.filters) == 0 { // No filters
 		return true
 	}
-	parsedVal := rsrf.ParseValue(value)
+	if parse {
+		value = rsrf.ParseValue(value)
+	}
 	filterPasses := false
 	for _, fltr := range rsrf.filters {
-		if fltr.Pass(parsedVal) {
+		if fltr.Pass(value) {
 			filterPasses = true
+			break
 		}
 	}
 	return filterPasses
@@ -247,4 +257,16 @@ func (flds RSRFields) Id() string {
 		return ""
 	}
 	return flds[0].Id
+}
+
+func (r *RSRFields) UnmarshalJSON(data []byte) (err error) {
+	stringData := string(data)
+	stringData = strings.Trim(stringData, "\"")
+	stringData = strings.Replace(stringData, `\\`, `\`, -1)
+	x, err := ParseRSRFields(stringData, INFIELD_SEP)
+	if err != nil {
+		return err
+	}
+	*r = x
+	return
 }

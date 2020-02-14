@@ -1,5 +1,5 @@
 {
-// CGRateS Configuration file
+// AccuRate Configuration file
 //
 // Used in mediator_local_test
 // Starts rater, cdrs and mediator connecting over internal channel
@@ -99,7 +99,7 @@
 			{"tag": "NetworkId", "type": "constant", "value": "S1", "width": 2},
 			{"tag": "DestinationSubId", "type": "cdrfield", "value": "~cost_details:s/MatchedDestId:.+_(\\w{5})/$1/:s/(\\w{6})/$1/", "width": 5},
 			{"tag": "NetworkSubtype", "type": "constant", "value": "3", "width": 1, "padding": "left"},
-			{"tag": "CgrId", "type": "cdrfield", "value": "cgrid", "strip": "xleft", "width": 16, "padding": "right", "mandatory": true},
+			{"tag": "UniqueID", "type": "cdrfield", "value": "uniqueid", "strip": "xleft", "width": 16, "padding": "right", "mandatory": true},
 			{"tag": "FillerVolume1", "type": "filler", "width": 8},
 			{"tag": "FillerVolume2", "type": "filler", "width": 8},
 			{"tag": "DestinationSubId", "type": "cdrfield", "value": "~cost_details:s/MatchedDestId:.+_(\\w{5})/$1/:s/(\\w{6})/$1/", "width": 5},

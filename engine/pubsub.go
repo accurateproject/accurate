@@ -3,12 +3,12 @@ package engine
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
 	"github.com/accurateproject/accurate/utils"
 	"github.com/accurateproject/rpcclient"
+	"go.uber.org/zap"
 )
 
 type SubscribeInfo struct {
@@ -63,13 +63,13 @@ func (ps *PubSub) saveSubscriber(key string) {
 		return
 	}
 	if err := accountingStorage.SetSubscriber(key, subData); err != nil {
-		utils.Logger.Err("<PubSub> Error saving subscriber: " + err.Error())
+		utils.Logger.Error("<PubSub> Error saving subscriber: ", zap.Error(err))
 	}
 }
 
 func (ps *PubSub) removeSubscriber(key string) {
 	if err := accountingStorage.RemoveSubscriber(key); err != nil {
-		utils.Logger.Err("<PubSub> Error removing subscriber: " + err.Error())
+		utils.Logger.Error("<PubSub> Error removing subscriber: ", zap.Error(err))
 	}
 }
 
@@ -128,7 +128,7 @@ func (ps *PubSub) Publish(evt CgrEvent, reply *string) error {
 		}
 		split := utils.InfieldSplit(key)
 		if len(split) != 2 {
-			utils.Logger.Warning("<PubSub> Wrong transport;address pair: " + key)
+			utils.Logger.Warn("<PubSub> Wrong transport;address pair: ", zap.String("key", key))
 			continue
 		}
 		transport := split[0]
@@ -146,7 +146,7 @@ func (ps *PubSub) Publish(evt CgrEvent, reply *string) error {
 					if _, err := ps.pubFunc(address, ttlVerify, jsn); err == nil {
 						break // Success, no need to reinterate
 					} else if i == 4 { // Last iteration, syslog the warning
-						utils.Logger.Warning(fmt.Sprintf("<PubSub> Failed calling url: [%s], error: [%s], event type: %s", address, err.Error(), evt["EventName"]))
+						utils.Logger.Warn("<PubSub> Failed calling ", zap.String("url", address), zap.Error(err), zap.String("event name", evt["EventName"]))
 						break
 					}
 					time.Sleep(delay())
@@ -214,7 +214,7 @@ type ProxyPubSub struct {
 }
 
 func NewProxyPubSub(addr string, attempts, reconnects int, connectTimeout, replyTimeout time.Duration) (*ProxyPubSub, error) {
-	client, err := rpcclient.NewRpcClient("tcp", addr, attempts, reconnects, connectTimeout, replyTimeout, utils.GOB, nil)
+	client, err := rpcclient.NewRpcClient("tcp", addr, attempts, reconnects, connectTimeout, replyTimeout, utils.GOB, nil, false)
 	if err != nil {
 		return nil, err
 	}

@@ -10,20 +10,26 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/dec"
 	"github.com/accurateproject/accurate/utils"
 )
 
 var sureTaxClient *http.Client // Cache the client here if in use
 
 // Init a new request to be sent out to SureTax
-func NewSureTaxRequest(cdr *CDR, stCfg *config.SureTaxCfg) (*SureTaxRequest, error) {
+func NewSureTaxRequest(cdr *CDR, stCfg *config.SureTax) (*SureTaxRequest, error) {
 	if stCfg == nil {
 		return nil, errors.New("Invalid SureTax config.")
 	}
-	aTimeLoc := cdr.AnswerTime.In(stCfg.Timezone)
-	revenue := utils.Round(cdr.Cost, 4, utils.ROUNDING_MIDDLE)
+	loc, err := time.LoadLocation(*stCfg.Timezone)
+	if err != nil {
+		return nil, err
+	}
+	aTimeLoc := cdr.AnswerTime.In(loc)
+	revenue, _ := strconv.ParseFloat(dec.New().Set(cdr.Cost).Round(4).String(), 64)
 	unts, err := strconv.ParseInt(cdr.FieldsAsString(stCfg.Units), 10, 64)
 	if err != nil {
 		return nil, err
@@ -34,16 +40,16 @@ func NewSureTaxRequest(cdr *CDR, stCfg *config.SureTaxCfg) (*SureTaxRequest, err
 		taxExempt = strings.Split(cdr.FieldsAsString(stCfg.TaxExemptionCodeList), ",")
 	}
 	stReq := new(STRequest)
-	stReq.ClientNumber = stCfg.ClientNumber
-	stReq.BusinessUnit = stCfg.BusinessUnit
-	stReq.ValidationKey = stCfg.ValidationKey
+	stReq.ClientNumber = *stCfg.ClientNumber
+	stReq.BusinessUnit = *stCfg.BusinessUnit
+	stReq.ValidationKey = *stCfg.ValidationKey
 	stReq.DataYear = strconv.Itoa(aTimeLoc.Year())
 	stReq.DataMonth = strconv.Itoa(int(aTimeLoc.Month()))
 	stReq.TotalRevenue = revenue
-	stReq.ReturnFileCode = stCfg.ReturnFileCode
+	stReq.ReturnFileCode = *stCfg.ReturnFileCode
 	stReq.ClientTracking = cdr.FieldsAsString(stCfg.ClientTracking)
-	stReq.ResponseGroup = stCfg.ResponseGroup
-	stReq.ResponseType = stCfg.ResponseType
+	stReq.ResponseGroup = *stCfg.ResponseGroup
+	stReq.ResponseType = *stCfg.ResponseType
 	stReq.ItemList = []*STRequestItem{
 		&STRequestItem{
 			CustomerNumber:       cdr.FieldsAsString(stCfg.CustomerNumber),
@@ -63,7 +69,7 @@ func NewSureTaxRequest(cdr *CDR, stCfg *config.SureTaxCfg) (*SureTaxRequest, err
 			TaxSitusRule:         cdr.FieldsAsString(stCfg.TaxSitusRule),
 			TransTypeCode:        cdr.FieldsAsString(stCfg.TransTypeCode),
 			SalesTypeCode:        cdr.FieldsAsString(stCfg.SalesTypeCode),
-			RegulatoryCode:       stCfg.RegulatoryCode,
+			RegulatoryCode:       *stCfg.RegulatoryCode,
 			TaxExemptionCodeList: taxExempt,
 		},
 	}
@@ -159,13 +165,13 @@ type STTaxItem struct {
 }
 
 func SureTaxProcessCdr(cdr *CDR) error {
-	stCfg := config.CgrConfig().SureTaxCfg()
+	stCfg := config.Get().SureTax
 	if stCfg == nil {
 		return errors.New("Invalid SureTax configuration")
 	}
 	if sureTaxClient == nil { // First time used, init the client here
 		tr := &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: config.CgrConfig().HttpSkipTlsVerify},
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: *config.Get().General.HttpSkipTlsVerify},
 		}
 		sureTaxClient = &http.Client{Transport: tr}
 	}
@@ -177,7 +183,7 @@ func SureTaxProcessCdr(cdr *CDR) error {
 	if err != nil {
 		return err
 	}
-	resp, err := sureTaxClient.Post(stCfg.Url, "application/json", bytes.NewBuffer(jsnContent))
+	resp, err := sureTaxClient.Post(*stCfg.Url, "application/json", bytes.NewBuffer(jsnContent))
 	if err != nil {
 		return err
 	}
@@ -210,10 +216,11 @@ func SureTaxProcessCdr(cdr *CDR) error {
 	if err != nil {
 		cdr.ExtraInfo = err.Error()
 	}
-	if !stCfg.IncludeLocalCost {
-		cdr.Cost = utils.Round(totalTax, config.CgrConfig().RoundingDecimals, utils.ROUNDING_MIDDLE)
+	roundingDecimals := int32(*config.Get().General.RoundingDecimals)
+	if !*stCfg.IncludeLocalCost {
+		cdr.Cost = dec.NewFloat(totalTax).Round(roundingDecimals)
 	} else {
-		cdr.Cost = utils.Round(cdr.Cost+totalTax, config.CgrConfig().RoundingDecimals, utils.ROUNDING_MIDDLE)
+		cdr.GetCost().AddS(dec.NewFloat(totalTax)).Round(roundingDecimals)
 	}
 	// Add response into extra fields to be available for later review
 	cdr.ExtraFields[utils.META_SURETAX] = respFull.D

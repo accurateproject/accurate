@@ -1,9 +1,10 @@
 package engine
 
 import (
-	"errors"
-	"fmt"
-	"strconv"
+	"os"
+	"path"
+
+	"go.uber.org/zap"
 
 	"github.com/accurateproject/accurate/config"
 	"github.com/accurateproject/accurate/utils"
@@ -11,133 +12,212 @@ import (
 
 // Various helpers to deal with database
 
-func ConfigureRatingStorage(db_type, host, port, name, user, pass, marshaler string, cacheCfg *config.CacheConfig, loadHistorySize int) (db RatingStorage, err error) {
-	var d Storage
-	switch db_type {
-	case utils.REDIS:
-		var db_nb int
-		db_nb, err = strconv.Atoi(name)
-		if err != nil {
-			utils.Logger.Crit("Redis db name must be an integer!")
+func ConfigureRatingStorage(host, port, name, user, pass string, cacheCfg *config.Cache, loadHistorySize int) (db RatingStorage, err error) {
+	utils.Logger.Info("Connecting to ratingDB...", zap.String("host", host), zap.String("port", port), zap.String("db", name), zap.String("user", user))
+	db, err = NewMongoStorage(host, port, name, user, pass, utils.TariffPlanDB, nil, cacheCfg, loadHistorySize)
+	if err != nil {
+		return nil, err
+	}
+	return
+}
+
+func ConfigureAccountingStorage(host, port, name, user, pass string, cacheCfg *config.Cache, loadHistorySize int) (db AccountingStorage, err error) {
+	utils.Logger.Info("Connecting to dataDB...", zap.String("host", host), zap.String("port", port), zap.String("db", name), zap.String("user", user))
+	db, err = NewMongoStorage(host, port, name, user, pass, utils.DataDB, nil, cacheCfg, loadHistorySize)
+	if err != nil {
+		return nil, err
+	}
+	return
+}
+
+func ConfigureCdrStorage(host, port, name, user, pass string, maxConn, maxIdleConn int, cdrsIndexes []string) (db CdrStorage, err error) {
+	utils.Logger.Info("Connecting to cdrDB...", zap.String("host", host), zap.String("port", port), zap.String("db", name), zap.String("user", user))
+	db, err = NewMongoStorage(host, port, name, user, pass, utils.CdrDB, cdrsIndexes, nil, 1)
+	if err != nil {
+		return nil, err
+	}
+	return
+}
+
+func LoadTariffPlanFromFolder(tpPath, timezone string, ratingDb RatingStorage, accountingDb AccountingStorage) (*TpReader, error) {
+	tpr := NewTpReader(ratingDb, accountingDb, timezone)
+
+	if reader, err := os.Open(path.Join(tpPath, utils.DESTINATIONS_JSON)); err == nil {
+		if err := utils.LoadJSON(reader, func() interface{} { return &utils.TpDestination{} }, tpr.LoadDestination); err != nil {
 			return nil, err
 		}
-		if port != "" {
-			host += ":" + port
-		}
-		d, err = NewRedisStorage(host, db_nb, pass, marshaler, utils.REDIS_MAX_CONNS, cacheCfg, loadHistorySize)
-	case utils.MONGO:
-		d, err = NewMongoStorage(host, port, name, user, pass, nil, cacheCfg, loadHistorySize)
-		db = d.(RatingStorage)
-	default:
-		err = errors.New(fmt.Sprintf("Unknown db '%s' valid options are '%s' or '%s'",
-			db_type, utils.REDIS, utils.MONGO))
-	}
-	if err != nil {
-		return nil, err
-	}
-	return d.(RatingStorage), nil
-}
-
-func ConfigureAccountingStorage(db_type, host, port, name, user, pass, marshaler string, cacheCfg *config.CacheConfig, loadHistorySize int) (db AccountingStorage, err error) {
-	var d AccountingStorage
-	switch db_type {
-	case utils.REDIS:
-		var db_nb int
-		db_nb, err = strconv.Atoi(name)
-		if err != nil {
-			utils.Logger.Crit("Redis db name must be an integer!")
+		if err := reader.Close(); err != nil {
 			return nil, err
 		}
-		if port != "" {
-			host += ":" + port
+	} else {
+		utils.Logger.Warn(utils.DESTINATIONS_JSON, zap.Error(err))
+	}
+	if reader, err := os.Open(path.Join(tpPath, utils.TIMINGS_JSON)); err == nil {
+		if err := utils.LoadJSON(reader, func() interface{} { return &utils.TpTiming{} }, tpr.LoadTiming); err != nil {
+			return nil, err
 		}
-		d, err = NewRedisStorage(host, db_nb, pass, marshaler, utils.REDIS_MAX_CONNS, cacheCfg, loadHistorySize)
-	case utils.MONGO:
-		d, err = NewMongoStorage(host, port, name, user, pass, nil, cacheCfg, loadHistorySize)
-		db = d.(AccountingStorage)
-	default:
-		err = errors.New(fmt.Sprintf("Unknown db '%s' valid options are '%s' or '%s'",
-			db_type, utils.REDIS, utils.MONGO))
+		if err := reader.Close(); err != nil {
+			return nil, err
+		}
+	} else {
+		utils.Logger.Warn(utils.TIMINGS_JSON, zap.Error(err))
 	}
-	if err != nil {
-		return nil, err
+	if reader, err := os.Open(path.Join(tpPath, utils.RATES_JSON)); err == nil {
+		if err := utils.LoadJSON(reader, func() interface{} { return &utils.TpRate{} }, tpr.LoadRate); err != nil {
+			return nil, err
+		}
+		if err := reader.Close(); err != nil {
+			return nil, err
+		}
+	} else {
+		utils.Logger.Warn(utils.RATES_JSON, zap.Error(err))
 	}
-	return d, nil
-}
-
-func ConfigureStorStorage(db_type, host, port, name, user, pass, marshaler string, maxConn, maxIdleConn int, cdrsIndexes []string) (db Storage, err error) {
-	var d Storage
-	switch db_type {
-	/*
-		case utils.REDIS:
-			var db_nb int
-			db_nb, err = strconv.Atoi(name)
-			if err != nil {
-				utils.Logger.Crit("Redis db name must be an integer!")
-				return nil, err
-			}
-			if port != "" {
-				host += ":" + port
-			}
-			d, err = NewRedisStorage(host, db_nb, pass, marshaler)
-	*/
-	case utils.MONGO:
-		d, err = NewMongoStorage(host, port, name, user, pass, nil, nil, 1)
-	case utils.POSTGRES:
-		d, err = NewPostgresStorage(host, port, name, user, pass, maxConn, maxIdleConn)
-	case utils.MYSQL:
-		d, err = NewMySQLStorage(host, port, name, user, pass, maxConn, maxIdleConn)
-	default:
-		err = errors.New(fmt.Sprintf("Unknown db '%s' valid options are [%s, %s, %s]",
-			db_type, utils.MYSQL, utils.MONGO, utils.POSTGRES))
+	if reader, err := os.Open(path.Join(tpPath, utils.DESTINATION_RATES_JSON)); err == nil {
+		if err := utils.LoadJSON(reader, func() interface{} { return &utils.TpDestinationRate{} }, tpr.LoadDestinationRate); err != nil {
+			return nil, err
+		}
+		if err := reader.Close(); err != nil {
+			return nil, err
+		}
+	} else {
+		utils.Logger.Warn(utils.DESTINATION_RATES_JSON, zap.Error(err))
 	}
-	if err != nil {
-		return nil, err
+	if reader, err := os.Open(path.Join(tpPath, utils.RATING_PLANS_JSON)); err == nil {
+		if err := utils.LoadJSON(reader, func() interface{} { return &utils.TpRatingPlan{} }, tpr.LoadRatingPlan); err != nil {
+			return nil, err
+		}
+		if err := reader.Close(); err != nil {
+			return nil, err
+		}
+	} else {
+		utils.Logger.Warn(utils.RATING_PLANS_JSON, zap.Error(err))
 	}
-	return d, nil
-}
-
-func ConfigureLoadStorage(db_type, host, port, name, user, pass, marshaler string, maxConn, maxIdleConn int, cdrsIndexes []string) (db LoadStorage, err error) {
-	var d LoadStorage
-	switch db_type {
-	case utils.POSTGRES:
-		d, err = NewPostgresStorage(host, port, name, user, pass, maxConn, maxIdleConn)
-	case utils.MYSQL:
-		d, err = NewMySQLStorage(host, port, name, user, pass, maxConn, maxIdleConn)
-	case utils.MONGO:
-		d, err = NewMongoStorage(host, port, name, user, pass, cdrsIndexes, nil, 1)
-	default:
-		err = errors.New(fmt.Sprintf("Unknown db '%s' valid options are [%s, %s, %s]",
-			db_type, utils.MYSQL, utils.MONGO, utils.POSTGRES))
+	if reader, err := os.Open(path.Join(tpPath, utils.RATING_PROFILES_JSON)); err == nil {
+		if err := utils.LoadJSON(reader, func() interface{} { return &utils.TpRatingProfile{} }, tpr.LoadRatingProfile); err != nil {
+			return nil, err
+		}
+		if err := reader.Close(); err != nil {
+			return nil, err
+		}
+	} else {
+		utils.Logger.Warn(utils.RATING_PROFILES_JSON, zap.Error(err))
 	}
-	if err != nil {
-		return nil, err
+	if reader, err := os.Open(path.Join(tpPath, utils.SHARED_GROUPS_JSON)); err == nil {
+		if err := utils.LoadJSON(reader, func() interface{} { return &utils.TpSharedGroup{} }, tpr.LoadSharedGroup); err != nil {
+			return nil, err
+		}
+		if err := reader.Close(); err != nil {
+			return nil, err
+		}
+	} else {
+		utils.Logger.Warn(utils.SHARED_GROUPS_JSON, zap.Error(err))
 	}
-	return d, nil
-}
-
-func ConfigureCdrStorage(db_type, host, port, name, user, pass string, maxConn, maxIdleConn int, cdrsIndexes []string) (db CdrStorage, err error) {
-	var d CdrStorage
-	switch db_type {
-	case utils.POSTGRES:
-		d, err = NewPostgresStorage(host, port, name, user, pass, maxConn, maxIdleConn)
-	case utils.MYSQL:
-		d, err = NewMySQLStorage(host, port, name, user, pass, maxConn, maxIdleConn)
-	case utils.MONGO:
-		d, err = NewMongoStorage(host, port, name, user, pass, cdrsIndexes, nil, 1)
-	default:
-		err = errors.New(fmt.Sprintf("Unknown db '%s' valid options are [%s, %s, %s]",
-			db_type, utils.MYSQL, utils.MONGO, utils.POSTGRES))
+	if reader, err := os.Open(path.Join(tpPath, utils.LCRS_JSON)); err == nil {
+		if err := utils.LoadJSON(reader, func() interface{} { return &utils.TpLcrRule{} }, tpr.LoadLCR); err != nil {
+			return nil, err
+		}
+		if err := reader.Close(); err != nil {
+			return nil, err
+		}
+	} else {
+		utils.Logger.Warn(utils.LCRS_JSON, zap.Error(err))
 	}
-	if err != nil {
-		return nil, err
+	if reader, err := os.Open(path.Join(tpPath, utils.ACTIONS_JSON)); err == nil {
+		if err := utils.LoadJSON(reader, func() interface{} { return &utils.TpActionGroup{} }, tpr.LoadActionGroup); err != nil {
+			return nil, err
+		}
+		if err := reader.Close(); err != nil {
+			return nil, err
+		}
+	} else {
+		utils.Logger.Warn(utils.ACTIONS_JSON, zap.Error(err))
 	}
-	return d, nil
+	if reader, err := os.Open(path.Join(tpPath, utils.ACTION_PLANS_JSON)); err == nil {
+		if err := utils.LoadJSON(reader, func() interface{} { return &utils.TpActionPlan{} }, tpr.LoadActionPlan); err != nil {
+			return nil, err
+		}
+		if err := reader.Close(); err != nil {
+			return nil, err
+		}
+	} else {
+		utils.Logger.Warn(utils.ACTION_PLANS_JSON, zap.Error(err))
+	}
+	if reader, err := os.Open(path.Join(tpPath, utils.ACTION_TRIGGERS_JSON)); err == nil {
+		if err := utils.LoadJSON(reader, func() interface{} { return &utils.TpActionTrigger{} }, tpr.LoadActionTrigger); err != nil {
+			return nil, err
+		}
+		if err := reader.Close(); err != nil {
+			return nil, err
+		}
+	} else {
+		utils.Logger.Warn(utils.ACTION_TRIGGERS_JSON, zap.Error(err))
+	}
+	if reader, err := os.Open(path.Join(tpPath, utils.ACCOUNT_ACTIONS_JSON)); err == nil {
+		if err := utils.LoadJSON(reader, func() interface{} { return &utils.TpAccountAction{} }, tpr.LoadAccountAction); err != nil {
+			return nil, err
+		}
+		if err := reader.Close(); err != nil {
+			return nil, err
+		}
+	} else {
+		utils.Logger.Warn(utils.ACCOUNT_ACTIONS_JSON, zap.Error(err))
+	}
+	if reader, err := os.Open(path.Join(tpPath, utils.DERIVED_CHARGERS_JSON)); err == nil {
+		if err := utils.LoadJSON(reader, func() interface{} { return &utils.TpDerivedCharger{} }, tpr.LoadDerivedCharger); err != nil {
+			return nil, err
+		}
+		if err := reader.Close(); err != nil {
+			return nil, err
+		}
+	} else {
+		utils.Logger.Warn(utils.DERIVED_CHARGERS_JSON, zap.Error(err))
+	}
+	if reader, err := os.Open(path.Join(tpPath, utils.CDR_STATS_JSON)); err == nil {
+		if err := utils.LoadJSON(reader, func() interface{} { return &utils.TpCdrStats{} }, tpr.LoadCdrStats); err != nil {
+			return nil, err
+		}
+		if err := reader.Close(); err != nil {
+			return nil, err
+		}
+	} else {
+		utils.Logger.Warn(utils.CDR_STATS_JSON, zap.Error(err))
+	}
+	if reader, err := os.Open(path.Join(tpPath, utils.USERS_JSON)); err == nil {
+		if err := utils.LoadJSON(reader, func() interface{} { return &utils.TpUser{} }, tpr.LoadUser); err != nil {
+			return nil, err
+		}
+		if err := reader.Close(); err != nil {
+			return nil, err
+		}
+	} else {
+		utils.Logger.Warn(utils.USERS_JSON, zap.Error(err))
+	}
+	if reader, err := os.Open(path.Join(tpPath, utils.ALIASES_JSON)); err == nil {
+		if err := utils.LoadJSON(reader, func() interface{} { return &utils.TpAlias{} }, tpr.LoadAlias); err != nil {
+			return nil, err
+		}
+		if err := reader.Close(); err != nil {
+			return nil, err
+		}
+	} else {
+		utils.Logger.Warn(utils.ALIASES_JSON, zap.Error(err))
+	}
+	if reader, err := os.Open(path.Join(tpPath, utils.RESOURCE_LIMITS_JSON)); err == nil {
+		if err := utils.LoadJSON(reader, func() interface{} { return &utils.TpResourceLimit{} }, tpr.LoadResourceLimit); err != nil {
+			return nil, err
+		}
+		if err := reader.Close(); err != nil {
+			return nil, err
+		}
+	} else {
+		utils.Logger.Warn(utils.RESOURCE_LIMITS_JSON, zap.Error(err))
+	}
+	return tpr, nil
 }
 
 // Stores one Cost coming from SM
 type SMCost struct {
-	CGRID       string
+	UniqueID    string
 	RunID       string
 	OriginHost  string
 	OriginID    string
@@ -149,4 +229,58 @@ type SMCost struct {
 type AttrCDRSStoreSMCost struct {
 	Cost           *SMCost
 	CheckDuplicate bool
+}
+
+type FakeAPBIterator struct {
+	tenant     string
+	actionPlan string
+	data       []string
+	index      int
+}
+
+func NewFakeAPBIterator(tenant, actionPlan string, data []string) *FakeAPBIterator {
+	return &FakeAPBIterator{tenant: tenant, actionPlan: actionPlan, data: data, index: 0}
+}
+
+func (si *FakeAPBIterator) All(result interface{}) error {
+	apbs := result.(*[]*ActionPlanBinding)
+	for _, acc := range si.data {
+		*apbs = append(*apbs, &ActionPlanBinding{
+			Tenant:     si.tenant,
+			Account:    acc,
+			ActionPlan: si.actionPlan,
+		})
+	}
+	return nil
+}
+
+func (si *FakeAPBIterator) Close() error {
+	si.index = 0
+	return nil
+}
+
+func (si *FakeAPBIterator) Done() bool {
+	return si.index == len(si.data)
+}
+
+func (si *FakeAPBIterator) Err() error {
+	return nil
+}
+
+func (si *FakeAPBIterator) Next(result interface{}) bool {
+	if si.index >= len(si.data) {
+		return false
+	}
+	apb := result.(*ActionPlanBinding)
+	*apb = ActionPlanBinding{
+		Tenant:     si.tenant,
+		Account:    si.data[si.index],
+		ActionPlan: si.actionPlan,
+	}
+	si.index++
+	return true
+}
+
+func (si *FakeAPBIterator) Timeout() bool {
+	return false
 }

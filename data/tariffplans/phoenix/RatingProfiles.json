@@ -1,0 +1,3 @@
+{"Tenant":"t1", "Direction":"*out", "Category":"call", "Subject":"t1", "Activations":[
+        {"ActivationTime":"2012-01-01T00:00:00Z", "RatingPlanTag":"STANDARD"}
+]}

@@ -7,20 +7,20 @@ import (
 	"github.com/accurateproject/accurate/utils"
 )
 
-func TestSingleResultMerge(t *testing.T) {
+func TestCCSingleResultMerge(t *testing.T) {
 	t1 := time.Date(2012, time.February, 2, 17, 0, 0, 0, time.UTC)
 	t2 := time.Date(2012, time.February, 2, 17, 1, 0, 0, time.UTC)
-	cd := &CallDescriptor{Direction: utils.OUT, Category: "0", Tenant: "vdf", Subject: "rif", Destination: "0256", TimeStart: t1, TimeEnd: t2}
+	cd := &CallDescriptor{Direction: utils.OUT, Category: "0", Tenant: "test", Subject: "rif", Destination: "0256", TimeStart: t1, TimeEnd: t2}
 	cc1, _ := cd.getCost()
-	if cc1.Cost != 61 {
-		t.Errorf("expected 61 was %v", cc1.Cost)
+	if cc1.Cost.String() != "61" {
+		t.Errorf("expected 61 was %v", cc1.Cost.String())
 	}
 	t1 = time.Date(2012, time.February, 2, 17, 1, 0, 0, time.UTC)
 	t2 = time.Date(2012, time.February, 2, 17, 2, 0, 0, time.UTC)
-	cd = &CallDescriptor{Direction: utils.OUT, Category: "0", Tenant: "vdf", Subject: "rif", Destination: "0256", TimeStart: t1, TimeEnd: t2}
+	cd = &CallDescriptor{Direction: utils.OUT, Category: "0", Tenant: "test", Subject: "rif", Destination: "0256", TimeStart: t1, TimeEnd: t2}
 	cc2, _ := cd.GetCost()
-	if cc2.Cost != 61 {
-		t.Errorf("expected 60 was %v", cc2.Cost)
+	if cc2.Cost.String() != "61" {
+		t.Errorf("expected 60 was %v", cc2.Cost.String())
 	}
 	cc1.Merge(cc2)
 	if len(cc1.Timespans) != 2 || cc1.Timespans[0].GetDuration().Seconds() != 60 || cc1.Timespans[1].GetDuration().Seconds() != 60 {
@@ -29,8 +29,8 @@ func TestSingleResultMerge(t *testing.T) {
 		}
 		t.Error("wrong resulted timespan: ", len(cc1.Timespans), cc1.Timespans[0].GetDuration().Seconds())
 	}
-	if cc1.Cost != 122 {
-		t.Errorf("Exdpected 120 was %v", cc1.Cost)
+	if cc1.Cost.String() != "122" {
+		t.Errorf("Exdpected 120 was %v", cc1.Cost.String())
 	}
 	d := cc1.UpdateRatedUsage()
 	if d != 2*time.Minute || cc1.RatedUsage != 120.0 {
@@ -38,24 +38,24 @@ func TestSingleResultMerge(t *testing.T) {
 	}
 }
 
-func TestMultipleResultMerge(t *testing.T) {
+func TestCCMultipleResultMerge(t *testing.T) {
 	t1 := time.Date(2012, time.February, 2, 17, 59, 0, 0, time.UTC)
 	t2 := time.Date(2012, time.February, 2, 18, 0, 0, 0, time.UTC)
-	cd := &CallDescriptor{Direction: utils.OUT, Category: "0", Tenant: "vdf", Subject: "rif", Destination: "0256", TimeStart: t1, TimeEnd: t2}
+	cd := &CallDescriptor{Direction: utils.OUT, Category: "0", Tenant: "test", Subject: "rif", Destination: "0256", TimeStart: t1, TimeEnd: t2}
 	cc1, _ := cd.getCost()
-	if cc1.Cost != 61 {
+	if cc1.Cost.String() != "61" {
 		//ils.LogFull(cc1)
-		t.Errorf("expected 61 was %v", cc1.Cost)
+		t.Errorf("expected 61 was %v", cc1.Cost.String())
 		for _, ts := range cc1.Timespans {
 			t.Log(ts.RateInterval)
 		}
 	}
 	t1 = time.Date(2012, time.February, 2, 18, 00, 0, 0, time.UTC)
 	t2 = time.Date(2012, time.February, 2, 18, 01, 0, 0, time.UTC)
-	cd = &CallDescriptor{Direction: utils.OUT, Category: "0", Tenant: "vdf", Subject: "rif", Destination: "0256", TimeStart: t1, TimeEnd: t2}
+	cd = &CallDescriptor{Direction: utils.OUT, Category: "0", Tenant: "test", Subject: "rif", Destination: "0256", TimeStart: t1, TimeEnd: t2}
 	cc2, _ := cd.getCost()
-	if cc2.Cost != 30 {
-		t.Errorf("expected 30 was %v", cc2.Cost)
+	if cc2.Cost.String() != "30" {
+		t.Errorf("expected 30 was %v", cc2.Cost.String())
 		for _, ts := range cc1.Timespans {
 			t.Log(ts.RateInterval)
 		}
@@ -64,65 +64,65 @@ func TestMultipleResultMerge(t *testing.T) {
 	if len(cc1.Timespans) != 2 || cc1.Timespans[0].GetDuration().Seconds() != 60 {
 		t.Error("wrong resulted timespans: ", len(cc1.Timespans))
 	}
-	if cc1.Cost != 91 {
-		t.Errorf("Exdpected 91 was %v", cc1.Cost)
+	if cc1.Cost.String() != "91" {
+		t.Errorf("Exdpected 91 was %v", cc1.Cost.String())
 	}
 }
 
-func TestMultipleInputLeftMerge(t *testing.T) {
+func TestCCMultipleInputLeftMerge(t *testing.T) {
 	t1 := time.Date(2012, time.February, 2, 17, 59, 0, 0, time.UTC)
 	t2 := time.Date(2012, time.February, 2, 18, 01, 0, 0, time.UTC)
-	cd := &CallDescriptor{Direction: utils.OUT, Category: "0", Tenant: "vdf", Subject: "rif", Destination: "0256", TimeStart: t1, TimeEnd: t2}
+	cd := &CallDescriptor{Direction: utils.OUT, Category: "0", Tenant: "test", Subject: "rif", Destination: "0256", TimeStart: t1, TimeEnd: t2}
 	cc1, _ := cd.getCost()
 	//log.Printf("Timing: %+v", cc1.Timespans[1].RateInterval.Timing)
 	//log.Printf("Rating: %+v", cc1.Timespans[1].RateInterval.Rating)
-	if cc1.Cost != 91 {
-		t.Errorf("expected 91 was %v", cc1.Cost)
+	if cc1.Cost.String() != "91" {
+		t.Errorf("expected 91 was %v", cc1.Cost.String())
 	}
 	/*t1 = time.Date(2012, time.February, 2, 18, 01, 0, 0, time.UTC)
 	t2 = time.Date(2012, time.February, 2, 18, 02, 0, 0, time.UTC)
-	cd = &CallDescriptor{Direction: utils.OUT, TOR: "0", Tenant: "vdf", Subject: "rif", Destination: "0256", TimeStart: t1, TimeEnd: t2}
+	cd = &CallDescriptor{Direction: utils.OUT, TOR: "0", Tenant: "test", Subject: "rif", Destination: "0256", TimeStart: t1, TimeEnd: t2}
 	cc2, _ := cd.getCost()
-	if cc2.Cost != 30 {
-		t.Errorf("expected 30 was %v", cc2.Cost)
+	if cc2.Cost.String() != 30 {
+		t.Errorf("expected 30 was %v", cc2.Cost.String())
 	}
 	cc1.Merge(cc2)
 	if len(cc1.Timespans) != 2 || cc1.Timespans[1].GetDuration().Seconds() != 120 {
 		t.Error("wrong resulted timespan: ", len(cc1.Timespans))
 	}
-	if cc1.Cost != 120 {
-		t.Errorf("Exdpected 120 was %v", cc1.Cost)
+	if cc1.Cost.String() != 120 {
+		t.Errorf("Exdpected 120 was %v", cc1.Cost.String())
 	}*/
 }
 
-func TestMultipleInputRightMerge(t *testing.T) {
+func TestCCMultipleInputRightMerge(t *testing.T) {
 	t1 := time.Date(2012, time.February, 2, 17, 58, 0, 0, time.UTC)
 	t2 := time.Date(2012, time.February, 2, 17, 59, 0, 0, time.UTC)
-	cd := &CallDescriptor{Direction: utils.OUT, Category: "0", Tenant: "vdf", Subject: "rif", Destination: "0256", TimeStart: t1, TimeEnd: t2}
+	cd := &CallDescriptor{Direction: utils.OUT, Category: "0", Tenant: "test", Subject: "rif", Destination: "0256", TimeStart: t1, TimeEnd: t2}
 	cc1, _ := cd.getCost()
-	if cc1.Cost != 61 {
-		t.Errorf("expected 61 was %v", cc1.Cost)
+	if cc1.Cost.String() != "61" {
+		t.Errorf("expected 61 was %v", cc1.Cost.String())
 	}
 	t1 = time.Date(2012, time.February, 2, 17, 59, 0, 0, time.UTC)
 	t2 = time.Date(2012, time.February, 2, 18, 01, 0, 0, time.UTC)
-	cd = &CallDescriptor{Direction: utils.OUT, Category: "0", Tenant: "vdf", Subject: "rif", Destination: "0256", TimeStart: t1, TimeEnd: t2}
+	cd = &CallDescriptor{Direction: utils.OUT, Category: "0", Tenant: "test", Subject: "rif", Destination: "0256", TimeStart: t1, TimeEnd: t2}
 	cc2, _ := cd.getCost()
-	if cc2.Cost != 91 {
-		t.Errorf("expected 91 was %v", cc2.Cost)
+	if cc2.Cost.String() != "91" {
+		t.Errorf("expected 91 was %v", cc2.Cost.String())
 	}
 	cc1.Merge(cc2)
 	if len(cc1.Timespans) != 3 || cc1.Timespans[0].GetDuration().Seconds() != 60 {
 		t.Error("wrong resulted timespan: ", len(cc1.Timespans), cc1.Timespans[0].GetDuration().Seconds())
 	}
-	if cc1.Cost != 152 {
-		t.Errorf("Exdpected 152 was %v", cc1.Cost)
+	if cc1.Cost.String() != "152" {
+		t.Errorf("Exdpected 152 was %v", cc1.Cost.String())
 	}
 }
 
-func TestCallCostMergeEmpty(t *testing.T) {
+func TestCCMergeEmpty(t *testing.T) {
 	t1 := time.Date(2012, time.February, 2, 17, 58, 0, 0, time.UTC)
 	t2 := time.Date(2012, time.February, 2, 17, 59, 0, 0, time.UTC)
-	cd := &CallDescriptor{Direction: utils.OUT, Category: "0", Tenant: "vdf", Subject: "rif", Destination: "0256", TimeStart: t1, TimeEnd: t2}
+	cd := &CallDescriptor{Direction: utils.OUT, Category: "0", Tenant: "test", Subject: "rif", Destination: "0256", TimeStart: t1, TimeEnd: t2}
 	cc1, _ := cd.getCost()
 	cc2 := &CallCost{}
 	cc1.Merge(cc2)
@@ -131,14 +131,14 @@ func TestCallCostMergeEmpty(t *testing.T) {
 	}
 }
 
-func TestCallCostGetDurationZero(t *testing.T) {
+func TestCCGetDurationZero(t *testing.T) {
 	cc := &CallCost{}
 	if cc.GetDuration().Seconds() != 0 {
 		t.Error("Wrong call cost duration for zero timespans: ", cc.GetDuration())
 	}
 }
 
-func TestCallCostGetDuration(t *testing.T) {
+func TestCCGetDuration(t *testing.T) {
 	cc := &CallCost{
 		Timespans: []*TimeSpan{
 			&TimeSpan{
@@ -156,11 +156,11 @@ func TestCallCostGetDuration(t *testing.T) {
 	}
 }
 
-func TestCallCostToDataCostError(t *testing.T) {
+func TestCCToDataCostError(t *testing.T) {
 	cd := &CallDescriptor{
 		Direction:   "*out",
 		Category:    "data",
-		Tenant:      "cgrates.org",
+		Tenant:      "test",
 		Subject:     "rif",
 		Destination: utils.ANY,
 		TimeStart:   time.Date(2014, 3, 4, 6, 0, 0, 0, time.UTC),
@@ -174,11 +174,73 @@ func TestCallCostToDataCostError(t *testing.T) {
 	}
 }
 
-/*func TestCallCostToDataCost(t *testing.T) {
+func TestCCGetPostActionTriggers(t *testing.T) {
+	cc := &CallCost{
+		Timespans: []*TimeSpan{
+			&TimeSpan{
+				Increments: &Increments{
+					CompIncrement: &Increment{BalanceInfo: &DebitInfo{AccountID: "x"}, Duration: time.Second, CompressFactor: 5, PostATIDs: map[string][]string{"3": []string{"AT1", "AT2"}}},
+				},
+			},
+			&TimeSpan{
+				Increments: &Increments{
+					CompIncrement: &Increment{BalanceInfo: &DebitInfo{AccountID: "x"}, Duration: time.Second, CompressFactor: 5, PostATIDs: map[string][]string{"3": []string{"AT3", "AT4"}}},
+				},
+			},
+		},
+	}
+	exe, unexe := cc.GetPostActionTriggers(8 * time.Second)
+	if len(exe["x"]) != 4 || len(unexe["x"]) != 0 {
+		t.Errorf("Failed to get post atids Exe: %s, Unexe: %s", utils.ToJSON(exe), utils.ToJSON(unexe))
+	}
+	exe, unexe = cc.GetPostActionTriggers(5 * time.Second)
+	if len(exe["x"]) != 2 || len(unexe["x"]) != 2 {
+		t.Errorf("Failed to get post atids Exe: %s, Unexe: %s", utils.ToJSON(exe), utils.ToJSON(unexe))
+	}
+	exe, unexe = cc.GetPostActionTriggers(2 * time.Second)
+	if len(exe["x"]) != 0 || len(unexe["x"]) != 4 {
+		t.Errorf("Failed to get post atids Exe: %s, Unexe: %s", utils.ToJSON(exe), utils.ToJSON(unexe))
+	}
+}
+
+func TestCCGetPostActionTriggersLarge(t *testing.T) {
+	cc := &CallCost{
+		Timespans: []*TimeSpan{
+			&TimeSpan{
+				Increments: &Increments{
+					CompIncrement: &Increment{BalanceInfo: &DebitInfo{AccountID: "x"}, Duration: 10 * time.Second, CompressFactor: 5, PostATIDs: map[string][]string{"3": []string{"AT1", "AT2"}}},
+				},
+			},
+			&TimeSpan{
+				Increments: &Increments{
+					CompIncrement: &Increment{BalanceInfo: &DebitInfo{AccountID: "x"}, Duration: 10 * time.Second, CompressFactor: 5, PostATIDs: map[string][]string{"3": []string{"AT3", "AT4"}}},
+				},
+			},
+		},
+	}
+	exe, unexe := cc.GetPostActionTriggers(75 * time.Second)
+	if len(exe["x"]) != 4 || len(unexe["x"]) != 0 {
+		t.Errorf("Failed to get post atids Exe: %s, Unexe: %s", utils.ToJSON(exe), utils.ToJSON(unexe))
+	}
+	exe, unexe = cc.GetPostActionTriggers(55 * time.Second)
+	if len(exe["x"]) != 2 || len(unexe["x"]) != 2 {
+		t.Errorf("Failed to get post atids Exe: %s, Unexe: %s", utils.ToJSON(exe), utils.ToJSON(unexe))
+	}
+	exe, unexe = cc.GetPostActionTriggers(20 * time.Second)
+	if len(exe["x"]) != 0 || len(unexe["x"]) != 4 {
+		t.Errorf("Failed to get post atids Exe: %s, Unexe: %s", utils.ToJSON(exe), utils.ToJSON(unexe))
+	}
+	exe, unexe = cc.GetPostActionTriggers(21 * time.Second)
+	if len(exe["x"]) != 2 || len(unexe["x"]) != 2 {
+		t.Errorf("Failed to get post atids Exe: %s, Unexe: %s", utils.ToJSON(exe), utils.ToJSON(unexe))
+	}
+}
+
+/*func TestCCToDataCost(t *testing.T) {
 	cd := &CallDescriptor{
 		Direction:   "*out",
 		Category:    "data",
-		Tenant:      "cgrates.org",
+		Tenant:      "test",
 		Subject:     "rif",
 		Destination: utils.ANY,
 		TimeStart:   time.Date(2014, 3, 4, 6, 0, 0, 0, time.UTC),
@@ -193,7 +255,7 @@ func TestCallCostToDataCostError(t *testing.T) {
 	expected := &DataCost{
 		Direction:   "*out",
 		Category:    "data",
-		Tenant:      "cgrates.org",
+		Tenant:      "test",
 		Subject:     "rif",
 		Account:     "",
 		Destination: "*any",
@@ -265,7 +327,7 @@ func TestCallCostToDataCostError(t *testing.T) {
 					Weight: 10},
 				DataIndex:      65,
 				Increments:     []*DataIncrement{},
-				MatchedSubject: "*out:cgrates.org:data:rif",
+				MatchedSubject: "*out:test:data:rif",
 				MatchedPrefix:  "*any",
 				MatchedDestId:  "*any"},
 		},

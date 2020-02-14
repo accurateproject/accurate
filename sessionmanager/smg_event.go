@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/dec"
 	"github.com/accurateproject/accurate/engine"
 	"github.com/accurateproject/accurate/utils"
 )
@@ -31,7 +32,7 @@ func (self SMGenericEvent) GetTOR(fieldName string) string {
 	return result
 }
 
-func (self SMGenericEvent) GetCgrId(timezone string) string {
+func (self SMGenericEvent) GetUniqueID(timezone string) string {
 	//setupTime, _ := self.GetSetupTime(utils.META_DEFAULT, timezone)
 	//return utils.Sha1(self.GetUUID(), setupTime.UTC().String())
 	return utils.Sha1(self.GetUUID())
@@ -303,8 +304,8 @@ func (self SMGenericEvent) MissingParameter(timezone string) bool {
 
 func (self SMGenericEvent) ParseEventValue(rsrFld *utils.RSRField, timezone string) string {
 	switch rsrFld.Id {
-	case utils.CGRID:
-		return rsrFld.ParseValue(self.GetCgrId(timezone))
+	case utils.UniqueID:
+		return rsrFld.ParseValue(self.GetUniqueID(timezone))
 	case utils.TOR:
 		return rsrFld.ParseValue(utils.VOICE)
 	case utils.ACCID:
@@ -352,16 +353,15 @@ func (self SMGenericEvent) ParseEventValue(rsrFld *utils.RSRField, timezone stri
 		val := rsrFld.ParseValue(strVal)
 		return val
 	}
-	return ""
 }
 
 func (self SMGenericEvent) PassesFieldFilter(*utils.RSRField) (bool, string) {
 	return true, ""
 }
 
-func (self SMGenericEvent) AsStoredCdr(cfg *config.CGRConfig, timezone string) *engine.CDR {
-	storCdr := engine.NewCDRWithDefaults(cfg)
-	storCdr.CGRID = self.GetCgrId(timezone)
+func (self SMGenericEvent) AsStoredCdr(cfg *config.Config, timezone string) *engine.CDR {
+	storCdr := engine.NewCDRWithDefaults(cfg.General)
+	storCdr.UniqueID = self.GetUniqueID(timezone)
 	storCdr.ToR = utils.FirstNonEmpty(self.GetTOR(utils.META_DEFAULT), storCdr.ToR) // Keep default if none in the event
 	storCdr.OriginID = self.GetUUID()
 	storCdr.OriginHost = self.GetOriginatorIP(utils.META_DEFAULT)
@@ -380,7 +380,7 @@ func (self SMGenericEvent) AsStoredCdr(cfg *config.CGRConfig, timezone string) *
 	storCdr.Supplier = self.GetSupplier(utils.META_DEFAULT)
 	storCdr.DisconnectCause = self.GetDisconnectCause(utils.META_DEFAULT)
 	storCdr.ExtraFields = self.GetExtraFields()
-	storCdr.Cost = -1
+	storCdr.Cost = dec.NewVal(-1, 0)
 	return storCdr
 }
 

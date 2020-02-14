@@ -5,7 +5,7 @@ import "github.com/accurateproject/accurate/utils"
 func init() {
 	c := &CmdReloadCache{
 		name:      "cache_reload",
-		rpcMethod: "ApierV1.ReloadCache",
+		rpcMethod: "ApiV1.ReloadCache",
 	}
 	commands[c.Name()] = c
 	c.CommandExecuter = &CommandExecuter{c}

@@ -1,4 +1,4 @@
-OpenSIPS-CGRateS integration training
+OpenSIPS-AccuRate integration training
 =====================================
 
 Scenario:

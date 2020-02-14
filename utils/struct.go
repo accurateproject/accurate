@@ -26,11 +26,27 @@ func MissingStructFields(s interface{}, mandatories []string) []string {
 	return missing
 }
 
+func FieldByName(in interface{}, fieldNames StringMap) map[string]interface{} {
+	v := reflect.ValueOf(in)
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+	m := make(map[string]interface{})
+	for fieldName := range fieldNames {
+		x := v.FieldByName(fieldName)
+		if x.IsValid() && x.CanInterface() {
+			m[fieldName] = x.Interface()
+		}
+	}
+	return m
+}
+
 // Detects nonempty struct fields, s should be a pointer to a struct
 // Useful to not overwrite db fields with non defined params in api
 func NonemptyStructFields(s interface{}) map[string]interface{} {
 	fields := make(map[string]interface{})
-	for i := 0; i < reflect.ValueOf(s).Elem().NumField(); i++ {
+	numField := reflect.ValueOf(s).Elem().NumField()
+	for i := 0; i < numField; i++ {
 		fld := reflect.ValueOf(s).Elem().Field(i)
 		switch fld.Kind() {
 		case reflect.Bool:
@@ -50,23 +66,6 @@ func NonemptyStructFields(s interface{}) map[string]interface{} {
 	return fields
 }
 
-// Converts a struct to map
-/*func StrucToMap(s interface{}) map[string]interface{} {
-	mp := make(map[string]interface{})
-	for i := 0; i < reflect.ValueOf(s).Elem().NumField(); i++ {
-		fld := reflect.ValueOf(s).Elem().Field(i)
-		switch fld.Kind() {
-		case reflect.Bool:
-			mp[reflect.TypeOf(s).Elem().Field(i).Name] = fld.Bool()
-		case reflect.Int:
-			mp[reflect.TypeOf(s).Elem().Field(i).Name] = fld.Int()
-		case reflect.String:
-			mp[reflect.TypeOf(s).Elem().Field(i).Name] = fld.String()
-		}
-	}
-	return mp
-}*/
-
 // Converts a struct to map[string]interface{}
 func ToMapMapStringInterface(in interface{}) map[string]interface{} {
 	out := make(map[string]interface{})
@@ -75,85 +74,10 @@ func ToMapMapStringInterface(in interface{}) map[string]interface{} {
 	if v.Kind() == reflect.Ptr {
 		v = v.Elem()
 	}
-	typ := reflect.TypeOf(in)
 	for i := 0; i < v.NumField(); i++ {
-		out[typ.Field(i).Name] = v.Field(i).Interface()
+		out[v.Type().Field(i).Name] = v.Field(i).Interface()
 	}
 	return out
-}
-
-// Converts a struct to map[string]string
-func ToMapStringString(in interface{}) map[string]string {
-	out := make(map[string]string)
-
-	v := reflect.ValueOf(in)
-	if v.Kind() == reflect.Ptr {
-		v = v.Elem()
-		in = v.Interface()
-	}
-	typ := reflect.TypeOf(in)
-	for i := 0; i < v.NumField(); i++ {
-		// gets us a StructField
-		typField := typ.Field(i)
-		field := v.Field(i)
-		if field.Kind() == reflect.String {
-			out[typField.Name] = field.String()
-		}
-	}
-	return out
-}
-
-func GetMapExtraFields(in interface{}, extraFields string) map[string]string {
-	out := make(map[string]string)
-	v := reflect.ValueOf(in)
-	if v.Kind() == reflect.Ptr {
-		v = v.Elem()
-	}
-	field := v.FieldByName(extraFields)
-	if field.Kind() == reflect.Map {
-		keys := field.MapKeys()
-		for _, key := range keys {
-			out[key.String()] = field.MapIndex(key).String()
-		}
-	}
-	return out
-}
-
-func SetMapExtraFields(in interface{}, values map[string]string, extraFields string) {
-	v := reflect.ValueOf(in)
-	if v.Kind() == reflect.Ptr {
-		v = v.Elem()
-	}
-	efField := v.FieldByName(extraFields)
-	if efField.IsValid() && efField.Kind() == reflect.Map {
-		keys := efField.MapKeys()
-		for _, key := range keys {
-			if efField.MapIndex(key).String() != "" {
-				if val, found := values[key.String()]; found {
-					efField.SetMapIndex(key, reflect.ValueOf(val))
-				}
-			}
-		}
-	}
-	return
-}
-
-func FromMapStringString(m map[string]string, in interface{}) {
-	v := reflect.ValueOf(in)
-	if v.Kind() == reflect.Ptr {
-		v = v.Elem()
-	}
-	for fieldName, fieldValue := range m {
-		field := v.FieldByName(fieldName)
-		if field.IsValid() {
-			if field.Kind() == reflect.String {
-				if field.String() != "" && field.CanSet() {
-					field.SetString(fieldValue)
-				}
-			}
-		}
-	}
-	return
 }
 
 func FromMapStringInterface(m map[string]interface{}, in interface{}) error {
@@ -208,8 +132,9 @@ func FromMapStringInterfaceValue(m map[string]interface{}, v reflect.Value) (int
 // Update struct with map fields, returns not matching map keys, s is a struct to be updated
 func UpdateStructWithStrMap(s interface{}, m map[string]string) []string {
 	notMatched := []string{}
+	elem := reflect.ValueOf(s).Elem()
 	for key, val := range m {
-		fld := reflect.ValueOf(s).Elem().FieldByName(key)
+		fld := elem.FieldByName(key)
 		if fld.IsValid() {
 			switch fld.Kind() {
 			case reflect.Bool:
@@ -232,4 +157,74 @@ func UpdateStructWithStrMap(s interface{}, m map[string]string) []string {
 		}
 	}
 	return notMatched
+}
+
+// Merges two objects appending to slices and maps and overwritting non nil fields
+func Merge(dest, other interface{}, overwriteDefault bool) error {
+	if dest == nil || other == nil {
+		return nil
+	}
+	destType := reflect.TypeOf(dest)
+	if destType != reflect.TypeOf(other) {
+		return errors.New("different types")
+	}
+	destElem := reflect.ValueOf(dest)
+	if destElem.Kind() == reflect.Ptr {
+		destElem = destElem.Elem()
+	}
+
+	otherElem := reflect.ValueOf(other)
+	if otherElem.Kind() == reflect.Ptr {
+		otherElem = otherElem.Elem()
+	}
+
+	if !otherElem.IsValid() {
+		return nil
+	}
+	switch destElem.Kind() {
+	case reflect.Slice:
+		destElem.Set(reflect.AppendSlice(destElem, otherElem))
+		return nil
+	case reflect.Map:
+		for _, key := range otherElem.MapKeys() {
+			destElem.SetMapIndex(key, otherElem.MapIndex(key))
+		}
+		return nil
+	}
+
+	for i := 0; i < destElem.NumField(); i++ {
+		destField := destElem.Field(i)
+		if !otherElem.IsValid() {
+			continue
+		}
+		otherField := otherElem.Field(i)
+
+		if otherField.Kind() == reflect.Ptr && otherField.IsNil() {
+			continue
+		}
+		if destField.Kind() == reflect.Ptr && destField.IsNil() {
+			destField.Set(otherField)
+			continue
+		}
+		switch destField.Kind() {
+		case reflect.Ptr:
+			destField.Set(otherField)
+		case reflect.Slice:
+			if otherField.Len() > 0 {
+				if overwriteDefault {
+					destField.Set(otherField) // overwrite so we loose the defaults
+				} else {
+					destField.Set(reflect.AppendSlice(destField, otherField))
+				}
+			}
+		case reflect.Map:
+			for _, key := range otherField.MapKeys() {
+				if destField.IsNil() {
+					destField.Set(reflect.MakeMap(otherField.Type()))
+				}
+				destField.SetMapIndex(key, otherField.MapIndex(key))
+			}
+		}
+	}
+	return nil
 }

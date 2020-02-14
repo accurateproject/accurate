@@ -15,14 +15,14 @@ import (
 
 /*
 Integration tests with SureTax platform.
-Configuration file is kept outside of CGRateS repository since it contains sensitive customer information
+Configuration file is kept outside of AccuRate repository since it contains sensitive customer information
 */
 
 var testSureTax = flag.Bool("suretax", false, "Pefrom SureTax integration tests when this flag is activated")
 var configDir = flag.String("config_dir", "", "CGR config dir path here")
 var tpDir = flag.String("tp_dir", "", "CGR config dir path here")
 
-var stiCfg *config.CGRConfig
+var stiCfg *config.Config
 var stiRpc *rpc.Client
 var stiLoadInst utils.LoadInstance
 
@@ -32,10 +32,11 @@ func TestSTIInitCfg(t *testing.T) {
 	}
 	// Init config first
 	var err error
-	stiCfg, err = config.NewCGRConfigFromFolder(*configDir)
-	if err != nil {
+	config.Reset()
+	if err = config.LoadPath(*configDir); err != nil {
 		t.Error(err)
 	}
+	//stiCfg := config.Get()
 }
 
 // Remove data in both rating and accounting db
@@ -74,7 +75,7 @@ func TestSTIRpcConn(t *testing.T) {
 		return
 	}
 	var err error
-	stiRpc, err = jsonrpc.Dial("tcp", stiCfg.RPCJSONListen) // We connect over JSON so we can also troubleshoot if needed
+	stiRpc, err = jsonrpc.Dial("tcp", *stiCfg.Listen.RpcJson) // We connect over JSON so we can also troubleshoot if needed
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,8 +101,7 @@ func TestSTICacheStats(t *testing.T) {
 		return
 	}
 	var rcvStats *utils.CacheStats
-	expectedStats := &utils.CacheStats{Destinations: 1, RatingPlans: 1, RatingProfiles: 1, DerivedChargers: 1,
-		LastRatingLoadID: stiLoadInst.RatingLoadID, LastAccountingLoadID: stiLoadInst.AccountingLoadID, LastLoadTime: stiLoadInst.LoadTime.Format(time.RFC3339)}
+	expectedStats := &utils.CacheStats{Destinations: 1, RatingPlans: 1, RatingProfiles: 1, DerivedChargers: 1}
 	var args utils.AttrCacheStats
 	if err := stiRpc.Call("ApierV2.GetCacheStats", args, &rcvStats); err != nil {
 		t.Error("Got error on ApierV2.GetCacheStats: ", err.Error())

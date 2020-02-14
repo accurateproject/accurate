@@ -5,7 +5,7 @@
 DROP TABLE IF EXISTS cdrs;
 CREATE TABLE cdrs (
  id SERIAL PRIMARY KEY,
- cgrid CHAR(40) NOT NULL,
+ uniqueid CHAR(40) NOT NULL,
  run_id VARCHAR(64) NOT NULL,
  origin_host VARCHAR(64) NOT NULL,
  source VARCHAR(64) NOT NULL,
@@ -28,11 +28,12 @@ CREATE TABLE cdrs (
  cost_source VARCHAR(64) NOT NULL,
  cost NUMERIC(20,4) DEFAULT NULL,
  cost_details jsonb,
+ account_summary jsonb,
  extra_info text,
  created_at TIMESTAMP,
  updated_at TIMESTAMP NULL,
  deleted_at TIMESTAMP NULL,
- UNIQUE (cgrid, run_id, origin_id)
+ UNIQUE (uniqueid, run_id, origin_id)
 );
 ;
 DROP INDEX IF EXISTS deleted_at_cp_idx;
@@ -42,7 +43,7 @@ CREATE INDEX deleted_at_cp_idx ON cdrs (deleted_at);
 DROP TABLE IF EXISTS sm_costs;
 CREATE TABLE sm_costs (
   id SERIAL PRIMARY KEY,
-  cgrid CHAR(40) NOT NULL,
+  uniqueid CHAR(40) NOT NULL,
   run_id  VARCHAR(64) NOT NULL,
   origin_host VARCHAR(64) NOT NULL,
   origin_id VARCHAR(64) NOT NULL,
@@ -51,12 +52,11 @@ CREATE TABLE sm_costs (
   cost_details jsonb,
   created_at TIMESTAMP,
   deleted_at TIMESTAMP NULL,
-  UNIQUE (cgrid, run_id)
+  UNIQUE (uniqueid, run_id)
 );
-DROP INDEX IF EXISTS cgrid_smcost_idx;
-CREATE INDEX cgrid_smcost_idx ON sm_costs (cgrid, run_id);
+DROP INDEX IF EXISTS uniqueid_smcost_idx;
+CREATE INDEX uniqueid_smcost_idx ON sm_costs (uniqueid, run_id);
 DROP INDEX IF EXISTS origin_smcost_idx;
 CREATE INDEX origin_smcost_idx ON sm_costs (origin_host, origin_id);
 DROP INDEX IF EXISTS deleted_at_smcost_idx;
 CREATE INDEX deleted_at_smcost_idx ON sm_costs (deleted_at);
-

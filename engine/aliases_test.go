@@ -7,14 +7,11 @@ import (
 	"github.com/accurateproject/accurate/utils"
 )
 
-func init() {
-	aliasService = NewAliasHandler(accountingStorage)
-}
 func TestAliasesGetAlias(t *testing.T) {
 	alias := Alias{}
 	err := aliasService.Call("AliasesV1.GetAlias", &Alias{
 		Direction: "*out",
-		Tenant:    "cgrates.org",
+		Tenant:    "test",
 		Category:  "call",
 		Account:   "dan",
 		Subject:   "dan",
@@ -22,26 +19,8 @@ func TestAliasesGetAlias(t *testing.T) {
 	}, &alias)
 	if err != nil ||
 		len(alias.Values) != 2 ||
-		len(alias.Values[0].Pairs) != 2 {
-		t.Error("Error getting alias: ", err, alias, alias.Values)
-	}
-}
-
-func TestAliasesGetMatchingAlias(t *testing.T) {
-	var response string
-	err := aliasService.Call("AliasesV1.GetMatchingAlias", &AttrMatchingAlias{
-		Direction:   "*out",
-		Tenant:      "cgrates.org",
-		Category:    "call",
-		Account:     "dan",
-		Subject:     "dan",
-		Context:     "*rating",
-		Destination: "444",
-		Target:      "Subject",
-		Original:    "rif",
-	}, &response)
-	if err != nil || response != "rif1" {
-		t.Error("Error getting alias: ", err, response)
+		len(alias.Values[0].Fields) != 76 {
+		t.Error("Error getting alias: ", err, alias, alias.Values[0].Fields)
 	}
 }
 
@@ -50,14 +29,14 @@ func TestAliasesSetters(t *testing.T) {
 	if err := aliasService.Call("AliasesV1.SetAlias", &AttrAddAlias{
 		Alias: &Alias{
 			Direction: "*out",
-			Tenant:    "cgrates.org",
+			Tenant:    "test",
 			Category:  "call",
 			Account:   "set",
 			Subject:   "set",
 			Context:   "*rating",
 			Values: AliasValues{&AliasValue{
-				DestinationId: utils.ANY,
-				Pairs:         AliasPairs{"Account": map[string]string{"1234": "1235"}},
+				DestinationID: utils.ANY,
+				Fields:        `{"Account":{"$rpl":["1234", "1235"]}}`,
 				Weight:        10,
 			}},
 		},
@@ -68,26 +47,26 @@ func TestAliasesSetters(t *testing.T) {
 	r := &Alias{}
 	if err := aliasService.Call("AliasesV1.GetAlias", &Alias{
 		Direction: "*out",
-		Tenant:    "cgrates.org",
+		Tenant:    "test",
 		Category:  "call",
 		Account:   "set",
 		Subject:   "set",
 		Context:   "*rating",
-	}, r); err != nil || len(r.Values) != 1 || len(r.Values[0].Pairs) != 1 {
-		t.Errorf("Error getting alias: %+v", r)
+	}, r); err != nil || len(r.Values) != 1 || len(r.Values[0].Fields) != 37 {
+		t.Errorf("Error getting alias: %+v", r.Values[0].Fields)
 	}
 
 	if err := aliasService.Call("AliasesV1.SetAlias", &AttrAddAlias{
 		Alias: &Alias{
 			Direction: "*out",
-			Tenant:    "cgrates.org",
+			Tenant:    "test",
 			Category:  "call",
 			Account:   "set",
 			Subject:   "set",
 			Context:   "*rating",
 			Values: AliasValues{&AliasValue{
-				DestinationId: utils.ANY,
-				Pairs:         AliasPairs{"Subject": map[string]string{"1234": "1235"}},
+				DestinationID: "NAT",
+				Fields:        `{"Subject":{"$rpl":["1234", "1235"]}}`,
 				Weight:        10,
 			}},
 		},
@@ -97,29 +76,26 @@ func TestAliasesSetters(t *testing.T) {
 	}
 	if err := aliasService.Call("AliasesV1.GetAlias", &Alias{
 		Direction: "*out",
-		Tenant:    "cgrates.org",
+		Tenant:    "test",
 		Category:  "call",
 		Account:   "set",
 		Subject:   "set",
 		Context:   "*rating",
 	}, r); err != nil ||
-		len(r.Values) != 1 ||
-		len(r.Values[0].Pairs) != 2 ||
-		r.Values[0].Pairs["Subject"]["1234"] != "1235" ||
-		r.Values[0].Pairs["Account"]["1234"] != "1235" {
-		t.Errorf("Error getting alias: %+v", r.Values[0])
+		len(r.Values) != 2 {
+		t.Errorf("Error getting alias: %s", utils.ToIJSON(r.Values))
 	}
 	if err := aliasService.Call("AliasesV1.SetAlias", &AttrAddAlias{
 		Alias: &Alias{
 			Direction: "*out",
-			Tenant:    "cgrates.org",
+			Tenant:    "test",
 			Category:  "call",
 			Account:   "set",
 			Subject:   "set",
 			Context:   "*rating",
 			Values: AliasValues{&AliasValue{
-				DestinationId: utils.ANY,
-				Pairs:         AliasPairs{"Subject": map[string]string{"1111": "2222"}},
+				DestinationID: "NAT",
+				Fields:        `{"Subject":{"$rpl":["1111", "2222"]}}`,
 				Weight:        10,
 			}},
 		},
@@ -129,25 +105,25 @@ func TestAliasesSetters(t *testing.T) {
 	}
 	if err := aliasService.Call("AliasesV1.GetAlias", &Alias{
 		Direction: "*out",
-		Tenant:    "cgrates.org",
+		Tenant:    "test",
 		Category:  "call",
 		Account:   "set",
 		Subject:   "set",
 		Context:   "*rating",
-	}, r); err != nil || len(r.Values) != 1 || len(r.Values[0].Pairs) != 2 || r.Values[0].Pairs["Subject"]["1111"] != "2222" {
-		t.Errorf("Error getting alias: %+v", r.Values[0].Pairs["Subject"])
+	}, r); err != nil || len(r.Values) != 2 {
+		t.Errorf("Error getting alias: %+v", r.Values[0].Fields)
 	}
 	if err := aliasService.Call("AliasesV1.SetAlias", &AttrAddAlias{
 		Alias: &Alias{
 			Direction: "*out",
-			Tenant:    "cgrates.org",
+			Tenant:    "test",
 			Category:  "call",
 			Account:   "set",
 			Subject:   "set",
 			Context:   "*rating",
 			Values: AliasValues{&AliasValue{
-				DestinationId: "NAT",
-				Pairs:         AliasPairs{"Subject": map[string]string{"3333": "4444"}},
+				DestinationID: "RET",
+				Fields:        `{"Subject":{"$rpl":["3333", "4444"]}}`,
 				Weight:        10,
 			}},
 		},
@@ -157,19 +133,14 @@ func TestAliasesSetters(t *testing.T) {
 	}
 	if err := aliasService.Call("AliasesV1.GetAlias", &Alias{
 		Direction: "*out",
-		Tenant:    "cgrates.org",
+		Tenant:    "test",
 		Category:  "call",
 		Account:   "set",
 		Subject:   "set",
 		Context:   "*rating",
 	}, r); err != nil ||
-		len(r.Values) != 2 ||
-		len(r.Values[1].Pairs) != 1 ||
-		r.Values[1].Pairs["Subject"]["3333"] != "4444" ||
-		len(r.Values[0].Pairs) != 2 ||
-		r.Values[0].Pairs["Subject"]["1111"] != "2222" ||
-		r.Values[0].Pairs["Subject"]["1234"] != "1235" {
-		t.Errorf("Error getting alias: %+v", r.Values[0])
+		len(r.Values) != 3 {
+		t.Errorf("Error getting alias: %s", utils.ToIJSON(r.Values))
 	}
 }
 
@@ -177,7 +148,7 @@ func TestAliasesLoadAlias(t *testing.T) {
 	var response string
 	cd := &CallDescriptor{
 		Direction:   "*out",
-		Tenant:      "cgrates.org",
+		Tenant:      "test",
 		Category:    "call",
 		Account:     "rif",
 		Subject:     "rif",
@@ -188,9 +159,9 @@ func TestAliasesLoadAlias(t *testing.T) {
 		},
 	}
 	err := LoadAlias(
-		&AttrMatchingAlias{
+		&AttrAlias{
 			Direction:   "*out",
-			Tenant:      "cgrates.org",
+			Tenant:      "test",
 			Category:    "call",
 			Account:     "dan",
 			Subject:     "dan",
@@ -207,53 +178,13 @@ func TestAliasesLoadAlias(t *testing.T) {
 }
 
 func TestAliasesCache(t *testing.T) {
-	key := "*out:cgrates.org:call:remo:remo:*rating"
-	_, err := accountingStorage.GetAlias(key, utils.CACHED)
+	_, err := accountingStorage.GetAlias(utils.OUT, "test", "call", "remo", "remo", utils.ALIAS_CONTEXT_RATING, utils.CACHED)
 	if err != nil {
 		t.Error("Error getting alias: ", err)
 	}
-	a, found := cache2go.Get(utils.ALIASES_PREFIX + key)
+	key := "*out:call:remo:remo:*rating"
+	a, found := cache2go.Get("test", utils.ALIASES_PREFIX+key)
 	if !found || a == nil {
-		//log.Printf("Test: %+v", cache2go.GetEntriesKeys(utils.REVERSE_ALIASES_PREFIX))
 		t.Error("Error getting alias from cache: ", err, a)
-	}
-	rKey1 := "minuAccount*rating"
-	_, err = accountingStorage.GetReverseAlias(rKey1, utils.CACHED)
-	if err != nil {
-		t.Error("Error getting reverse alias: ", err)
-	}
-	ra1, found := cache2go.Get(utils.REVERSE_ALIASES_PREFIX + rKey1)
-	if !found || len(ra1.([]string)) != 2 {
-		t.Error("Error getting reverse alias 1: ", ra1)
-	}
-	rKey2 := "minuSubject*rating"
-	_, err = accountingStorage.GetReverseAlias(rKey2, utils.CACHED)
-	if err != nil {
-		t.Error("Error getting reverse alias: ", err)
-	}
-	ra2, found := cache2go.Get(utils.REVERSE_ALIASES_PREFIX + rKey2)
-	if !found || len(ra2.([]string)) != 2 {
-		t.Error("Error getting reverse alias 2: ", ra2)
-	}
-	accountingStorage.RemoveAlias(key)
-	a, found = cache2go.Get(utils.ALIASES_PREFIX + key)
-	if found {
-		t.Error("Error getting alias from cache: ", found)
-	}
-	_, err = accountingStorage.GetReverseAlias(rKey1, utils.CACHED)
-	if err != nil {
-		t.Error("Error getting reverse alias: ", err)
-	}
-	ra1, found = cache2go.Get(utils.REVERSE_ALIASES_PREFIX + rKey1)
-	if !found || len(ra1.([]string)) != 1 {
-		t.Error("Error getting reverse alias 1: ", ra1)
-	}
-	_, err = accountingStorage.GetReverseAlias(rKey2, utils.CACHED)
-	if err != nil {
-		t.Error("Error getting reverse alias: ", err)
-	}
-	ra2, found = cache2go.Get(utils.REVERSE_ALIASES_PREFIX + rKey2)
-	if !found || len(ra2.([]string)) != 1 {
-		t.Error("Error getting reverse alias 2: ", ra2)
 	}
 }

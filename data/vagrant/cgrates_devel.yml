@@ -3,11 +3,11 @@
 - hosts: all
   become: true
   vars:
-    root_db_password: CGRateS.org
+    root_db_password: accuRate
 
   tasks:
-    - name: add cgrates user
-      user: name=cgrates comment=CGRateS home=/var/run/cgrates shell=/bin/false system=yes
+    - name: add accurate user
+      user: name=accurate comment=AccuRate home=/var/run/accurate shell=/bin/false system=yes
 
     - name: add freeswitch gpg key
       apt_key: url=https://files.freeswitch.org/repo/deb/debian/freeswitch_archive_g0.pub state=present
@@ -44,11 +44,11 @@
 
 - hosts: all
   vars:
-    root_db_password: CGRateS.org
+    root_db_password: AccuRate.org
     go_version: 1.6
 
   tasks:
-    - name: create cgrates path
+    - name: create accurate path
       file: path=/home/vagrant/code/src/github.com/accurateproject state=directory
 
     - name: get golang
@@ -59,26 +59,26 @@
       become: yes
 
     - name: create a link to data dir
-      file: src=/home/vagrant/code/src/github.com/accurateproject/accurate/data dest=/usr/share/cgrates state=link
+      file: src=/home/vagrant/code/src/github.com/accurateproject/accurate/data dest=/usr/share/accurate state=link
       become: yes
 
     #- name: expand freeswitch json conf
-    #  unarchive: src=/usr/share/cgrates/tutorials/fs_json/freeswitch/etc/freeswitch_conf.tar.gz dest=/usr/share/cgrates/tutorials/fs_json/freeswitch/etc/ copy=no
+    #  unarchive: src=/usr/share/accurate/tutorials/fs_json/freeswitch/etc/freeswitch_conf.tar.gz dest=/usr/share/accurate/tutorials/fs_json/freeswitch/etc/ copy=no
 
     #- name: expand freeswitch csv conf
-    #  unarchive: src=/usr/share/cgrates/tutorials/fs_csv/freeswitch/etc/freeswitch_conf.tar.gz dest=/usr/share/cgrates/tutorials/fs_json/freeswitch/etc/ copy=no
+    #  unarchive: src=/usr/share/accurate/tutorials/fs_csv/freeswitch/etc/freeswitch_conf.tar.gz dest=/usr/share/accurate/tutorials/fs_json/freeswitch/etc/ copy=no
 
     - name: setup mysql tables
-      shell: chdir=/usr/share/cgrates/storage/mysql ./setup_cgr_db.sh root {{ root_db_password }} localhost
+      shell: chdir=/usr/share/accurate/storage/mysql ./setup_cgr_db.sh root {{ root_db_password }} localhost
     - name: setup postgress table
-      shell: chdir=/usr/share/cgrates/storage/postgres ./setup_cgr_db.sh
+      shell: chdir=/usr/share/accurate/storage/postgres ./setup_cgr_db.sh
 
-    - name: create cgrates user for mongo
-      mongodb_user: database=admin name=cgrates password={{root_db_password}} roles='userAdminAnyDatabase' state=present
+    - name: create accurate user for mongo
+      mongodb_user: database=admin name=accurate password={{root_db_password}} roles='userAdminAnyDatabase' state=present
 
-    - name: create link to cgrates dir
+    - name: create link to accurate dir
       file: src=~/code/src/github.com/accurateproject/accurate dest=~/cgr state=link
 
     - name: create var folder
-      file: path=/var/log/cgrates state=directory owner=vagrant
+      file: path=/var/log/accurate state=directory owner=vagrant
       become: yes

@@ -17,7 +17,7 @@ func init() {
 type CmdCdrReloadQueues struct {
 	name      string
 	rpcMethod string
-	rpcParams *utils.AttrCDRStatsReloadQueues
+	rpcParams *utils.AttrStatsQueueIDs
 	*CommandExecuter
 }
 
@@ -31,7 +31,7 @@ func (self *CmdCdrReloadQueues) RpcMethod() string {
 
 func (self *CmdCdrReloadQueues) RpcParams(reset bool) interface{} {
 	if reset || self.rpcParams == nil {
-		self.rpcParams = &utils.AttrCDRStatsReloadQueues{}
+		self.rpcParams = &utils.AttrStatsQueueIDs{}
 	}
 	return self.rpcParams
 }

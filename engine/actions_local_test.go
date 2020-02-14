@@ -1,3 +1,5 @@
+// +build integration
+
 package engine
 
 import (
@@ -13,40 +15,31 @@ import (
 	"github.com/accurateproject/accurate/utils"
 )
 
-var actsLclCfg *config.CGRConfig
+var actsLclCfg *config.Config
 var actsLclRpc *rpc.Client
 var actsLclCfgPath = path.Join(*dataDir, "conf", "samples", "actions")
 
 var waitRater = flag.Int("wait_rater", 100, "Number of miliseconds to wait for rater to start and cache")
 
 func TestActionsLocalInitCfg(t *testing.T) {
-	if !*testLocal {
-		return
-	}
 	// Init config first
 	var err error
-	actsLclCfg, err = config.NewCGRConfigFromFolder(actsLclCfgPath)
+	err = config.LoadPath(actsLclCfgPath)
 	if err != nil {
 		t.Error(err)
 	}
-	actsLclCfg.DataFolderPath = *dataDir // Share DataFolderPath through config towards StoreDb for Flush()
-	config.SetCgrConfig(actsLclCfg)
+	actsLclCfg = config.Get()
+	actsLclCfg.General.DataFolderPath = *dataDir // Share DataFolderPath through config towards StoreDb for Flush()
 }
 
 func TestActionsLocalInitCdrDb(t *testing.T) {
-	if !*testLocal {
-		return
-	}
-	if err := InitStorDb(actsLclCfg); err != nil {
+	if err := InitCdrDb(actsLclCfg); err != nil {
 		t.Fatal(err)
 	}
 }
 
 // Finds cgr-engine executable and starts it with default configuration
 func TestActionsLocalStartEngine(t *testing.T) {
-	if !*testLocal {
-		return
-	}
 	if _, err := StartEngine(actsLclCfgPath, *waitRater); err != nil {
 		t.Fatal(err)
 	}
@@ -54,21 +47,15 @@ func TestActionsLocalStartEngine(t *testing.T) {
 
 // Connect rpc client to rater
 func TestActionsLocalRpcConn(t *testing.T) {
-	if !*testLocal {
-		return
-	}
 	var err error
 	time.Sleep(500 * time.Millisecond)
-	actsLclRpc, err = jsonrpc.Dial("tcp", actsLclCfg.RPCJSONListen) // We connect over JSON so we can also troubleshoot if needed
+	actsLclRpc, err = jsonrpc.Dial("tcp", *actsLclCfg.Listen.RpcJson) // We connect over JSON so we can also troubleshoot if needed
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestActionsLocalSetCdrlogDebit(t *testing.T) {
-	if !*testLocal {
-		return
-	}
 	var reply string
 	attrsSetAccount := &utils.AttrSetAccount{Tenant: "cgrates.org", Account: "dan2904"}
 	if err := actsLclRpc.Call("ApierV1.SetAccount", attrsSetAccount, &reply); err != nil {
@@ -111,9 +98,6 @@ func TestActionsLocalSetCdrlogDebit(t *testing.T) {
 }
 
 func TestActionsLocalSetCdrlogTopup(t *testing.T) {
-	if !*testLocal {
-		return
-	}
 	var reply string
 	attrsSetAccount := &utils.AttrSetAccount{Tenant: "cgrates.org", Account: "dan2905"}
 	if err := actsLclRpc.Call("ApierV1.SetAccount", attrsSetAccount, &reply); err != nil {
@@ -156,9 +140,6 @@ func TestActionsLocalSetCdrlogTopup(t *testing.T) {
 }
 
 func TestActionsLocalStopCgrEngine(t *testing.T) {
-	if !*testLocal {
-		return
-	}
 	if err := KillEngine(*waitRater); err != nil {
 		t.Error(err)
 	}

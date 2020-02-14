@@ -1,7 +1,7 @@
 DerivedCharging
 ===============
 
-DerivedCharging is the process of forking original request into a number (configured) of emulated ones, derived from the original parameters. This mechanism used in combination with multi-tenancy supported by default by **CGRateS** can give out complex charging scenarios, needed for example in case of whitelabel-ing.
+DerivedCharging is the process of forking original request into a number (configured) of emulated ones, derived from the original parameters. This mechanism used in combination with multi-tenancy supported by default by **AccuRate** can give out complex charging scenarios, needed for example in case of whitelabel-ing.
 
 DerivedCharging occurs in two separate places:
 
@@ -34,4 +34,4 @@ One DerivedCharger object will be configured by an internal object like:
 	UsageField          string      // Field containing usage information
  }
 
-**CGRateS** is able to attach an unlimited number of DerivedChargers to a single request, based on configuration.
+**AccuRate** is able to attach an unlimited number of DerivedChargers to a single request, based on configuration.

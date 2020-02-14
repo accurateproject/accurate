@@ -92,8 +92,8 @@ func TestKevAsCallDescriptor(t *testing.T) {
 	kamEv := KamEvent{"event": CGR_LCR_REQUEST, CGR_ACCOUNT: "1001", CGR_DESTINATION: "1002", CGR_SETUPTIME: sTime.String()}
 	eCd := &engine.CallDescriptor{
 		Direction:   utils.OUT,
-		Tenant:      config.CgrConfig().DefaultTenant,
-		Category:    config.CgrConfig().DefaultCategory,
+		Tenant:      *config.Get().General.DefaultTenant,
+		Category:    *config.Get().General.DefaultCategory,
 		Account:     kamEv[CGR_ACCOUNT],
 		Subject:     kamEv[CGR_ACCOUNT],
 		Destination: kamEv[CGR_DESTINATION],

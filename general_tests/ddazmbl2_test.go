@@ -153,9 +153,9 @@ func TestDebit2(t *testing.T) {
 	}
 	for _, blnc := range acnt.BalanceMap[utils.MONETARY] { // Test negative balance for default one
 		if blnc.Weight == 10 && blnc.Value != 0 {
-			t.Errorf("Balance with weight: %f, having value: %f  ", blnc.Weight, blnc.Value)
+			t.Errorf("Balance with weight: %f, having value: %v  ", blnc.Weight, blnc.Value)
 		} else if blnc.Weight == 0 && blnc.Value != -0.01 {
-			t.Errorf("Balance with weight: %f, having value: %f  ", blnc.Weight, blnc.Value)
+			t.Errorf("Balance with weight: %f, having value: %v  ", blnc.Weight, blnc.Value)
 		}
 	}
 }

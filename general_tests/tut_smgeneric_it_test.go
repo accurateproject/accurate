@@ -14,7 +14,7 @@ import (
 )
 
 var tutSMGCfgPath string
-var tutSMGCfg *config.CGRConfig
+var tutSMGCfg *config.Config
 var tutSMGRpc *rpc.Client
 var smgLoadInst utils.LoadInstance // Share load information between tests
 
@@ -25,12 +25,12 @@ func TestTutSMGInitCfg(t *testing.T) {
 	tutSMGCfgPath = path.Join(*dataDir, "conf", "samples", "smgeneric")
 	// Init config first
 	var err error
-	tutSMGCfg, err = config.NewCGRConfigFromFolder(tutSMGCfgPath)
-	if err != nil {
+	config.Reset()
+	if err = config.LoadPath(tutSMGCfgPath); err != nil {
 		t.Error(err)
 	}
-	tutSMGCfg.DataFolderPath = *dataDir // Share DataFolderPath through config towards StoreDb for Flush()
-	config.SetCgrConfig(tutSMGCfg)
+	tutSMGCfg := config.Get()
+	tutSMGCfg.General.DataFolderPath = *dataDir // Share DataFolderPath through config towards StoreDb for Flush()
 }
 
 // Remove data in both rating and accounting db
@@ -69,7 +69,7 @@ func TestTutSMGRpcConn(t *testing.T) {
 		return
 	}
 	var err error
-	tutSMGRpc, err = jsonrpc.Dial("tcp", tutSMGCfg.RPCJSONListen) // We connect over JSON so we can also troubleshoot if needed
+	tutSMGRpc, err = jsonrpc.Dial("tcp", *tutSMGCfg.Listen.RpcJson) // We connect over JSON so we can also troubleshoot if needed
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestTutSMGCacheStats(t *testing.T) {
 	var rcvStats *utils.CacheStats
 
 	expectedStats := &utils.CacheStats{Destinations: 7, RatingPlans: 4, RatingProfiles: 9, Actions: 8, ActionPlans: 4, SharedGroups: 1, Aliases: 1, ResourceLimits: 0,
-		DerivedChargers: 1, LcrProfiles: 5, CdrStats: 6, Users: 3, LastLoadID: "LoadTariffPlanFromFolderAPI", LastRatingLoadID: smgLoadInst.RatingLoadID, LastAccountingLoadID: smgLoadInst.AccountingLoadID, LastLoadTime: smgLoadInst.LoadTime.Format(time.RFC3339)}
+		DerivedChargers: 1, LcrProfiles: 5, CdrStats: 6, Users: 3}
 	var args utils.AttrCacheStats
 	if err := tutSMGRpc.Call("ApierV2.GetCacheStats", args, &rcvStats); err != nil {
 		t.Error("Got error on ApierV2.GetCacheStats: ", err.Error())

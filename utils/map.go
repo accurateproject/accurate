@@ -1,7 +1,10 @@
-
 package utils
 
-import "strings"
+import (
+	"bytes"
+	"encoding/json"
+	"strings"
+)
 
 // Converts map[string]string into map[string]interface{}
 func ConvertMapValStrIf(inMap map[string]string) map[string]interface{} {
@@ -47,6 +50,9 @@ type StringMap map[string]bool
 
 func NewStringMap(s ...string) StringMap {
 	result := make(StringMap)
+	if len(s) == 0 {
+		return result
+	}
 	for _, v := range s {
 		v = strings.TrimSpace(v)
 		if v != "" {
@@ -60,11 +66,15 @@ func NewStringMap(s ...string) StringMap {
 	return result
 }
 
-func ParseStringMap(s string) StringMap {
-	if s == ZERO {
+func ParseStringMap(s, sep string) StringMap {
+	if s == ZERO || s == "" {
 		return make(StringMap)
 	}
-	return StringMapFromSlice(strings.Split(s, INFIELD_SEP))
+	return StringMapFromSlice(strings.Split(s, sep))
+}
+
+func (sm StringMap) Add(val string) {
+	sm[val] = true
 }
 
 func (sm StringMap) Equal(om StringMap) bool {
@@ -112,6 +122,9 @@ func (sm StringMap) IsEmpty() bool {
 
 func StringMapFromSlice(s []string) StringMap {
 	result := make(StringMap, len(s))
+	if len(s) == 0 {
+		return result
+	}
 	for _, v := range s {
 		v = strings.TrimSpace(v)
 		if v != "" {
@@ -131,6 +144,12 @@ func (sm StringMap) Copy(o StringMap) {
 	}
 }
 
+func (sm StringMap) CopySlice(s []string) {
+	for _, k := range s {
+		sm[k] = true
+	}
+}
+
 func (sm StringMap) Clone() StringMap {
 	result := make(StringMap, len(sm))
 	result.Copy(sm)
@@ -138,7 +157,7 @@ func (sm StringMap) Clone() StringMap {
 }
 
 func (sm StringMap) String() string {
-	return strings.Join(sm.Slice(), INFIELD_SEP)
+	return strings.Join(sm.Slice(), ",")
 }
 
 func (sm StringMap) GetOne() string {
@@ -148,21 +167,54 @@ func (sm StringMap) GetOne() string {
 	return ""
 }
 
-/*
-func NoDots(m map[string]struct{}) map[string]struct{} {
-	return MapKeysReplace(m, ".", "．")
-}
-
-func YesDots(m map[string]struct{}) map[string]struct{} {
-	return MapKeysReplace(m, "．", ".")
-}
-
-func MapKeysReplace(m map[string]struct{}, old, new string) map[string]struct{} {
-	for key, val := range m {
-		delete(m, key)
-		key = strings.Replace(key, old, new, -1)
-		m[key] = val
+func (sm StringMap) Join(mps ...StringMap) {
+	for _, mp := range mps {
+		for k, v := range mp {
+			sm[k] = v
+		}
 	}
-	return m
 }
-*/
+
+func (sm *StringMap) UnmarshalJSON(data []byte) (err error) {
+	data = bytes.TrimSpace(data)
+	switch data[0] {
+	case []byte("[")[0]:
+		s := make([]string, 0)
+		if err := json.Unmarshal(data, &s); err != nil {
+			return err
+		}
+		*sm = StringMapFromSlice(s)
+
+	case []byte("{")[0]:
+		x := make(map[string]bool)
+		if err := json.Unmarshal(data, &x); err != nil {
+			return err
+		}
+		*sm = StringMap(x)
+	default: // plain string comma separated
+		var stringData string
+		if err := json.Unmarshal(data, &stringData); err != nil {
+			return err
+		}
+		x := ParseStringMap(stringData, ",")
+		*sm = x
+	}
+
+	return
+}
+
+// Used to merge multiple maps (eg: output of struct having ExtraFields)
+func MergeMapsStringIface(mps ...map[string]interface{}) (outMp map[string]interface{}) {
+	outMp = make(map[string]interface{})
+	for i, mp := range mps {
+		if i == 0 {
+			outMp = mp
+			continue
+		}
+		for k, v := range mp {
+			outMp[k] = v
+		}
+	}
+	return
+
+}

@@ -1,3 +1,5 @@
+// +build integration
+
 package general_tests
 
 import (
@@ -16,7 +18,7 @@ import (
 )
 
 var rpcITCfgPath1, rpcITCfgPath2 string
-var rpcITCfg1, rpcITCfg2 *config.CGRConfig
+var rpcITCfg1, rpcITCfg2 *config.Config
 var rpcRAL1, rpcRAL2 *rpcclient.RpcClient
 var rpcPoolFirst, rpcPoolBroadcast *rpcclient.RpcClientPool
 var ral1, ral2 *exec.Cmd
@@ -26,28 +28,31 @@ var ral1ID, ral2ID, ralRmtID string
 var testRemoteRALs = flag.Bool("remote_rals", false, "Perform the tests in integration mode, not by default.") // This flag will be passed here via "go test -local" args
 
 func TestRPCITInitCfg(t *testing.T) {
-	if !*testIntegration {
-		return
-	}
 	rpcITCfgPath1 = path.Join(*dataDir, "conf", "samples", "multiral1")
 	rpcITCfgPath2 = path.Join(*dataDir, "conf", "samples", "multiral2")
-	rpcITCfg1, err = config.NewCGRConfigFromFolder(rpcITCfgPath1)
+
+	config.Reset()
+	err = config.LoadPath(rpcITCfgPath1)
 	if err != nil {
 		t.Error(err)
 	}
-	rpcITCfg2, err = config.NewCGRConfigFromFolder(rpcITCfgPath2)
+	rpcITCfg1 = &config.Config{}
+	if err := utils.Clone(config.Get(), rpcITCfg1); err != nil {
+		t.Error(err)
+	}
+
+	config.Reset()
+	err = config.LoadPath(rpcITCfgPath2)
 	if err != nil {
 		t.Error(err)
 	}
+	rpcITCfg2 = config.Get()
 	if err := engine.InitDataDb(rpcITCfg1); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestRPCITStartSecondEngine(t *testing.T) {
-	if !*testIntegration {
-		return
-	}
 	if ral2, err = engine.StopStartEngine(rpcITCfgPath2, *waitRater); err != nil {
 		t.Fatal(err)
 	}
@@ -55,16 +60,13 @@ func TestRPCITStartSecondEngine(t *testing.T) {
 
 // Connect rpc client to rater
 func TestRPCITRpcConnPoolFirst(t *testing.T) {
-	if !*testIntegration {
-		return
-	}
 	rpcPoolFirst = rpcclient.NewRpcClientPool(rpcclient.POOL_FIRST, 0)
-	rpcRAL1, err = rpcclient.NewRpcClient("tcp", rpcITCfg1.RPCJSONListen, 3, 1, time.Duration(1*time.Second), time.Duration(2*time.Second), rpcclient.JSON_RPC, nil)
+	rpcRAL1, err = rpcclient.NewRpcClient("tcp", *rpcITCfg1.Listen.RpcJson, 3, 1, time.Duration(1*time.Second), time.Duration(2*time.Second), rpcclient.JSON_RPC, nil)
 	if err == nil {
 		t.Fatal("Should receive cannot connect error here")
 	}
 	rpcPoolFirst.AddClient(rpcRAL1)
-	rpcRAL2, err = rpcclient.NewRpcClient("tcp", rpcITCfg2.RPCJSONListen, 3, 1, time.Duration(1*time.Second), time.Duration(2*time.Second), rpcclient.JSON_RPC, nil)
+	rpcRAL2, err = rpcclient.NewRpcClient("tcp", *rpcITCfg2.Listen.RpcJson, 3, 1, time.Duration(1*time.Second), time.Duration(2*time.Second), rpcclient.JSON_RPC, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,9 +75,6 @@ func TestRPCITRpcConnPoolFirst(t *testing.T) {
 
 // Connect rpc client to rater
 func TestRPCITStatusSecondEngine(t *testing.T) {
-	if !*testIntegration {
-		return
-	}
 	var status map[string]interface{}
 	if err := rpcPoolFirst.Call("Responder.Status", "", &status); err != nil {
 		t.Error(err)
@@ -93,9 +92,6 @@ func TestRPCITStatusSecondEngine(t *testing.T) {
 
 // Start first engine
 func TestRPCITStartFirstEngine(t *testing.T) {
-	if !*testIntegration {
-		return
-	}
 	if ral1, err = engine.StartEngine(rpcITCfgPath1, *waitRater); err != nil {
 		t.Fatal(err)
 	}
@@ -103,9 +99,6 @@ func TestRPCITStartFirstEngine(t *testing.T) {
 
 // Connect rpc client to rater
 func TestRPCITStatusFirstInitial(t *testing.T) {
-	if !*testIntegration {
-		return
-	}
 	var status map[string]interface{}
 	if err := rpcPoolFirst.Call("Responder.Status", "", &status); err != nil {
 		t.Error(err)
@@ -125,9 +118,6 @@ func TestRPCITStatusFirstInitial(t *testing.T) {
 
 // Connect rpc client to rater
 func TestRPCITStatusFirstFailover(t *testing.T) {
-	if !*testIntegration {
-		return
-	}
 	if err := ral1.Process.Kill(); err != nil { // Kill the first RAL
 		t.Error(err)
 	}
@@ -150,9 +140,6 @@ func TestRPCITStatusFirstFailover(t *testing.T) {
 }
 
 func TestRPCITStatusFirstFailback(t *testing.T) {
-	if !*testIntegration {
-		return
-	}
 	if ral1, err = engine.StartEngine(rpcITCfgPath1, *waitRater); err != nil {
 		t.Fatal(err)
 	}
@@ -173,9 +160,6 @@ func TestRPCITStatusFirstFailback(t *testing.T) {
 
 // Make sure it executes on the first node supporting the command
 func TestRPCITDirectedRPC(t *testing.T) {
-	if !*testIntegration {
-		return
-	}
 	var sessions []*sessionmanager.ActiveSession
 	if err := rpcPoolFirst.Call("SMGenericV1.ActiveSessions", utils.AttrSMGGetActiveSessions{}, &sessions); err != nil {
 		t.Error(err) // {"id":2,"result":null,"error":"rpc: can't find service SMGenericV1.ActiveSessions"}
@@ -185,13 +169,10 @@ func TestRPCITDirectedRPC(t *testing.T) {
 }
 
 func TestRPCITTimeout(t *testing.T) {
-	if !*testIntegration {
-		return
-	}
 	var status map[string]interface{}
-	if err := rpcPoolFirst.Call("Responder.Status", "3s", &status); err == nil {
+	if err := rpcPoolFirst.Call("Responder.Status", "10s", &status); err == nil {
 		t.Error("Expecting timeout")
-	} else {
+	} else if err.Error() != rpcclient.ErrReplyTimeout.Error() {
 		t.Error(err)
 	}
 }
@@ -208,7 +189,7 @@ func TestRPCITRmtRpcConnPool(t *testing.T) {
 		t.Fatal(err)
 	}
 	rpcPoolFirst.AddClient(rpcRALRmt)
-	rpcRAL1, err = rpcclient.NewRpcClient("tcp", rpcITCfg1.RPCJSONListen, 1, 1, time.Duration(1*time.Second), time.Duration(2*time.Second), rpcclient.JSON_RPC, nil)
+	rpcRAL1, err = rpcclient.NewRpcClient("tcp", *rpcITCfg1.Listen.RpcJson, 1, 1, time.Duration(1*time.Second), time.Duration(2*time.Second), rpcclient.JSON_RPC, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,18 +275,12 @@ func TestRPCITRmtStatusFirstFailback(t *testing.T) {
 
 // Connect rpc client to rater
 func TestRPCITRpcConnPoolBcast(t *testing.T) {
-	if !*testIntegration {
-		return
-	}
 	rpcPoolBroadcast = rpcclient.NewRpcClientPool(rpcclient.POOL_BROADCAST, time.Duration(2*time.Second))
 	rpcPoolBroadcast.AddClient(rpcRAL1)
 	rpcPoolBroadcast.AddClient(rpcRAL2)
 }
 
 func TestRPCITBcastStatusInitial(t *testing.T) {
-	if !*testIntegration {
-		return
-	}
 	var status map[string]interface{}
 	if err := rpcPoolBroadcast.Call("Responder.Status", "", &status); err != nil {
 		t.Error(err)
@@ -320,9 +295,6 @@ func TestRPCITBcastStatusInitial(t *testing.T) {
 }
 
 func TestRPCITBcastStatusNoRals1(t *testing.T) {
-	if !*testIntegration {
-		return
-	}
 	if err := ral1.Process.Kill(); err != nil { // Kill the first RAL
 		t.Error(err)
 	}
@@ -341,9 +313,6 @@ func TestRPCITBcastStatusNoRals1(t *testing.T) {
 }
 
 func TestRPCITBcastStatusBcastNoRals(t *testing.T) {
-	if !*testIntegration {
-		return
-	}
 	if err := ral2.Process.Kill(); err != nil { // Kill the first RAL
 		t.Error(err)
 	}
@@ -355,9 +324,6 @@ func TestRPCITBcastStatusBcastNoRals(t *testing.T) {
 }
 
 func TestRPCITBcastStatusRALs2Up(t *testing.T) {
-	if !*testIntegration {
-		return
-	}
 	if ral2, err = engine.StartEngine(rpcITCfgPath2, *waitRater); err != nil {
 		t.Fatal(err)
 	}
@@ -375,9 +341,6 @@ func TestRPCITBcastStatusRALs2Up(t *testing.T) {
 }
 
 func TestRPCITStatusBcastRALs1Up(t *testing.T) {
-	if !*testIntegration {
-		return
-	}
 	if ral1, err = engine.StartEngine(rpcITCfgPath1, *waitRater); err != nil {
 		t.Fatal(err)
 	}
@@ -394,10 +357,8 @@ func TestRPCITStatusBcastRALs1Up(t *testing.T) {
 	}
 }
 
+/*
 func TestRPCITStatusBcastCmd(t *testing.T) {
-	if !*testIntegration {
-		return
-	}
 	var stats utils.CacheStats
 	if err := rpcRAL1.Call("ApierV2.GetCacheStats", utils.AttrCacheStats{}, &stats); err != nil {
 		t.Error(err)
@@ -428,11 +389,9 @@ func TestRPCITStatusBcastCmd(t *testing.T) {
 		t.Errorf("Received unexpected stats: %+v vs %+v", stats, loadInst)
 	}
 }
+*/
 
 func TestRPCITStopCgrEngine(t *testing.T) {
-	if !*testIntegration {
-		return
-	}
 	if err := engine.KillEngine(100); err != nil {
 		t.Error(err)
 	}

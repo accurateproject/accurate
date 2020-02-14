@@ -1,30 +1,19 @@
 package utils
 
-import (
-	"encoding/json"
-	"errors"
-	"log"
-	"strconv"
-	"time"
-)
+import "time"
 
 //for computing a dynamic value for Value field
 type ValueFormula struct {
 	Method string
-	Params map[string]interface{}
-	Static float64
+	Args   map[string]interface{}
 }
 
-func ParseBalanceFilterValue(val string) (*ValueFormula, error) {
-	u, err := strconv.ParseFloat(val, 64)
-	if err == nil {
-		return &ValueFormula{Static: u}, err
+func (vf *ValueFormula) GetValue() float64 {
+	formula, exists := ValueFormulas[vf.Method]
+	if !exists {
+		return 0.0
 	}
-	var vf ValueFormula
-	if err := json.Unmarshal([]byte(val), &vf); err == nil {
-		return &vf, err
-	}
-	return nil, errors.New("Invalid value: " + val)
+	return formula(vf.Args)
 }
 
 type valueFormula func(map[string]interface{}) float64
@@ -43,7 +32,7 @@ func (vf *ValueFormula) String() string {
 
 func incrementalFormula(params map[string]interface{}) float64 {
 	// check parameters
-	unitsInterface, unitsFound := params["Units"]
+	unitsInterface, unitsFound := params["Value"]
 	intervalInterface, intervalFound := params["Interval"]
 	incrementInterface, incrementFound := params["Increment"]
 
@@ -52,7 +41,6 @@ func incrementalFormula(params map[string]interface{}) float64 {
 	}
 	units, ok := unitsInterface.(float64)
 	if !ok {
-		log.Print("units")
 		return 0.0
 	}
 	var interval string

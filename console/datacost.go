@@ -1,7 +1,7 @@
 package console
 
 import (
-	"github.com/accurateproject/accurate/apier/v1"
+	"github.com/accurateproject/accurate/api/v1"
 	"github.com/accurateproject/accurate/engine"
 	"github.com/accurateproject/accurate/utils"
 )
@@ -9,7 +9,7 @@ import (
 func init() {
 	c := &CmdGetDataCost{
 		name:       "datacost",
-		rpcMethod:  "ApierV1.GetDataCost",
+		rpcMethod:  "ApiV1.GetDataCost",
 		clientArgs: []string{"Direction", "Category", "Tenant", "Account", "Subject", "StartTime", "Usage"},
 	}
 	commands[c.Name()] = c

@@ -1,14 +1,14 @@
 package console
 
 import (
-	"github.com/accurateproject/accurate/apier/v2"
+	"github.com/accurateproject/accurate/api/v1"
 	"github.com/accurateproject/accurate/engine"
 )
 
 func init() {
 	c := &CmdGetActions{
 		name:      "actions",
-		rpcMethod: "ApierV2.GetActions",
+		rpcMethod: "ApiV1.GetActions",
 	}
 	commands[c.Name()] = c
 	c.CommandExecuter = &CommandExecuter{c}
@@ -18,7 +18,7 @@ func init() {
 type CmdGetActions struct {
 	name      string
 	rpcMethod string
-	rpcParams *v2.AttrGetActions
+	rpcParams *v1.AttrGetMultiple
 	*CommandExecuter
 }
 
@@ -32,7 +32,7 @@ func (self *CmdGetActions) RpcMethod() string {
 
 func (self *CmdGetActions) RpcParams(reset bool) interface{} {
 	if reset || self.rpcParams == nil {
-		self.rpcParams = &v2.AttrGetActions{}
+		self.rpcParams = &v1.AttrGetMultiple{}
 	}
 	return self.rpcParams
 }

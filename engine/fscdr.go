@@ -2,14 +2,15 @@ package engine
 
 import (
 	"encoding/json"
-	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/dec"
 	"github.com/accurateproject/accurate/utils"
+	"go.uber.org/zap"
 )
 
 const (
@@ -29,10 +30,12 @@ const (
 	FS_SIP_REQUSER        = "sip_req_user" // Apps like FusionPBX do not set dialed_extension, alternative being destination_number but that comes in customer profile, not in vars
 	FS_PROGRESS_MEDIAMSEC = "progress_mediamsec"
 	FS_PROGRESSMS         = "progressmsec"
+	FS_SIP_FROM_USER      = "sip_from_user"
+	FS_SIP_TO_USER        = "sip_to_user"
 )
 
-func NewFSCdr(body []byte, cgrCfg *config.CGRConfig) (*FSCdr, error) {
-	fsCdr := &FSCdr{cgrCfg: cgrCfg, vars: make(map[string]string)}
+func NewFSCdr(body []byte, cfg *config.Config) (*FSCdr, error) {
+	fsCdr := &FSCdr{cfg: cfg, vars: make(map[string]string)}
 	var err error
 	if err = json.Unmarshal(body, &fsCdr.body); err == nil {
 		if variables, ok := fsCdr.body[FS_CDR_MAP]; ok {
@@ -41,6 +44,7 @@ func NewFSCdr(body []byte, cgrCfg *config.CGRConfig) (*FSCdr, error) {
 					fsCdr.vars[k] = v.(string)
 				}
 			}
+			//log.Print("VARS: ", utils.ToIJSON(fsCdr.vars))
 			return fsCdr, nil
 		}
 	}
@@ -48,19 +52,19 @@ func NewFSCdr(body []byte, cgrCfg *config.CGRConfig) (*FSCdr, error) {
 }
 
 type FSCdr struct {
-	cgrCfg *config.CGRConfig
-	vars   map[string]string
-	body   map[string]interface{} // keeps the loaded body for extra field search
+	cfg  *config.Config
+	vars map[string]string
+	body map[string]interface{} // keeps the loaded body for extra field search
 }
 
-func (fsCdr FSCdr) getCGRID(timezone string) string {
+func (fsCdr FSCdr) getUniqueID(timezone string) string {
 	setupTime, _ := utils.ParseTimeDetectLayout(fsCdr.vars[FS_SETUP_TIME], timezone)
 	return utils.Sha1(fsCdr.vars[FS_UUID], setupTime.UTC().String())
 }
 
 func (fsCdr FSCdr) getExtraFields() map[string]string {
-	extraFields := make(map[string]string, len(fsCdr.cgrCfg.CDRSExtraFields))
-	for _, field := range fsCdr.cgrCfg.CDRSExtraFields {
+	extraFields := make(map[string]string, len(fsCdr.cfg.Cdrs.ExtraFields))
+	for _, field := range fsCdr.cfg.Cdrs.ExtraFields {
 		origFieldVal, foundInVars := fsCdr.vars[field.Id]
 		if strings.HasPrefix(field.Id, utils.STATIC_VALUE_PREFIX) { // Support for static values injected in the CDRS. it will show up as {^value:value}
 			foundInVars = true
@@ -95,11 +99,11 @@ func (fsCdr FSCdr) searchExtraField(field string, body map[string]interface{}) (
 						return
 					}
 				} else {
-					utils.Logger.Warning(fmt.Sprintf("Slice with no maps: %v", reflect.TypeOf(item)))
+					utils.Logger.Warn("Slice with no maps: ", zap.Any("obj", reflect.TypeOf(item)))
 				}
 			}
 		default:
-			utils.Logger.Warning(fmt.Sprintf("Unexpected type: %v", reflect.TypeOf(v)))
+			utils.Logger.Warn("Unexpected type: ", zap.Any("obj", reflect.TypeOf(v)))
 		}
 	}
 	return
@@ -107,18 +111,18 @@ func (fsCdr FSCdr) searchExtraField(field string, body map[string]interface{}) (
 
 func (fsCdr FSCdr) AsStoredCdr(timezone string) *CDR {
 	storCdr := new(CDR)
-	storCdr.CGRID = fsCdr.getCGRID(timezone)
+	storCdr.UniqueID = fsCdr.getUniqueID(timezone)
 	storCdr.ToR = utils.VOICE
 	storCdr.OriginID = fsCdr.vars[FS_UUID]
 	storCdr.OriginHost = fsCdr.vars[FS_IP]
 	storCdr.Source = FS_CDR_SOURCE
-	storCdr.RequestType = utils.FirstNonEmpty(fsCdr.vars[utils.CGR_REQTYPE], fsCdr.cgrCfg.DefaultReqType)
+	storCdr.RequestType = utils.FirstNonEmpty(fsCdr.vars[utils.CGR_REQTYPE], *fsCdr.cfg.General.DefaultRequestType)
 	storCdr.Direction = utils.OUT
-	storCdr.Tenant = utils.FirstNonEmpty(fsCdr.vars[utils.CGR_TENANT], fsCdr.cgrCfg.DefaultTenant)
-	storCdr.Category = utils.FirstNonEmpty(fsCdr.vars[utils.CGR_CATEGORY], fsCdr.cgrCfg.DefaultCategory)
-	storCdr.Account = utils.FirstNonEmpty(fsCdr.vars[utils.CGR_ACCOUNT], fsCdr.vars[FS_USERNAME])
-	storCdr.Subject = utils.FirstNonEmpty(fsCdr.vars[utils.CGR_SUBJECT], fsCdr.vars[utils.CGR_ACCOUNT], fsCdr.vars[FS_USERNAME])
-	storCdr.Destination = utils.FirstNonEmpty(fsCdr.vars[utils.CGR_DESTINATION], fsCdr.vars[FS_CALL_DEST_NR], fsCdr.vars[FS_SIP_REQUSER])
+	storCdr.Tenant = utils.FirstNonEmpty(fsCdr.vars[utils.CGR_TENANT], *fsCdr.cfg.General.DefaultTenant, utils.USERS)
+	storCdr.Category = utils.FirstNonEmpty(fsCdr.vars[utils.CGR_CATEGORY], *fsCdr.cfg.General.DefaultCategory, utils.USERS)
+	storCdr.Account = utils.FirstNonEmpty(fsCdr.vars[utils.CGR_ACCOUNT], fsCdr.vars[FS_USERNAME], utils.USERS)
+	storCdr.Subject = utils.FirstNonEmpty(fsCdr.vars[utils.CGR_SUBJECT], fsCdr.vars[utils.CGR_ACCOUNT], fsCdr.vars[FS_USERNAME], utils.USERS)
+	storCdr.Destination = utils.FirstNonEmpty(fsCdr.vars[utils.CGR_DESTINATION], fsCdr.vars[FS_CALL_DEST_NR], fsCdr.vars[FS_SIP_REQUSER], fsCdr.vars[FS_SIP_TO_USER])
 	storCdr.SetupTime, _ = utils.ParseTimeDetectLayout(fsCdr.vars[FS_SETUP_TIME], timezone) // Not interested to process errors, should do them if necessary in a previous step
 	pddStr := utils.FirstNonEmpty(fsCdr.vars[FS_PROGRESS_MEDIAMSEC], fsCdr.vars[FS_PROGRESSMS])
 	pddStr += "ms"
@@ -128,6 +132,6 @@ func (fsCdr FSCdr) AsStoredCdr(timezone string) *CDR {
 	storCdr.Supplier = fsCdr.vars[utils.CGR_SUPPLIER]
 	storCdr.DisconnectCause = utils.FirstNonEmpty(fsCdr.vars[utils.CGR_DISCONNECT_CAUSE], fsCdr.vars["hangup_cause"])
 	storCdr.ExtraFields = fsCdr.getExtraFields()
-	storCdr.Cost = -1
+	storCdr.Cost = dec.NewVal(-1, 0)
 	return storCdr
 }

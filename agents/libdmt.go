@@ -24,6 +24,7 @@ import (
 	"github.com/fiorix/go-diameter/diam/avp"
 	"github.com/fiorix/go-diameter/diam/datatype"
 	"github.com/fiorix/go-diameter/diam/dict"
+	"go.uber.org/zap"
 )
 
 func init() {
@@ -125,7 +126,7 @@ func storedCdrToCCR(cdr *engine.CDR, originHost, originRealm string, vendorId in
 	firmwareRev int, debitInterval time.Duration, callEnded bool) *CCR {
 	//sid := "session;" + strconv.Itoa(int(rand.Uint32()))
 	reqType, reqNr, reqCCTime, usedCCTime := disectUsageForCCR(cdr.Usage, debitInterval, callEnded)
-	ccr := &CCR{SessionId: cdr.CGRID, OriginHost: originHost, OriginRealm: originRealm, DestinationHost: originHost, DestinationRealm: originRealm,
+	ccr := &CCR{SessionId: cdr.UniqueID, OriginHost: originHost, OriginRealm: originRealm, DestinationHost: originHost, DestinationRealm: originRealm,
 		AuthApplicationId: 4, ServiceContextId: cdr.ExtraFields["Service-Context-Id"], CCRequestType: reqType, CCRequestNumber: reqNr, EventTimestamp: cdr.AnswerTime,
 		ServiceIdentifier: 0}
 	ccr.SubscriptionId = make([]struct {
@@ -143,7 +144,7 @@ func storedCdrToCCR(cdr *engine.CDR, originHost, originRealm string, vendorId in
 	ccr.ServiceInformation.INInformation.CallingVlrNumber = cdr.ExtraFields["Calling-Vlr-Number"]
 	ccr.ServiceInformation.INInformation.CallingCellIDOrSAI = cdr.ExtraFields["Calling-CellID-Or-SAI"]
 	ccr.ServiceInformation.INInformation.BearerCapability = cdr.ExtraFields["Bearer-Capability"]
-	ccr.ServiceInformation.INInformation.CallReferenceNumber = cdr.CGRID
+	ccr.ServiceInformation.INInformation.CallReferenceNumber = cdr.UniqueID
 	ccr.ServiceInformation.INInformation.TimeZone = 0
 	ccr.ServiceInformation.INInformation.SSPTime = cdr.ExtraFields["SSP-Time"]
 	return ccr
@@ -223,7 +224,7 @@ func metaValueExponent(m *diam.Message, argsTpl utils.RSRFields, roundingDecimal
 		return "", err
 	}
 	res := val * math.Pow10(exp)
-	return strconv.FormatFloat(utils.Round(res, roundingDecimals, utils.ROUNDING_MIDDLE), 'f', -1, 64), nil
+	return strconv.FormatFloat(utils.Round(res, int32(roundingDecimals), utils.ROUNDING_MIDDLE), 'f', -1, 64), nil
 }
 
 func metaSum(m *diam.Message, argsTpl utils.RSRFields, passAtIndex, roundingDecimals int) (string, error) {
@@ -237,7 +238,7 @@ func metaSum(m *diam.Message, argsTpl utils.RSRFields, passAtIndex, roundingDeci
 		}
 		summed += val
 	}
-	return strconv.FormatFloat(utils.Round(summed, roundingDecimals, utils.ROUNDING_MIDDLE), 'f', -1, 64), nil
+	return strconv.FormatFloat(utils.Round(summed, int32(roundingDecimals), utils.ROUNDING_MIDDLE), 'f', -1, 64), nil
 }
 
 // splitIntoInterface is used to split a string into []interface{} instead of []string
@@ -294,15 +295,18 @@ func composedFieldvalue(m *diam.Message, outTpl utils.RSRFields, avpIdx int, pro
 			}
 			matchingAvps, err := avpsWithPath(m, rsrTpl)
 			if err != nil || len(matchingAvps) == 0 {
-				utils.Logger.Warning(fmt.Sprintf("<Diameter> Cannot find AVP for field template with id: %s, ignoring.", rsrTpl.Id))
-				continue // Filter not matching
+				if err != nil {
+					utils.Logger.Error("<DiameterAgent> Error matching AVPS:", zap.Error(err))
+				}
+				continue
 			}
+
 			if len(matchingAvps) <= avpIdx {
-				utils.Logger.Warning(fmt.Sprintf("<Diameter> Cannot retrieve AVP with index %d for field template with id: %s", avpIdx, rsrTpl.Id))
+				utils.Logger.Warn("<Diameter> Cannot retrieve AVP for field template", zap.Int("index", avpIdx), zap.String("id", rsrTpl.Id))
 				continue // Not convertible, ignore
 			}
 			if matchingAvps[0].Data.Type() == diam.GroupedAVPType {
-				utils.Logger.Warning(fmt.Sprintf("<Diameter> Value for field template with id: %s is matching a group AVP, ignoring.", rsrTpl.Id))
+				utils.Logger.Warn("<Diameter> Value for field template is matching a group AVP, ignoring.", zap.String("id", rsrTpl.Id))
 				continue // Not convertible, ignore
 			}
 			outVal += rsrTpl.ParseValue(avpValAsString(matchingAvps[avpIdx]))
@@ -357,7 +361,7 @@ func serializeAVPValueFromString(dictAVP *dict.AVP, valStr, timezone string) ([]
 	}
 }
 
-func fieldOutVal(m *diam.Message, cfgFld *config.CfgCdrField, extraParam interface{}, processorVars map[string]string) (fmtValOut string, err error) {
+func fieldOutVal(m *diam.Message, cfgFld *config.CdrField, extraParam interface{}, processorVars map[string]string) (fmtValOut string, err error) {
 	var outVal string
 	passAtIndex := -1
 	passedAllFilters := true
@@ -381,15 +385,15 @@ func fieldOutVal(m *diam.Message, cfgFld *config.CfgCdrField, extraParam interfa
 	case utils.META_CONSTANT:
 		outVal = cfgFld.Value.Id()
 	case utils.META_HANDLER:
-		switch cfgFld.HandlerId {
+		switch cfgFld.HandlerID {
 		case META_VALUE_EXPONENT:
 			outVal, err = metaValueExponent(m, cfgFld.Value, 10) // FixMe: add here configured number of decimals
 		case META_SUM:
 			outVal, err = metaSum(m, cfgFld.Value, passAtIndex, 10)
 		default:
-			outVal, err = metaHandler(m, cfgFld.HandlerId, cfgFld.Layout, extraParam.(time.Duration))
+			outVal, err = metaHandler(m, cfgFld.HandlerID, cfgFld.Layout, extraParam.(time.Duration))
 			if err != nil {
-				utils.Logger.Warning(fmt.Sprintf("<Diameter> Ignoring processing of metafunction: %s, error: %s", cfgFld.HandlerId, err.Error()))
+				utils.Logger.Warn("<Diameter> Ignoring processing of metafunction:", zap.String("id", cfgFld.HandlerID), zap.Error(err))
 			}
 		}
 	case utils.META_COMPOSED:
@@ -398,7 +402,7 @@ func fieldOutVal(m *diam.Message, cfgFld *config.CfgCdrField, extraParam interfa
 		outVal = composedFieldvalue(m, cfgFld.Value, passAtIndex, processorVars)
 	}
 	if fmtValOut, err = utils.FmtFieldWidth(outVal, cfgFld.Width, cfgFld.Strip, cfgFld.Padding, cfgFld.Mandatory); err != nil {
-		utils.Logger.Warning(fmt.Sprintf("<Diameter> Error when processing field template with tag: %s, error: %s", cfgFld.Tag, err.Error()))
+		utils.Logger.Warn("<Diameter> Error when processing field template:", zap.String("tag", cfgFld.Tag), zap.Error(err))
 		return "", err
 	}
 	return fmtValOut, nil
@@ -596,7 +600,7 @@ func (self *CCR) AsDiameterMessage() (*diam.Message, error) {
 }
 
 // Extracts data out of CCR into a SMGenericEvent based on the configured template
-func (self *CCR) AsSMGenericEvent(cfgFlds []*config.CfgCdrField) (sessionmanager.SMGenericEvent, error) {
+func (self *CCR) AsSMGenericEvent(cfgFlds []*config.CdrField) (sessionmanager.SMGenericEvent, error) {
 	outMap := make(map[string]string) // work with it so we can append values to keys
 	outMap[utils.EVENT_NAME] = DIAMETER_CCR
 	for _, cfgFld := range cfgFlds {
@@ -607,10 +611,10 @@ func (self *CCR) AsSMGenericEvent(cfgFlds []*config.CfgCdrField) (sessionmanager
 			}
 			return nil, err
 		}
-		if _, hasKey := outMap[cfgFld.FieldId]; hasKey && cfgFld.Append {
-			outMap[cfgFld.FieldId] += fmtOut
+		if _, hasKey := outMap[cfgFld.FieldID]; hasKey && cfgFld.Append {
+			outMap[cfgFld.FieldID] += fmtOut
 		} else {
-			outMap[cfgFld.FieldId] = fmtOut
+			outMap[cfgFld.FieldID] = fmtOut
 
 		}
 	}
@@ -665,8 +669,8 @@ func (self *CCA) AsDiameterMessage() *diam.Message {
 }
 
 // SetProcessorAVPs will add AVPs to self.diameterMessage based on template defined in processor.CCAFields
-func (self *CCA) SetProcessorAVPs(reqProcessor *config.DARequestProcessor, processorVars map[string]string) error {
-	for _, cfgFld := range reqProcessor.CCAFields {
+func (self *CCA) SetProcessorAVPs(reqProcessor *config.RequestProcessor, processorVars map[string]string) error {
+	for _, cfgFld := range reqProcessor.CcaFields {
 		fmtOut, err := fieldOutVal(self.ccrMessage, cfgFld, nil, processorVars)
 		if err == ErrFilterNotPassing { // Field not in or filter not passing, try match in answer
 			fmtOut, err = fieldOutVal(self.diamMessage, cfgFld, nil, processorVars)
@@ -677,7 +681,7 @@ func (self *CCA) SetProcessorAVPs(reqProcessor *config.DARequestProcessor, proce
 			}
 			return err
 		}
-		if err := messageSetAVPsWithPath(self.diamMessage, splitIntoInterface(cfgFld.FieldId, utils.HIERARCHY_SEP), fmtOut, cfgFld.Append, self.timezone); err != nil {
+		if err := messageSetAVPsWithPath(self.diamMessage, splitIntoInterface(cfgFld.FieldID, utils.HIERARCHY_SEP), fmtOut, cfgFld.Append, self.timezone); err != nil {
 			return err
 		}
 	}

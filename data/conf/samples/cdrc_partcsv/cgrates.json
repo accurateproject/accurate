@@ -1,10 +1,7 @@
 {
 
-// Real-time Charging System for Telecom & ISP environments
-// Copyright (C) ITsysCOM GmbH
-//
-// This file contains the default configuration hardcoded into CGRateS.
-// This is what you get when you load CGRateS with an empty configuration file.
+// This file contains the default configuration hardcoded into AccuRate.
+// This is what you get when you load AccuRate with an empty configuration file.
 
 
  "rals": {

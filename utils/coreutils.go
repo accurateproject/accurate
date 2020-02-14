@@ -1,26 +1,34 @@
-
 package utils
 
 import (
-	"archive/zip"
 	"bytes"
 	"crypto/rand"
 	"crypto/sha1"
-	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log"
 	"math"
-	"os"
-	"path/filepath"
 	"reflect"
 	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
 	"time"
+)
+
+var (
+	rfc3339Rule            = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.+$`)
+	sqlRule                = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}$`)
+	gotimeRule             = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}\.?\d*\s[+,-]\d+\s\w+$`)
+	fsTimestamp            = regexp.MustCompile(`^\d{16}$`)
+	astTimestamp           = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d*[+,-]\d+$`)
+	unixTimestampRule      = regexp.MustCompile(`^\d{10}$`)
+	oneLineTimestampRule   = regexp.MustCompile(`^\d{14}$`)
+	oneSpaceTimestampRule  = regexp.MustCompile(`^\d{2}\.\d{2}.\d{4}\s{1}\d{2}:\d{2}:\d{2}$`)
+	eamonTimestampRule     = regexp.MustCompile(`^\d{2}/\d{2}/\d{4}\s{1}\d{2}:\d{2}:\d{2}$`)
+	broadsoftTimestampRule = regexp.MustCompile(`^\d{14}\.\d{3}`)
 )
 
 // Returns first non empty string out of vals. Useful to extract defaults
@@ -41,23 +49,6 @@ func Sha1(attrs ...string) string {
 	return fmt.Sprintf("%x", hasher.Sum(nil))
 }
 
-func NewTPid() string {
-	return Sha1(GenUUID())
-}
-
-/*func GenUUID() string {
-	uuid := make([]byte, 16)
-	n, err := rand.Read(uuid)
-	if n != len(uuid) || err != nil {
-		return strconv.FormatInt(time.Now().UnixNano(), 10)
-	}
-	// TODO: verify the two lines implement RFC 4122 correctly
-	uuid[8] = 0x80 // variant bits see page 5
-	uuid[4] = 0x40 // version 4 Pseudo Random, see page 7
-
-	return hex.EncodeToString(uuid)
-}*/
-
 // helper function for uuid generation
 func GenUUID() string {
 	b := make([]byte, 16)
@@ -77,9 +68,10 @@ func GenUUID() string {
 //	Round(±0) = ±0
 //	Round(±Inf) = ±Inf
 //	Round(NaN) = NaN
-func Round(x float64, prec int, method string) float64 {
+func Round(x float64, precision int32, method string) float64 {
 	var rounder float64
 	maxPrec := 7 // define a max precison to cut float errors
+	prec := int(precision)
 	if maxPrec < prec {
 		maxPrec = prec
 	}
@@ -119,16 +111,9 @@ func ParseTimeDetectLayout(tmStr string, timezone string) (time.Time, error) {
 	if err != nil {
 		return nilTime, err
 	}
-	rfc3339Rule := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.+$`)
-	sqlRule := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}$`)
-	gotimeRule := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}\.?\d*\s[+,-]\d+\s\w+$`)
-	fsTimestamp := regexp.MustCompile(`^\d{16}$`)
-	unixTimestampRule := regexp.MustCompile(`^\d{10}$`)
-	oneLineTimestampRule := regexp.MustCompile(`^\d{14}$`)
-	oneSpaceTimestampRule := regexp.MustCompile(`^\d{2}\.\d{2}.\d{4}\s{1}\d{2}:\d{2}:\d{2}$`)
-	eamonTimestampRule := regexp.MustCompile(`^\d{2}/\d{2}/\d{4}\s{1}\d{2}:\d{2}:\d{2}$`)
-	broadsoftTimestampRule := regexp.MustCompile(`^\d{14}\.\d{3}`)
 	switch {
+	case astTimestamp.MatchString(tmStr):
+		return time.Parse("2006-01-02T15:04:05.999999999-0700", tmStr)
 	case rfc3339Rule.MatchString(tmStr):
 		return time.Parse(time.RFC3339, tmStr)
 	case gotimeRule.MatchString(tmStr):
@@ -229,10 +214,6 @@ func ParseDurationWithSecs(durStr string) (time.Duration, error) {
 	return time.ParseDuration(durStr)
 }
 
-func AccountKey(tenant, account string) string {
-	return fmt.Sprintf("%s:%s", tenant, account)
-}
-
 // returns the minimum duration between the two
 func MinDuration(d1, d2 time.Duration) time.Duration {
 	if d1 < d2 {
@@ -253,21 +234,8 @@ func ParseZeroRatingSubject(rateSubj string) (time.Duration, error) {
 	return time.ParseDuration(durStr)
 }
 
-func ConcatenatedKey(keyVals ...string) string {
+func ConcatKey(keyVals ...string) string {
 	return strings.Join(keyVals, CONCATENATED_KEY_SEP)
-}
-
-func LCRKey(direction, tenant, category, account, subject string) string {
-	return ConcatenatedKey(direction, tenant, category, account, subject)
-
-}
-
-func RatingSubjectAliasKey(tenant, subject string) string {
-	return ConcatenatedKey(tenant, subject)
-}
-
-func AccountAliasKey(tenant, account string) string {
-	return ConcatenatedKey(tenant, account)
 }
 
 func InfieldJoin(vals ...string) string {
@@ -278,6 +246,7 @@ func InfieldSplit(val string) []string {
 	return strings.Split(val, INFIELD_SEP)
 }
 
+/*
 func Unzip(src, dest string) error {
 	r, err := zip.OpenReader(src)
 	if err != nil {
@@ -312,7 +281,7 @@ func Unzip(src, dest string) error {
 
 	return nil
 }
-
+*/
 // successive Fibonacci numbers.
 func Fib() func() time.Duration {
 	a, b := 0, 1
@@ -329,6 +298,10 @@ func StringPointer(str string) *string {
 		return &str
 	}
 	return &str
+}
+
+func RunePointer(r rune) *rune {
+	return &r
 }
 
 func IntPointer(i int) *int {
@@ -412,14 +385,14 @@ func ConvertIfaceToString(fld interface{}) (string, bool) {
 }
 
 // Simple object cloner, b should be a pointer towards a value into which we want to decode
-func Clone(a, b interface{}) error {
+func Clone(orig, copy interface{}) error {
 	buff := new(bytes.Buffer)
-	enc := gob.NewEncoder(buff)
-	dec := gob.NewDecoder(buff)
-	if err := enc.Encode(a); err != nil {
+	enc := json.NewEncoder(buff)
+	dec := json.NewDecoder(buff)
+	if err := enc.Encode(orig); err != nil {
 		return err
 	}
-	if err := dec.Decode(b); err != nil {
+	if err := dec.Decode(copy); err != nil {
 		return err
 	}
 	return nil
@@ -585,17 +558,4 @@ func MaskSuffix(dest string, maskLen int) string {
 		dest += MASK_CHAR
 	}
 	return dest
-}
-
-// Sortable Int64Slice
-type Int64Slice []int64
-
-func (slc Int64Slice) Len() int {
-	return len(slc)
-}
-func (slc Int64Slice) Swap(i, j int) {
-	slc[i], slc[j] = slc[j], slc[i]
-}
-func (slc Int64Slice) Less(i, j int) bool {
-	return slc[i] < slc[j]
 }

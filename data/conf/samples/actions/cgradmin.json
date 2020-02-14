@@ -1,5 +1,5 @@
 {
-// CGRateS Configuration file
+// AccuRate Configuration file
 //
 // Used for cgradmin
 // Starts rater, scheduler
@@ -22,6 +22,7 @@
 			{"address": "*internal"}
 		],
 },
+
 
 "scheduler": {
 	"enabled": true,						// start Scheduler service: <true|false>

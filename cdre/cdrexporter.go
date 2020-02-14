@@ -9,8 +9,10 @@ import (
 	"time"
 
 	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/dec"
 	"github.com/accurateproject/accurate/engine"
 	"github.com/accurateproject/accurate/utils"
+	"go.uber.org/zap"
 )
 
 const (
@@ -30,30 +32,27 @@ const (
 
 var err error
 
-func NewCdrExporter(cdrs []*engine.CDR, cdrDb engine.CdrStorage, exportTpl *config.CdreConfig, cdrFormat string, fieldSeparator rune, exportId string,
+func NewCdrExporter(cdrs []*engine.CDR, cdrDb engine.CdrStorage, exportTpl *config.Cdre, cdrFormat string, fieldSeparator rune, exportId string,
 	dataUsageMultiplyFactor, smsUsageMultiplyFactor, mmsUsageMultiplyFactor, genericUsageMultiplyFactor, costMultiplyFactor float64,
-	costShiftDigits, roundDecimals, cgrPrecision int, maskDestId string, maskLen int, httpSkipTlsCheck bool, timezone string) (*CdrExporter, error) {
+	cgrPrecision int, httpSkipTlsCheck bool) (*CdrExporter, error) {
 	if len(cdrs) == 0 { // Nothing to export
 		return nil, nil
 	}
 	cdre := &CdrExporter{
-		cdrs:                    cdrs,
-		cdrDb:                   cdrDb,
-		exportTemplate:          exportTpl,
-		cdrFormat:               cdrFormat,
-		fieldSeparator:          fieldSeparator,
-		exportId:                exportId,
-		dataUsageMultiplyFactor: dataUsageMultiplyFactor,
-		mmsUsageMultiplyFactor:  mmsUsageMultiplyFactor,
-		costMultiplyFactor:      costMultiplyFactor,
-		costShiftDigits:         costShiftDigits,
-		roundDecimals:           roundDecimals,
-		cgrPrecision:            cgrPrecision,
-		maskDestId:              maskDestId,
-		httpSkipTlsCheck:        httpSkipTlsCheck,
-		timezone:                timezone,
-		maskLen:                 maskLen,
-		negativeExports:         make(map[string]string),
+		cdrs:                       cdrs,
+		cdrDb:                      cdrDb,
+		exportTemplate:             exportTpl,
+		cdrFormat:                  cdrFormat,
+		fieldSeparator:             fieldSeparator,
+		exportId:                   exportId,
+		dataUsageMultiplyFactor:    dataUsageMultiplyFactor,
+		smsUsageMultiplyFactor:     smsUsageMultiplyFactor,
+		mmsUsageMultiplyFactor:     mmsUsageMultiplyFactor,
+		genericUsageMultiplyFactor: genericUsageMultiplyFactor,
+		costMultiplyFactor:         costMultiplyFactor,
+		cgrPrecision:               cgrPrecision,
+		httpSkipTlsCheck:           httpSkipTlsCheck,
+		negativeExports:            make(map[string]string),
 	}
 	if err := cdre.processCdrs(); err != nil {
 		return nil, err
@@ -64,7 +63,7 @@ func NewCdrExporter(cdrs []*engine.CDR, cdrDb engine.CdrStorage, exportTpl *conf
 type CdrExporter struct {
 	cdrs           []*engine.CDR
 	cdrDb          engine.CdrStorage // Used to extract cost_details if these are requested
-	exportTemplate *config.CdreConfig
+	exportTemplate *config.Cdre
 	cdrFormat      string // csv, fwv
 	fieldSeparator rune
 	exportId       string // Unique identifier or this export
@@ -73,21 +72,26 @@ type CdrExporter struct {
 	mmsUsageMultiplyFactor,
 	genericUsageMultiplyFactor,
 	costMultiplyFactor float64
-	costShiftDigits, roundDecimals, cgrPrecision                                   int
-	maskDestId                                                                     string
-	maskLen                                                                        int
-	httpSkipTlsCheck                                                               bool
-	timezone                                                                       string
-	header, trailer                                                                []string   // Header and Trailer fields
-	content                                                                        [][]string // Rows of cdr fields
-	firstCdrATime, lastCdrATime                                                    time.Time
-	numberOfRecords                                                                int
-	totalDuration, totalDataUsage, totalSmsUsage, totalMmsUsage, totalGenericUsage time.Duration
+	cgrPrecision                int
+	httpSkipTlsCheck            bool
+	header, trailer             []string   // Header and Trailer fields
+	content                     [][]string // Rows of cdr fields
+	firstCdrATime, lastCdrATime time.Time
+	numberOfRecords             int
+	totalDuration, totalDataUsage, totalSmsUsage,
+	totalMmsUsage, totalGenericUsage time.Duration
 
-	totalCost                       float64
+	totalCost                       *dec.Dec
 	firstExpOrderId, lastExpOrderId int64
-	positiveExports                 []string          // CGRIDs of successfully exported CDRs
-	negativeExports                 map[string]string // CGRIDs of failed exports
+	positiveExports                 []string          // UniqueIDs of successfully exported CDRs
+	negativeExports                 map[string]string // UniqueIDs of failed exports
+}
+
+func (cdre *CdrExporter) GetTotalCost() *dec.Dec {
+	if cdre.totalCost == nil {
+		cdre.totalCost = dec.New()
+	}
+	return cdre.totalCost
 }
 
 // Handle various meta functions used in header/trailer
@@ -119,7 +123,7 @@ func (cdre *CdrExporter) metaHandler(tag, arg string) (string, error) {
 		emulatedCdr := &engine.CDR{ToR: utils.DATA, Usage: cdre.totalDataUsage}
 		return emulatedCdr.FormatUsage(arg), nil
 	case META_COSTCDRS:
-		return strconv.FormatFloat(utils.Round(cdre.totalCost, cdre.roundDecimals, utils.ROUNDING_MIDDLE), 'f', -1, 64), nil
+		return cdre.GetTotalCost().Round(int32(cdre.cgrPrecision)).String(), nil
 	default:
 		return "", fmt.Errorf("Unsupported METATAG: %s", tag)
 	}
@@ -141,12 +145,12 @@ func (cdre *CdrExporter) composeHeader() error {
 			return fmt.Errorf("Unsupported field type: %s", cfgFld.Type)
 		}
 		if err != nil {
-			utils.Logger.Err(fmt.Sprintf("<CdreFw> Cannot export CDR header, field %s, error: %s", cfgFld.Tag, err.Error()))
+			utils.Logger.Error("<CdreFw> Cannot export CDR header", zap.String("tag", cfgFld.Tag), zap.Error(err))
 			return err
 		}
 		fmtOut := outVal
 		if fmtOut, err = utils.FmtFieldWidth(outVal, cfgFld.Width, cfgFld.Strip, cfgFld.Padding, cfgFld.Mandatory); err != nil {
-			utils.Logger.Err(fmt.Sprintf("<CdreFw> Cannot export CDR header, field %s, error: %s", cfgFld.Tag, err.Error()))
+			utils.Logger.Error("<CdreFw> Cannot export CDR header", zap.String("tag", cfgFld.Tag), zap.Error(err))
 			return err
 		}
 		cdre.header = append(cdre.header, fmtOut)
@@ -170,12 +174,12 @@ func (cdre *CdrExporter) composeTrailer() error {
 			return fmt.Errorf("Unsupported field type: %s", cfgFld.Type)
 		}
 		if err != nil {
-			utils.Logger.Err(fmt.Sprintf("<CdreFw> Cannot export CDR trailer, field: %s, error: %s", cfgFld.Tag, err.Error()))
+			utils.Logger.Error("<CdreFw> Cannot export CDR trailer", zap.String("tag", cfgFld.Tag), zap.Error(err))
 			return err
 		}
 		fmtOut := outVal
 		if fmtOut, err = utils.FmtFieldWidth(outVal, cfgFld.Width, cfgFld.Strip, cfgFld.Padding, cfgFld.Mandatory); err != nil {
-			utils.Logger.Err(fmt.Sprintf("<CdreFw> Cannot export CDR trailer, field: %s, error: %s", cfgFld.Tag, err.Error()))
+			utils.Logger.Error("<CdreFw> Cannot export CDR trailer", zap.String("tag", cfgFld.Tag), zap.Error(err))
 			return err
 		}
 		cdre.trailer = append(cdre.trailer, fmtOut)
@@ -185,7 +189,7 @@ func (cdre *CdrExporter) composeTrailer() error {
 
 // Write individual cdr into content buffer, build stats
 func (cdre *CdrExporter) processCdr(cdr *engine.CDR) error {
-	if cdr == nil || len(cdr.CGRID) == 0 { // We do not export empty CDRs
+	if cdr == nil || len(cdr.UniqueID) == 0 { // We do not export empty CDRs
 		return nil
 	} else if cdr.ExtraFields == nil { // Avoid assignment in nil map if not initialized
 		cdr.ExtraFields = make(map[string]string)
@@ -203,9 +207,9 @@ func (cdre *CdrExporter) processCdr(cdr *engine.CDR) error {
 	if cdre.costMultiplyFactor != 0.0 {
 		cdr.CostMultiply(cdre.costMultiplyFactor, cdre.cgrPrecision)
 	}
-	cdrRow, err := cdr.AsExportRecord(cdre.exportTemplate.ContentFields, cdre.costShiftDigits, cdre.roundDecimals, cdre.timezone, cdre.httpSkipTlsCheck, cdre.maskLen, cdre.maskDestId, cdre.cdrs)
+	cdrRow, err := cdr.AsExportRecord(cdre.exportTemplate.ContentFields, cdre.httpSkipTlsCheck, cdre.cdrs)
 	if err != nil {
-		utils.Logger.Err(fmt.Sprintf("<CdreFw> Cannot export CDR with CGRID: %s and runid: %s, error: %s", cdr.CGRID, cdr.RunID, err.Error()))
+		utils.Logger.Error(fmt.Sprintf("<CdreFw> Cannot export CDR with UniqueID: %s and runid: %s, error: %s", cdr.UniqueID, cdr.RunID, err.Error()))
 		return err
 	}
 	if len(cdrRow) == 0 { // No CDR data, most likely no configuration fields defined
@@ -236,9 +240,8 @@ func (cdre *CdrExporter) processCdr(cdr *engine.CDR) error {
 	if cdr.ToR == utils.DATA { // Count usage for DATA
 		cdre.totalDataUsage += cdr.Usage
 	}
-	if cdr.Cost != -1 {
-		cdre.totalCost += cdr.Cost
-		cdre.totalCost = utils.Round(cdre.totalCost, cdre.roundDecimals, utils.ROUNDING_MIDDLE)
+	if cdr.GetCost().Cmp(dec.MinusOne) != 0 {
+		cdre.GetTotalCost().AddS(cdr.Cost).Round(int32(cdre.cgrPrecision))
 	}
 	if cdre.firstExpOrderId > cdr.OrderID || cdre.firstExpOrderId == 0 {
 		cdre.firstExpOrderId = cdr.OrderID
@@ -253,9 +256,9 @@ func (cdre *CdrExporter) processCdr(cdr *engine.CDR) error {
 func (cdre *CdrExporter) processCdrs() error {
 	for _, cdr := range cdre.cdrs {
 		if err := cdre.processCdr(cdr); err != nil {
-			cdre.negativeExports[cdr.CGRID] = err.Error()
+			cdre.negativeExports[cdr.UniqueID] = err.Error()
 		} else {
-			cdre.positiveExports = append(cdre.positiveExports, cdr.CGRID)
+			cdre.positiveExports = append(cdre.positiveExports, cdr.UniqueID)
 		}
 	}
 	// Process header and trailer after processing cdrs since the metatag functions can access stats out of built cdrs
@@ -354,20 +357,20 @@ func (cdre *CdrExporter) LastOrderId() int64 {
 }
 
 // Return total cost in the exported cdrs
-func (cdre *CdrExporter) TotalCost() float64 {
+/*func (cdre *CdrExporter) TotalCost() float64 {
 	return cdre.totalCost
-}
+}*/
 
 func (cdre *CdrExporter) TotalExportedCdrs() int {
 	return cdre.numberOfRecords
 }
 
-// Return successfully exported CGRIDs
+// Return successfully exported UniqueIDs
 func (cdre *CdrExporter) PositiveExports() []string {
 	return cdre.positiveExports
 }
 
-// Return failed exported CGRIDs together with the reason
+// Return failed exported UniqueIDs together with the reason
 func (cdre *CdrExporter) NegativeExports() map[string]string {
 	return cdre.negativeExports
 }

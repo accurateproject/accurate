@@ -4,11 +4,11 @@ Kamailio_ interaction via  *evapi* module
 Scenario
 --------
 
- - Kamailio default configuration modified for **CGRateS** interaction. For script maintainability and simplicity we have separated CGRateS specific routes in *kamailio-cgrates.cfg* file which is included in main *kamailio.cfg* via include directive.
+ - Kamailio default configuration modified for **AccuRate** interaction. For script maintainability and simplicity we have separated AccuRate specific routes in *kamailio-cgrates.cfg* file which is included in main *kamailio.cfg* via include directive.
 
  - Considering the following users (with configs hardcoded in the *kamailio.cfg* configuration script and loaded in htable): 1001-prepaid, 1002-postpaid, 1003-pseudoprepaid, 1004-rated, 1005-rated, 1006-prepaid, 1007-prepaid.
 
-- **CGRateS** with following components:
+- **AccuRate** with following components:
 
  - CGR-SM started as translator between Kamailio_ and CGR-Rater for both authorization events as well as accounting ones.
  - CGR-CDRS component processing raw CDRs from CGR-SM component and storing them inside CGR StorDB.
@@ -30,7 +30,7 @@ To verify that Kamailio_ is running we run the console command:
  kamctl moni
 
 
-Starting **CGRateS** with custom configuration
+Starting **AccuRate** with custom configuration
 ----------------------------------------------
 
 ::
@@ -47,13 +47,13 @@ Make sure that cgrates is running
 CDR processing
 --------------
 
-At the end of each call Kamailio_ will generate an CDR event via *evapi* and this will be directed towards the port configured inside *cgrates.json*. This event will reach inside **CGRateS** through the *SM* component (close to real-time). Once in-there it will be instantly rated and be ready for export. 
+At the end of each call Kamailio_ will generate an CDR event via *evapi* and this will be directed towards the port configured inside *cgrates.json*. This event will reach inside **AccuRate** through the *SM* component (close to real-time). Once in-there it will be instantly rated and be ready for export. 
 
 
-**CGRateS** Usage
+**AccuRate** Usage
 -----------------
 
-Since it is common to most of the tutorials, the example for **CGRateS** usage is provided in a separate page `here <http://cgrates.readthedocs.org/en/latest/tut_cgrates_usage.html>`_
+Since it is common to most of the tutorials, the example for **AccuRate** usage is provided in a separate page `here <http://cgrates.readthedocs.org/en/latest/tut_cgrates_usage.html>`_
 
 
 .. _Kamailio: http://www.kamailio.org/

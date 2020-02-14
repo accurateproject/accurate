@@ -15,6 +15,7 @@ import (
 	"github.com/ChrisTrenkamp/goxpath/tree"
 	"github.com/ChrisTrenkamp/goxpath/tree/xmltree"
 	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/dec"
 	"github.com/accurateproject/accurate/engine"
 	"github.com/accurateproject/accurate/utils"
 )
@@ -73,7 +74,7 @@ func handlerSubstractUsage(xmlElmnt tree.Res, argsTpl utils.RSRFields, cdrPath u
 	return tEnd.Sub(tStart), nil
 }
 
-func NewXMLRecordsProcessor(recordsReader io.Reader, cdrPath utils.HierarchyPath, timezone string, httpSkipTlsCheck bool, cdrcCfgs []*config.CdrcConfig) (*XMLRecordsProcessor, error) {
+func NewXMLRecordsProcessor(recordsReader io.Reader, cdrPath utils.HierarchyPath, timezone string, httpSkipTlsCheck bool, cdrcCfgs []*config.Cdrc) (*XMLRecordsProcessor, error) {
 	xp, err := goxpath.Parse(cdrPath.AsString("/", true))
 	if err != nil {
 		return nil, err
@@ -96,7 +97,7 @@ type XMLRecordsProcessor struct {
 	cdrPath          utils.HierarchyPath // path towards one CDR element
 	timezone         string
 	httpSkipTlsCheck bool
-	cdrcCfgs         []*config.CdrcConfig // individual configs for the folder CDRC is monitoring
+	cdrcCfgs         []*config.Cdrc // individual configs for the folder CDRC is monitoring
 
 }
 
@@ -133,16 +134,16 @@ func (xmlProc *XMLRecordsProcessor) ProcessNextRecord() (cdrs []*engine.CDR, err
 		} else {
 			cdrs = append(cdrs, cdr)
 		}
-		if !cdrcCfg.ContinueOnSuccess {
+		if cdrcCfg.ContinueOnSuccess != nil && !*cdrcCfg.ContinueOnSuccess {
 			break
 		}
 	}
 	return cdrs, nil
 }
 
-func (xmlProc *XMLRecordsProcessor) recordToCDR(xmlEntity tree.Res, cdrcCfg *config.CdrcConfig) (*engine.CDR, error) {
-	cdr := &engine.CDR{OriginHost: "0.0.0.0", Source: cdrcCfg.CdrSourceId, ExtraFields: make(map[string]string), Cost: -1}
-	var lazyHttpFields []*config.CfgCdrField
+func (xmlProc *XMLRecordsProcessor) recordToCDR(xmlEntity tree.Res, cdrcCfg *config.Cdrc) (*engine.CDR, error) {
+	cdr := &engine.CDR{OriginHost: "0.0.0.0", Source: *cdrcCfg.CdrSourceID, ExtraFields: make(map[string]string), Cost: dec.NewVal(-1, 0)}
+	var lazyHttpFields []*config.CdrField
 	var err error
 	for _, cdrFldCfg := range cdrcCfg.ContentFields {
 		var fieldVal string
@@ -153,7 +154,7 @@ func (xmlProc *XMLRecordsProcessor) recordToCDR(xmlEntity tree.Res, cdrcCfg *con
 				} else { // Dynamic value extracted using path
 					absolutePath := utils.ParseHierarchyPath(cfgFieldRSR.Id, "")
 					relPath := utils.HierarchyPath(absolutePath[len(xmlProc.cdrPath)-1:]) // Need relative path to the xmlElmnt
-					if elmntText, err := elementText(xmlEntity, relPath.AsString("/", true)); err != nil {
+					if elmntText, err := elementText(xmlEntity, relPath.AsString("/", true)); err != nil && err != utils.ErrNotFound {
 						return nil, fmt.Errorf("Ignoring record: %v - cannot extract field %s, err: %s", xmlEntity, cdrFldCfg.Tag, err.Error())
 					} else {
 						fieldVal += cfgFieldRSR.ParseValue(elmntText)
@@ -162,7 +163,7 @@ func (xmlProc *XMLRecordsProcessor) recordToCDR(xmlEntity tree.Res, cdrcCfg *con
 			}
 		} else if cdrFldCfg.Type == utils.META_HTTP_POST {
 			lazyHttpFields = append(lazyHttpFields, cdrFldCfg) // Will process later so we can send an estimation of cdr to http server
-		} else if cdrFldCfg.Type == utils.META_HANDLER && cdrFldCfg.HandlerId == utils.HandlerSubstractUsage {
+		} else if cdrFldCfg.Type == utils.META_HANDLER && cdrFldCfg.HandlerID == utils.HandlerSubstractUsage {
 			usage, err := handlerSubstractUsage(xmlEntity, cdrFldCfg.Value, xmlProc.cdrPath, xmlProc.timezone)
 			if err != nil {
 				return nil, fmt.Errorf("Ignoring record: %v - cannot extract field %s, err: %s", xmlEntity, cdrFldCfg.Tag, err.Error())
@@ -171,13 +172,13 @@ func (xmlProc *XMLRecordsProcessor) recordToCDR(xmlEntity tree.Res, cdrcCfg *con
 		} else {
 			return nil, fmt.Errorf("Unsupported field type: %s", cdrFldCfg.Type)
 		}
-		if err := cdr.ParseFieldValue(cdrFldCfg.FieldId, fieldVal, xmlProc.timezone); err != nil {
+		if err := cdr.ParseFieldValue(cdrFldCfg.FieldID, fieldVal, xmlProc.timezone); err != nil {
 			return nil, err
 		}
 	}
-	cdr.CGRID = utils.Sha1(cdr.OriginID, cdr.SetupTime.UTC().String())
-	if cdr.ToR == utils.DATA && cdrcCfg.DataUsageMultiplyFactor != 0 {
-		cdr.Usage = time.Duration(float64(cdr.Usage.Nanoseconds()) * cdrcCfg.DataUsageMultiplyFactor)
+	cdr.UniqueID = utils.Sha1(cdr.OriginID, cdr.SetupTime.UTC().String())
+	if cdr.ToR == utils.DATA && *cdrcCfg.DataUsageMultiplyFactor != 0 {
+		cdr.Usage = time.Duration(float64(cdr.Usage.Nanoseconds()) * *cdrcCfg.DataUsageMultiplyFactor)
 	}
 	for _, httpFieldCfg := range lazyHttpFields { // Lazy process the http fields
 		var outValByte []byte
@@ -197,7 +198,7 @@ func (xmlProc *XMLRecordsProcessor) recordToCDR(xmlEntity tree.Res, cdrcCfg *con
 			if len(fieldVal) == 0 && httpFieldCfg.Mandatory {
 				return nil, fmt.Errorf("MandatoryIeMissing: Empty result for http_post field: %s", httpFieldCfg.Tag)
 			}
-			if err := cdr.ParseFieldValue(httpFieldCfg.FieldId, fieldVal, xmlProc.timezone); err != nil {
+			if err := cdr.ParseFieldValue(httpFieldCfg.FieldID, fieldVal, xmlProc.timezone); err != nil {
 				return nil, err
 			}
 		}

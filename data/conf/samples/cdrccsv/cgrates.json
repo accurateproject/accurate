@@ -1,10 +1,7 @@
 {
 
-// Real-time Charging System for Telecom & ISP environments
-// Copyright (C) ITsysCOM GmbH
-//
-// This file contains the default configuration hardcoded into CGRateS.
-// This is what you get when you load CGRateS with an empty configuration file.
+// This file contains the default configuration hardcoded into AccuRate.
+// This is what you get when you load AccuRate with an empty configuration file.
 
 
  "rals": {
@@ -21,15 +18,15 @@
  "cdrc": [
  	{
  		"id": "*default",
- 		"enabled": true,					
+ 		"enabled": true,
  		"cdr_in_dir": "/tmp/cdrctests/csvit1/in",
  		"cdr_out_dir": "/tmp/cdrctests/csvit1/out",
  		"cdr_source_id": "csvit1",
  	},
  	{
  		"id": "*CSVit2",								// identifier of the CDRC runner
- 		"enabled": true,							// enable CDR client functionality		
- 		"field_separator": ";",					
+ 		"enabled": true,							// enable CDR client functionality
+ 		"field_separator": ";",
  		"cdr_in_dir": "/tmp/cdrctests/csvit2/in",	// absolute path towards the directory where the CDRs are stored
  		"cdr_out_dir": "/tmp/cdrctests/csvit2/out",	// absolute path towards the directory where processed CDRs will be moved
  		"cdr_source_id": "csvit2",			// free form field, tag identifying the source of the CDRs within CDRS database

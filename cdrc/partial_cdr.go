@@ -13,6 +13,7 @@ import (
 	"github.com/accurateproject/accurate/engine"
 	"github.com/accurateproject/accurate/utils"
 	"github.com/accurateproject/rpcclient"
+	"go.uber.org/zap"
 )
 
 const (
@@ -20,7 +21,7 @@ const (
 )
 
 func NewPartialRecordsCache(ttl time.Duration, expiryAction string, cdrOutDir string, csvSep rune, roundDecimals int, timezone string, httpSkipTlsCheck bool, cdrs rpcclient.RpcClientConnection) (*PartialRecordsCache, error) {
-	return &PartialRecordsCache{ttl: ttl, expiryAction: expiryAction, cdrOutDir: cdrOutDir, csvSep: csvSep, roundDecimals: roundDecimals, timezone: timezone, httpSkipTlsCheck: httpSkipTlsCheck, cdrs: cdrs,
+	return &PartialRecordsCache{ttl: ttl, expiryAction: expiryAction, cdrOutDir: cdrOutDir, csvSep: csvSep, roundDecimals: roundDecimals, timezone: timezone, httpSkipTLSCheck: httpSkipTlsCheck, cdrs: cdrs,
 		partialRecords: make(map[string]*PartialCDRRecord), dumpTimers: make(map[string]*time.Timer), guard: engine.Guardian}, nil
 }
 
@@ -31,7 +32,7 @@ type PartialRecordsCache struct {
 	csvSep           rune
 	roundDecimals    int
 	timezone         string
-	httpSkipTlsCheck bool
+	httpSkipTLSCheck bool
 	cdrs             rpcclient.RpcClientConnection
 	partialRecords   map[string]*PartialCDRRecord // [OriginID]*PartialRecord
 	dumpTimers       map[string]*time.Timer       // [OriginID]*time.Timer which can be canceled or reset
@@ -45,18 +46,18 @@ func (prc *PartialRecordsCache) dumpPartialRecords(originID string) {
 			dumpFilePath := path.Join(prc.cdrOutDir, fmt.Sprintf("%s.%s.%d", originID, PartialRecordsSuffix, time.Now().Unix()))
 			fileOut, err := os.Create(dumpFilePath)
 			if err != nil {
-				utils.Logger.Err(fmt.Sprintf("<Cdrc> Failed creating %s, error: %s", dumpFilePath, err.Error()))
+				utils.Logger.Error("<Cdrc> Failed creating", zap.String("path", dumpFilePath), zap.Error(err))
 				return nil, err
 			}
 			csvWriter := csv.NewWriter(fileOut)
 			csvWriter.Comma = prc.csvSep
 			for _, cdr := range prc.partialRecords[originID].cdrs {
-				expRec, err := cdr.AsExportRecord(prc.partialRecords[originID].cacheDumpFields, 0, prc.roundDecimals, prc.timezone, prc.httpSkipTlsCheck, 0, "", nil)
+				expRec, err := cdr.AsExportRecord(prc.partialRecords[originID].cacheDumpFields, prc.httpSkipTLSCheck, nil)
 				if err != nil {
 					return nil, err
 				}
 				if err := csvWriter.Write(expRec); err != nil {
-					utils.Logger.Err(fmt.Sprintf("<Cdrc> Failed writing partial CDR %v to file: %s, error: %s", cdr, dumpFilePath, err.Error()))
+					utils.Logger.Error("<Cdrc> Failed writing partial ", zap.Any("CDR", cdr), zap.String("file", dumpFilePath), zap.Error(err))
 					return nil, err
 				}
 			}
@@ -66,7 +67,7 @@ func (prc *PartialRecordsCache) dumpPartialRecords(originID string) {
 		return nil, nil
 	}, 0, originID)
 	if err != nil {
-		utils.Logger.Err(fmt.Sprintf("<CDRC> Failed dumping CDR with originID: %s, error: %s", originID, err.Error()))
+		utils.Logger.Error("<CDRC> Failed dumping CDR", zap.String("originID", originID), zap.Error(err))
 	}
 }
 
@@ -78,16 +79,16 @@ func (prc *PartialRecordsCache) postCDR(originID string) {
 			cdr.Partial = false // force completion
 			var reply string
 			if err := prc.cdrs.Call("CdrsV1.ProcessCDR", cdr, &reply); err != nil {
-				utils.Logger.Err(fmt.Sprintf("<Cdrc> Failed sending CDR  %+v from partial cache, error: %s", cdr, err.Error()))
+				utils.Logger.Error("<Cdrc> Failed sending ", zap.Any("CDR", cdr), zap.Error(err))
 			} else if reply != utils.OK {
-				utils.Logger.Err(fmt.Sprintf("<Cdrc> Received unexpected reply for CDR, %+v, reply: %s", cdr, reply))
+				utils.Logger.Error("<Cdrc> Received unexpected reply", zap.Any("CDR", cdr), zap.String("reply", reply))
 			}
 		}
 		delete(prc.partialRecords, originID)
 		return nil, nil
 	}, 0, originID)
 	if err != nil {
-		utils.Logger.Err(fmt.Sprintf("<CDRC> Failed posting from cache CDR with originID: %s, error: %s", originID, err.Error()))
+		utils.Logger.Error("<CDRC> Failed posting from cache", zap.String("originid", originID), zap.Error(err))
 	}
 }
 
@@ -159,15 +160,15 @@ func (prc *PartialRecordsCache) MergePartialCDRRecord(pCDR *PartialCDRRecord) (*
 	return pCDRIf.(*engine.CDR), err
 }
 
-func NewPartialCDRRecord(cdr *engine.CDR, cacheDumpFlds []*config.CfgCdrField) *PartialCDRRecord {
+func NewPartialCDRRecord(cdr *engine.CDR, cacheDumpFlds []*config.CdrField) *PartialCDRRecord {
 	return &PartialCDRRecord{cdrs: []*engine.CDR{cdr}, cacheDumpFields: cacheDumpFlds}
 }
 
 // PartialCDRRecord is a record which can be updated later
 // different from PartialFlatstoreRecordsCache which is incomplete (eg: need to calculate duration out of 2 records)
 type PartialCDRRecord struct {
-	cdrs            []*engine.CDR         // Number of CDRs
-	cacheDumpFields []*config.CfgCdrField // Fields template to use when dumping from cache on disk
+	cdrs            []*engine.CDR      // Number of CDRs
+	cacheDumpFields []*config.CdrField // Fields template to use when dumping from cache on disk
 }
 
 // Part of sort interface

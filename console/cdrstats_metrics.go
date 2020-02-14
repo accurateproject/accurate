@@ -1,6 +1,6 @@
 package console
 
-import "github.com/accurateproject/accurate/apier/v1"
+import "github.com/accurateproject/accurate/utils"
 
 func init() {
 	c := &CmdCdrStatsMetrics{
@@ -15,7 +15,7 @@ func init() {
 type CmdCdrStatsMetrics struct {
 	name      string
 	rpcMethod string
-	rpcParams *v1.AttrGetMetrics
+	rpcParams *utils.AttrStatsQueueID
 	*CommandExecuter
 }
 
@@ -29,7 +29,7 @@ func (self *CmdCdrStatsMetrics) RpcMethod() string {
 
 func (self *CmdCdrStatsMetrics) RpcParams(reset bool) interface{} {
 	if reset || self.rpcParams == nil {
-		self.rpcParams = &v1.AttrGetMetrics{}
+		self.rpcParams = &utils.AttrStatsQueueID{}
 	}
 	return self.rpcParams
 }

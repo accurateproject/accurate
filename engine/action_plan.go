@@ -1,12 +1,12 @@
 package engine
 
 import (
-	"fmt"
 	"sort"
 	"time"
 
 	"github.com/accurateproject/accurate/utils"
 	"github.com/gorhill/cronexpr"
+	"go.uber.org/zap"
 )
 
 const (
@@ -14,38 +14,45 @@ const (
 )
 
 type ActionTiming struct {
-	Uuid         string
-	Timing       *RateInterval
-	ActionsID    string
-	Weight       float64
-	actions      Actions
-	accountIDs   utils.StringMap // copy of action plans accounts
-	actionPlanID string          // the id of the belonging action plan (info only)
-	stCache      time.Time       // cached time of the next start
+	UUID       string        `bson:"uuid"`
+	Timing     *RateInterval `bson:"timing"`
+	ActionsID  string        `bson:"actions_id"`
+	Weight     float64       `bson:"weight"`
+	actions    Actions
+	actionPlan *ActionPlan
+	accountIDs utils.StringMap
+	stCache    time.Time // cached time of the next start
 }
 
 type Task struct {
-	Uuid      string
-	AccountID string
-	ActionsID string
+	UUID      string `bson:"uuid"`
+	Tenant    string `bson:"tenant"`
+	AccountID string `bson:"account_id"`
+	ActionsID string `bson:"actions_id"`
+}
+
+type ActionPlanBinding struct {
+	Tenant     string `bson:"tenant"`
+	Account    string `bson:"account"`
+	ActionPlan string `bson:"action_plan"`
 }
 
 type ActionPlan struct {
-	Id            string // informative purpose only
-	AccountIDs    utils.StringMap
-	ActionTimings []*ActionTiming
+	Tenant        string          `bson:"tenant"`
+	Name          string          `bson:"name"`
+	ActionTimings []*ActionTiming `bson:"action_timings"`
 }
 
-func (apl *ActionPlan) RemoveAccountID(accID string) (found bool) {
-	if _, found = apl.AccountIDs[accID]; found {
-		delete(apl.AccountIDs, accID)
+// SetParentActionPlan populates parent to all action timings
+func (apl *ActionPlan) SetParentActionPlan() {
+	for _, at := range apl.ActionTimings {
+		at.actionPlan = apl
 	}
-	return
 }
 
 func (t *Task) Execute() error {
 	return (&ActionTiming{
-		Uuid:       t.Uuid,
+		UUID:       t.UUID,
 		ActionsID:  t.ActionsID,
 		accountIDs: utils.StringMap{t.AccountID: true},
 	}).Execute()
@@ -73,157 +80,6 @@ func (at *ActionTiming) GetNextStartTime(now time.Time) (t time.Time) {
 	return at.stCache
 }
 
-// To be deleted after the above solution proves reliable
-func (at *ActionTiming) GetNextStartTimeOld(now time.Time) (t time.Time) {
-	if !at.stCache.IsZero() {
-		return at.stCache
-	}
-	i := at.Timing
-	if i == nil {
-		return
-	}
-	// Normalize
-	if i.Timing.StartTime == "" {
-		i.Timing.StartTime = "00:00:00"
-	}
-	if len(i.Timing.Years) > 0 && len(i.Timing.Months) == 0 {
-		i.Timing.Months = append(i.Timing.Months, 1)
-	}
-	if len(i.Timing.Months) > 0 && len(i.Timing.MonthDays) == 0 {
-		i.Timing.MonthDays = append(i.Timing.MonthDays, 1)
-	}
-	y, m, d := now.Date()
-	z, _ := now.Zone()
-	if i.Timing.StartTime != utils.ASAP {
-		l := fmt.Sprintf("%d-%d-%d %s %s", y, m, d, i.Timing.StartTime, z)
-		var err error
-		t, err = time.Parse(FORMAT, l)
-		if err != nil {
-			utils.Logger.Err(fmt.Sprintf("Cannot parse action plan's StartTime %v", l))
-			at.stCache = t
-			return
-		}
-		if now.After(t) || now.Equal(t) { // Set it to next day this time
-			t = t.AddDate(0, 0, 1)
-		}
-	}
-	// weekdays
-	if i.Timing.WeekDays != nil && len(i.Timing.WeekDays) > 0 {
-		i.Timing.WeekDays.Sort()
-		if t.IsZero() {
-			t = time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), now.Minute(), now.Second(), 0, now.Location())
-		}
-		for j := 0; j < 8; j++ {
-			n := t.AddDate(0, 0, j)
-			for _, wd := range i.Timing.WeekDays {
-				if n.Weekday() == wd && (n.Equal(now) || n.After(now)) {
-					at.stCache = n
-					t = n
-					return
-				}
-			}
-		}
-	}
-	// monthdays
-	if i.Timing.MonthDays != nil && len(i.Timing.MonthDays) > 0 {
-		i.Timing.MonthDays.Sort()
-		year := t.Year()
-		month := t
-		x := sort.SearchInts(i.Timing.MonthDays, t.Day())
-		d = i.Timing.MonthDays[0]
-		if x < len(i.Timing.MonthDays) {
-			if i.Timing.MonthDays[x] == t.Day() {
-				if t.Equal(now) || t.After(now) {
-					goto MONTHS
-				}
-				if x+1 < len(i.Timing.MonthDays) { // today was found in the list, jump to the next grater day
-					d = i.Timing.MonthDays[x+1]
-				} else { // jump to next month
-					//not using now to make sure the next month has the the 1 date
-					//(if today is 31) next month may not have it
-					tmp := time.Date(year, month.Month(), 1, 0, 0, 0, 0, time.Local)
-					month = tmp.AddDate(0, 1, 0)
-				}
-			} else { // today was not found in the list, x is the first greater day
-				d = i.Timing.MonthDays[x]
-			}
-		}
-		h, m, s := t.Clock()
-		t = time.Date(month.Year(), month.Month(), d, h, m, s, 0, time.Local)
-	}
-MONTHS:
-	if i.Timing.Months != nil && len(i.Timing.Months) > 0 {
-		i.Timing.Months.Sort()
-		year := t.Year()
-		x := sort.Search(len(i.Timing.Months), func(x int) bool { return i.Timing.Months[x] >= t.Month() })
-		m = i.Timing.Months[0]
-		if x < len(i.Timing.Months) {
-			if i.Timing.Months[x] == t.Month() {
-				if t.Equal(now) || t.After(now) {
-					goto YEARS
-				}
-				if x+1 < len(i.Timing.Months) { // this month was found in the list so jump to next available month
-					m = i.Timing.Months[x+1]
-					// reset the monthday
-					t = time.Date(t.Year(), t.Month(), i.Timing.MonthDays[0], t.Hour(), t.Minute(), t.Second(), 0, t.Location())
-				} else { // jump to next year
-					//not using now to make sure the next year has the the 1 date
-					//(if today is 31) next month may not have it
-					tmp := time.Date(year, 1, 1, 0, 0, 0, 0, time.Local)
-					year = tmp.AddDate(1, 0, 0).Year()
-				}
-			} else { // this month was not found in the list, x is the first greater month
-				m = i.Timing.Months[x]
-				// reset the monthday
-				t = time.Date(t.Year(), t.Month(), i.Timing.MonthDays[0], t.Hour(), t.Minute(), t.Second(), 0, t.Location())
-			}
-		}
-		h, min, s := t.Clock()
-		t = time.Date(year, m, t.Day(), h, min, s, 0, time.Local)
-	} else {
-		if now.After(t) {
-			t = t.AddDate(0, 1, 0)
-		}
-	}
-YEARS:
-	if i.Timing.Years != nil && len(i.Timing.Years) > 0 {
-		i.Timing.Years.Sort()
-		x := sort.Search(len(i.Timing.Years), func(x int) bool { return i.Timing.Years[x] >= t.Year() })
-		y = i.Timing.Years[0]
-		if x < len(i.Timing.Years) {
-			if i.Timing.Years[x] == now.Year() {
-				if t.Equal(now) || t.After(now) {
-					h, m, s := t.Clock()
-					t = time.Date(now.Year(), t.Month(), t.Day(), h, m, s, 0, time.Local)
-					at.stCache = t
-					return
-				}
-				if x+1 < len(i.Timing.Years) { // this year was found in the list so jump to next available year
-					y = i.Timing.Years[x+1]
-					// reset the month
-					if i.Timing.Months != nil {
-						t = time.Date(t.Year(), i.Timing.Months[0], t.Day(), t.Hour(), t.Minute(), t.Second(), 0, t.Location())
-					}
-					// reset the monthday
-					t = time.Date(t.Year(), t.Month(), i.Timing.MonthDays[0], t.Hour(), t.Minute(), t.Second(), 0, t.Location())
-				}
-			} else { // this year was not found in the list, x is the first greater year
-				y = i.Timing.Years[x]
-				// reset the month/monthday
-				t = time.Date(t.Year(), i.Timing.Months[0], i.Timing.MonthDays[0], t.Hour(), t.Minute(), t.Second(), 0, t.Location())
-			}
-		}
-		h, min, s := t.Clock()
-		t = time.Date(y, t.Month(), t.Day(), h, min, s, 0, time.Local)
-	} else {
-		if now.After(t) {
-			t = t.AddDate(1, 0, 0)
-		}
-	}
-	at.stCache = t
-	return
-}
-
 func (at *ActionTiming) ResetStartTimeCache() {
 	at.stCache = time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC)
 }
@@ -240,43 +96,59 @@ func (at *ActionTiming) GetAccountIDs() utils.StringMap {
 	return at.accountIDs
 }
 
-func (at *ActionTiming) SetActionPlanID(id string) {
-	at.actionPlanID = id
+func (at *ActionTiming) SetActionPlan(apl *ActionPlan) {
+	at.actionPlan = apl
 }
 
 func (at *ActionTiming) GetActionPlanID() string {
-	return at.actionPlanID
+	return at.actionPlan.Name
 }
 
 func (at *ActionTiming) getActions() (as []*Action, err error) {
 	if at.actions == nil {
-		at.actions, err = ratingStorage.GetActions(at.ActionsID, utils.CACHED)
+		ag, err := ratingStorage.GetActionGroup(at.actionPlan.Tenant, at.ActionsID, utils.CACHED)
+		if err != nil {
+			return nil, err
+		}
+		ag.SetParentGroup() // populate parent to all actions
+		at.actions = ag.Actions
 	}
 	at.actions.Sort()
 	return at.actions, err
+}
+
+func (at *ActionTiming) getActionPlanBindings() Iterator {
+	if at.accountIDs == nil {
+		return ratingStorage.Iterator(ColApb, "", map[string]interface{}{"tenant": at.actionPlan.Tenant, "action_plan": at.actionPlan.Name})
+	}
+	return NewFakeAPBIterator(at.actionPlan.Tenant, at.actionPlan.Name, at.accountIDs.Slice())
 }
 
 func (at *ActionTiming) Execute() (err error) {
 	at.ResetStartTimeCache()
 	aac, err := at.getActions()
 	if err != nil {
-		utils.Logger.Err(fmt.Sprintf("Failed to get actions for %s: %s", at.ActionsID, err))
+		utils.Logger.Error("Failed to get actions for ", zap.String("ID", at.ActionsID), zap.Error(err))
 		return
 	}
-	for accID, _ := range at.accountIDs {
+	apbIter := at.getActionPlanBindings()
+	var apb ActionPlanBinding
+	actionPlanHadBindings := false
+	for apbIter.Next(&apb) {
+		actionPlanHadBindings = true
 		_, err = Guardian.Guard(func() (interface{}, error) {
-			acc, err := accountingStorage.GetAccount(accID)
+			acc, err := accountingStorage.GetAccount(apb.Tenant, apb.Account)
 			if err != nil {
-				utils.Logger.Warning(fmt.Sprintf("Could not get account id: %s. Skipping!", accID))
+				utils.Logger.Warn("Could not get account. Skipping!", zap.String("tenant", apb.Tenant), zap.String("id", apb.Account))
 				return 0, err
 			}
 			transactionFailed := false
 			removeAccountActionFound := false
 			for _, a := range aac {
 				// check action filter
-				if len(a.Filter) > 0 {
-					matched, err := acc.matchActionFilter(a.Filter)
-					//log.Print("Checkng: ", a.Filter, matched)
+				if len(a.ExecFilter) > 0 {
+					matched, err := acc.matchActionFilter(a.ExecFilter)
+					//log.Print("Checkng: ", a.ExecFilter, matched)
 					if err != nil {
 						return 0, err
 					}
@@ -284,26 +156,21 @@ func (at *ActionTiming) Execute() (err error) {
 						continue
 					}
 				}
-				if a.Balance == nil {
-					a.Balance = &BalanceFilter{}
+				b, _ := a.getBalance(nil)
+				if b == nil {
+					b = &Balance{}
 				}
-				if a.ExpirationString != "" { // if it's *unlimited then it has to be zero time
-					if expDate, parseErr := utils.ParseDate(a.ExpirationString); parseErr == nil {
-						a.Balance.ExpirationDate = &time.Time{}
-						*a.Balance.ExpirationDate = expDate
-					}
-				}
-
 				actionFunction, exists := getActionFunc(a.ActionType)
 				if !exists {
 					// do not allow the action plan to be rescheduled
 					at.Timing = nil
-					utils.Logger.Err(fmt.Sprintf("Function type %v not available, aborting execution!", a.ActionType))
+					utils.Logger.Warn("Function type not available, aborting execution!", zap.String("action type", a.ActionType))
 					transactionFailed = true
 					break
 				}
 				if err := actionFunction(acc, nil, a, aac); err != nil {
-					utils.Logger.Err(fmt.Sprintf("Error executing action %s: %v!", a.ActionType, err))
+					//log.Print("err: ", err)
+					utils.Logger.Error("Error executing action ", zap.String("action type", a.ActionType), zap.Error(err))
 					transactionFailed = true
 					break
 				}
@@ -311,41 +178,41 @@ func (at *ActionTiming) Execute() (err error) {
 					removeAccountActionFound = true
 				}
 			}
+			//log.Print("transaction failed: ", transactionFailed)
 			if !transactionFailed && !removeAccountActionFound {
+				//log.Print("Write: ", utils.ToIJSON(acc))
 				accountingStorage.SetAccount(acc)
 			}
 			return 0, nil
-		}, 0, accID)
+		}, 0, utils.ConcatKey(apb.Tenant, apb.Account))
 	}
-	if len(at.accountIDs) == 0 { // action timing executing without accounts
+	if err := apbIter.Close(); err != nil {
+		return err
+	}
+	if !actionPlanHadBindings { // action timing executing without accounts
 		for _, a := range aac {
-			if expDate, parseErr := utils.ParseDate(a.ExpirationString); (a.Balance == nil || a.Balance.EmptyExpirationDate()) &&
-				parseErr == nil && !expDate.IsZero() {
-				a.Balance.ExpirationDate = &time.Time{}
-				*a.Balance.ExpirationDate = expDate
-			}
-
 			actionFunction, exists := getActionFunc(a.ActionType)
 			if !exists {
 				// do not allow the action plan to be rescheduled
 				at.Timing = nil
-				utils.Logger.Err(fmt.Sprintf("Function type %v not available, aborting execution!", a.ActionType))
+				utils.Logger.Error("Function type %v not available, aborting execution!", zap.String("action type", a.ActionType))
 				break
 			}
 			if err := actionFunction(nil, nil, a, aac); err != nil {
-				utils.Logger.Err(fmt.Sprintf("Error executing accountless action %s: %v!", a.ActionType, err))
+				utils.Logger.Error("Error executing accountless action", zap.String("action type", a.ActionType), zap.Error(err))
 				break
 			}
 		}
 	}
 	if err != nil {
-		utils.Logger.Warning(fmt.Sprintf("Error executing action plan: %v", err))
+		utils.Logger.Warn("Error executing action plan: %v", zap.Error(err))
 		return err
 	}
 	Publish(CgrEvent{
 		"EventName": utils.EVT_ACTION_TIMING_FIRED,
-		"Uuid":      at.Uuid,
-		"Id":        at.actionPlanID,
+		"Uuid":      at.UUID,
+		"Tenant":    at.actionPlan.Tenant,
+		"Id":        at.actionPlan.Name,
 		"ActionIds": at.ActionsID,
 	})
 	return
@@ -377,6 +244,7 @@ func (atpl ActionTimingPriorityList) Less(i, j int) bool {
 	return atpl[i].GetNextStartTime(time.Now()).Before(atpl[j].GetNextStartTime(time.Now()))
 }
 
+// using the len/swap/less to implement sort.Interface
 func (atpl ActionTimingPriorityList) Sort() {
 	sort.Sort(atpl)
 }
@@ -384,18 +252,8 @@ func (atpl ActionTimingPriorityList) Sort() {
 // Structure to store actions according to weight
 type ActionTimingWeightOnlyPriorityList []*ActionTiming
 
-func (atpl ActionTimingWeightOnlyPriorityList) Len() int {
-	return len(atpl)
-}
-
-func (atpl ActionTimingWeightOnlyPriorityList) Swap(i, j int) {
-	atpl[i], atpl[j] = atpl[j], atpl[i]
-}
-
-func (atpl ActionTimingWeightOnlyPriorityList) Less(i, j int) bool {
-	return atpl[i].Weight > atpl[j].Weight
-}
-
 func (atpl ActionTimingWeightOnlyPriorityList) Sort() {
-	sort.Sort(atpl)
+	sort.Slice(atpl, func(i, j int) bool {
+		return atpl[i].Weight > atpl[j].Weight
+	})
 }

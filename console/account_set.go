@@ -1,11 +1,11 @@
 package console
 
-import "github.com/accurateproject/accurate/apier/v2"
+import "github.com/accurateproject/accurate/api/v1"
 
 func init() {
 	c := &CmdAddAccount{
 		name:      "account_set",
-		rpcMethod: "ApierV2.SetAccount",
+		rpcMethod: "ApiV1.SetAccount",
 	}
 	commands[c.Name()] = c
 	c.CommandExecuter = &CommandExecuter{c}
@@ -15,7 +15,7 @@ func init() {
 type CmdAddAccount struct {
 	name      string
 	rpcMethod string
-	rpcParams *v2.AttrSetAccount
+	rpcParams *v1.AttrSetAccount
 	*CommandExecuter
 }
 
@@ -29,7 +29,7 @@ func (self *CmdAddAccount) RpcMethod() string {
 
 func (self *CmdAddAccount) RpcParams(reset bool) interface{} {
 	if reset || self.rpcParams == nil {
-		self.rpcParams = &v2.AttrSetAccount{}
+		self.rpcParams = &v1.AttrSetAccount{}
 	}
 	return self.rpcParams
 }

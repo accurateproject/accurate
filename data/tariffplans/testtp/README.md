@@ -1,4 +1,4 @@
-CGRateS - FSGermanyPrep1
+AccuRate - FSGermanyPrep1
 ==========================
 
 Scenario:

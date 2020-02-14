@@ -11,7 +11,7 @@ func TestGetRatingProfileForPrefix(t *testing.T) {
 	cd := &CallDescriptor{
 		TimeStart:   time.Date(2013, 11, 18, 13, 45, 1, 0, time.UTC),
 		TimeEnd:     time.Date(2013, 11, 18, 13, 47, 30, 0, time.UTC),
-		Tenant:      "vdf",
+		Tenant:      "test",
 		Category:    "0",
 		Direction:   utils.OUT,
 		Subject:     "fallback1",
@@ -30,7 +30,7 @@ func TestGetRatingProfileForPrefixFirstEmpty(t *testing.T) {
 	cd := &CallDescriptor{
 		TimeStart:   time.Date(2013, 11, 18, 13, 44, 1, 0, time.UTC),
 		TimeEnd:     time.Date(2013, 11, 18, 13, 47, 30, 0, time.UTC),
-		Tenant:      "vdf",
+		Tenant:      "test",
 		Category:    "0",
 		Direction:   utils.OUT,
 		Subject:     "fallback1",
@@ -50,7 +50,7 @@ func TestGetRatingProfileNotFound(t *testing.T) {
 	cd := &CallDescriptor{
 		TimeStart:   time.Date(2015, 8, 18, 22, 05, 0, 0, time.UTC),
 		TimeEnd:     time.Date(2015, 8, 18, 22, 06, 30, 0, time.UTC),
-		Tenant:      "vdf",
+		Tenant:      "test",
 		Category:    "0",
 		Direction:   utils.OUT,
 		Subject:     "no_rating_profile",
@@ -66,7 +66,7 @@ func TestGetRatingProfileFoundButNoDestination(t *testing.T) {
 	cd := &CallDescriptor{
 		TimeStart:   time.Date(2015, 8, 18, 22, 05, 0, 0, time.UTC),
 		TimeEnd:     time.Date(2015, 8, 18, 22, 06, 30, 0, time.UTC),
-		Tenant:      "cgrates.org",
+		Tenant:      "test",
 		Category:    "call",
 		Direction:   utils.OUT,
 		Subject:     "nt",
@@ -371,12 +371,12 @@ func TestRatingProfileWeightedMultiple(t *testing.T) {
 
 func TestRatingProfileSubjectPrefixMatching(t *testing.T) {
 	rpSubjectPrefixMatching = true
-	rp, err := RatingProfileSubjectPrefixMatching("*out:cgrates.org:data:rif")
+	rp, err := ratingStorage.GetRatingProfile("*out", "test", "data", "rif", true, utils.CACHED)
 	if rp == nil || err != nil {
 		t.Errorf("Error getting rating profile by prefix: %+v (%v)", rp, err)
 	}
 
-	rp, err = RatingProfileSubjectPrefixMatching("*out:cgrates.org:data:rifescu")
+	rp, err = ratingStorage.GetRatingProfile("*out", "test", "data", "rifescu", true, utils.CACHED)
 	if rp == nil || err != nil {
 		t.Errorf("Error getting rating profile by prefix: %+v (%v)", rp, err)
 	}

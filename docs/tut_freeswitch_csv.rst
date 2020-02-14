@@ -10,7 +10,7 @@ Scenario
  - Have added inside default dialplan CGR own extensions just before routing towards users (*etc/freeswitch/dialplan/default.xml*).
  - FreeSWITCH configured to generate default *.csv* CDRs, modified example template to add cgr_reqtype from user variables (*etc/freeswitch/autoload_configs/cdr_csv.conf.xml*).
 
-- **CGRateS** with following components:
+- **AccuRate** with following components:
 
  - CGR-SM started as prepaid controller, with debits taking place at 5s intervals.
  - CGR-CDRC component importing FreeSWITCH_ generated *.csv* CDRs into CGR and moving the processed *.csv* files to */tmp* folder.
@@ -33,7 +33,7 @@ To verify that FreeSWITCH_ is running we run the console command:
  fs_cli -x status
 
 
-Starting **CGRateS** with custom configuration
+Starting **AccuRate** with custom configuration
 ----------------------------------------------
 
 ::
@@ -51,7 +51,7 @@ CDR processing
 
 For every call FreeSWITCH_ will generate CDR records within the *Master.csv* file. 
 In order to avoid double-processing we will use the rotate mechanism built in FreeSWITCH_. 
-Once rotated, we will move the resulted files inside the path considered by **CGRateS** *CDRC* component as inbound.
+Once rotated, we will move the resulted files inside the path considered by **AccuRate** *CDRC* component as inbound.
 
 These steps are automated in a script provided in the */usr/share/cgrates/scripts* location:
 
@@ -60,7 +60,7 @@ These steps are automated in a script provided in the */usr/share/cgrates/script
  /usr/share/cgrates/scripts/freeswitch_cdr_csv_rotate.sh
 
 
-On each rotate CGR-CDRC component will be informed via *inotify* subsystem and will instantly process the CDR file. The records end up in **CGRateS**/StorDB inside *cdrs_primary* table via CGR-CDRS. As soon as the CDR will hit CDRS component, mediation will occur, either considering the costs calculated in case of prepaid and postpaid calls out of *cost_details* table or query it's own one from rater in case of *pseudoprepaid* and *rated* CDRs.
+On each rotate CGR-CDRC component will be informed via *inotify* subsystem and will instantly process the CDR file. The records end up in **AccuRate**/StorDB inside *cdrs_primary* table via CGR-CDRS. As soon as the CDR will hit CDRS component, mediation will occur, either considering the costs calculated in case of prepaid and postpaid calls out of *cost_details* table or query it's own one from rater in case of *pseudoprepaid* and *rated* CDRs.
 
 Once the CDRs are mediated, can be exported as *.csv* format again via remote command offered by *cgr-console* tool:
 
@@ -69,10 +69,10 @@ Once the CDRs are mediated, can be exported as *.csv* format again via remote co
  cgr-console 'cdrs_export CdrFormat="csv" ExportDir="/tmp"'
 
 
-**CGRateS** Usage
+**AccuRate** Usage
 -----------------
 
-Since it is common to most of the tutorials, the example for **CGRateS** usage is provided in a separate page `here <http://cgrates.readthedocs.org/en/latest/tut_cgrates_usage.html>`_
+Since it is common to most of the tutorials, the example for **AccuRate** usage is provided in a separate page `here <http://cgrates.readthedocs.org/en/latest/tut_cgrates_usage.html>`_
 
 
 .. _FreeSWITCH: http://www.freeswitch.org/

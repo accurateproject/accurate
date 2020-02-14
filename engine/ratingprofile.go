@@ -2,47 +2,43 @@ package engine
 
 import (
 	"encoding/json"
-	"fmt"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/accurateproject/accurate/history"
 	"github.com/accurateproject/accurate/utils"
+	"go.uber.org/zap"
 )
 
 type RatingProfile struct {
-	Id                    string
-	RatingPlanActivations RatingPlanActivations
+	Direction             string                `bson:"direction"`
+	Tenant                string                `bson:"tenant"`
+	Category              string                `bson:"category"`
+	Subject               string                `bson:"subject"`
+	RatingPlanActivations RatingPlanActivations `bson:"rating_plan_activations"`
 }
 
 type RatingPlanActivation struct {
-	ActivationTime  time.Time
-	RatingPlanId    string
-	FallbackKeys    []string
-	CdrStatQueueIds []string
+	ActivationTime  time.Time `bson:"activation_time"`
+	RatingPlanID    string    `bson:"rating_plan_id"`
+	FallbackKeys    []string  `bson:"fallback_keys"`
+	CdrStatQueueIDs []string  `bson:"cdr_stat_queue_ids"`
+}
+
+func (rpf *RatingProfile) FullID() string {
+	return utils.ConcatKey(rpf.Direction, rpf.Tenant, rpf.Category, rpf.Subject)
 }
 
 func (rpa *RatingPlanActivation) Equal(orpa *RatingPlanActivation) bool {
-	return rpa.ActivationTime == orpa.ActivationTime && rpa.RatingPlanId == orpa.RatingPlanId
+	return rpa.ActivationTime == orpa.ActivationTime && rpa.RatingPlanID == orpa.RatingPlanID
 }
 
 type RatingPlanActivations []*RatingPlanActivation
 
-func (rpas RatingPlanActivations) Len() int {
-	return len(rpas)
-}
-
-func (rpas RatingPlanActivations) Swap(i, j int) {
-	rpas[i], rpas[j] = rpas[j], rpas[i]
-}
-
-func (rpas RatingPlanActivations) Less(i, j int) bool {
-	return rpas[i].ActivationTime.Before(rpas[j].ActivationTime)
-}
-
 func (rpas RatingPlanActivations) Sort() {
-	sort.Sort(rpas)
+	sort.Slice(rpas, func(i, j int) bool {
+		return rpas[i].ActivationTime.Before(rpas[j].ActivationTime)
+	})
 }
 
 func (rpas RatingPlanActivations) GetActiveForCall(cd *CallDescriptor) RatingPlanActivations {
@@ -63,9 +59,9 @@ func (rpas RatingPlanActivations) GetActiveForCall(cd *CallDescriptor) RatingPla
 
 type RatingInfo struct {
 	MatchedSubject string
-	RatingPlanId   string
+	RatingPlanID   string
 	MatchedPrefix  string
-	MatchedDestId  string
+	MatchedDestID  string
 	ActivationTime time.Time
 	RateIntervals  RateIntervalList
 	FallbackKeys   []string
@@ -113,20 +109,10 @@ func (ri RatingInfo) SelectRatingIntevalsForTimespan(ts *TimeSpan) (result RateI
 
 type RatingInfos []*RatingInfo
 
-func (ris RatingInfos) Len() int {
-	return len(ris)
-}
-
-func (ris RatingInfos) Swap(i, j int) {
-	ris[i], ris[j] = ris[j], ris[i]
-}
-
-func (ris RatingInfos) Less(i, j int) bool {
-	return ris[i].ActivationTime.Before(ris[j].ActivationTime)
-}
-
 func (ris RatingInfos) Sort() {
-	sort.Sort(ris)
+	sort.Slice(ris, func(i, j int) bool {
+		return ris[i].ActivationTime.Before(ris[j].ActivationTime)
+	})
 }
 
 func (ris RatingInfos) String() string {
@@ -135,39 +121,32 @@ func (ris RatingInfos) String() string {
 }
 
 func (rpf *RatingProfile) GetRatingPlansForPrefix(cd *CallDescriptor) (err error) {
+	//log.Print("RPF: ", utils.ToIJSON(rpf))
 	var ris RatingInfos
 	for index, rpa := range rpf.RatingPlanActivations.GetActiveForCall(cd) {
-		rpl, err := ratingStorage.GetRatingPlan(rpa.RatingPlanId, utils.CACHED)
+		rpl, err := ratingStorage.GetRatingPlan(rpf.Tenant, rpa.RatingPlanID, utils.CACHED)
+		//log.Print("RPL: ", utils.ToIJSON(rpl))
 		if err != nil || rpl == nil {
-			utils.Logger.Err(fmt.Sprintf("Error checking destination: %v", err))
+			utils.Logger.Error("error checking destination", zap.Error(err))
 			continue
 		}
-		prefix := ""
-		destinationId := ""
+		destinationCode := ""
+		destinationName := ""
 		var rps RateIntervalList
 		if cd.Destination == utils.ANY || cd.Destination == "" {
 			cd.Destination = utils.ANY
 			if _, ok := rpl.DestinationRates[utils.ANY]; ok {
 				rps = rpl.RateIntervalList(utils.ANY)
-				prefix = utils.ANY
-				destinationId = utils.ANY
+				destinationCode = utils.ANY
+				destinationName = utils.ANY
 			}
 		} else {
 			for _, p := range utils.SplitPrefix(cd.Destination, MIN_PREFIX_MATCH) {
-				if destIDs, err := ratingStorage.GetReverseDestination(p, utils.CACHED); err == nil {
-					var bestWeight float64
-					for _, dID := range destIDs {
-						if _, ok := rpl.DestinationRates[dID]; ok {
-							ril := rpl.RateIntervalList(dID)
-							currentWeight := ril.GetWeight()
-							if currentWeight > bestWeight {
-								bestWeight = currentWeight
-								rps = ril
-								prefix = p
-								destinationId = dID
-							}
-						}
-					}
+				if helper, ok := rpl.DestinationRates[p]; ok {
+					ril := rpl.RateIntervalList(p)
+					rps = ril
+					destinationCode = p
+					destinationName = helper.CodeName
 				}
 				if rps != nil {
 					break
@@ -176,8 +155,8 @@ func (rpf *RatingProfile) GetRatingPlansForPrefix(cd *CallDescriptor) (err error
 			if rps == nil { // fallback on *any destination
 				if _, ok := rpl.DestinationRates[utils.ANY]; ok {
 					rps = rpl.RateIntervalList(utils.ANY)
-					prefix = utils.ANY
-					destinationId = utils.ANY
+					destinationCode = utils.ANY
+					destinationName = utils.ANY
 				}
 			}
 		}
@@ -186,17 +165,17 @@ func (rpf *RatingProfile) GetRatingPlansForPrefix(cd *CallDescriptor) (err error
 			ris = append(ris, &RatingInfo{
 				MatchedSubject: "",
 				MatchedPrefix:  "",
-				MatchedDestId:  "",
+				MatchedDestID:  "",
 				ActivationTime: cd.TimeStart,
 				RateIntervals:  nil,
-				FallbackKeys:   []string{cd.GetKey(FALLBACK_SUBJECT)}})
+				FallbackKeys:   []string{FALLBACK_SUBJECT}})
 		}
-		if len(prefix) > 0 {
+		if len(destinationCode) > 0 {
 			ris = append(ris, &RatingInfo{
-				MatchedSubject: rpf.Id,
-				RatingPlanId:   rpl.Id,
-				MatchedPrefix:  prefix,
-				MatchedDestId:  destinationId,
+				MatchedSubject: rpf.FullID(),
+				RatingPlanID:   rpl.Name,
+				MatchedPrefix:  destinationCode,
+				MatchedDestID:  destinationName,
 				ActivationTime: rpa.ActivationTime,
 				RateIntervals:  rps,
 				FallbackKeys:   rpa.FallbackKeys})
@@ -206,7 +185,7 @@ func (rpf *RatingProfile) GetRatingPlansForPrefix(cd *CallDescriptor) (err error
 				ris = append(ris, &RatingInfo{
 					MatchedSubject: "",
 					MatchedPrefix:  "",
-					MatchedDestId:  "",
+					MatchedDestID:  "",
 					ActivationTime: rpa.ActivationTime,
 					RateIntervals:  nil,
 					FallbackKeys:   rpa.FallbackKeys,
@@ -226,32 +205,15 @@ func (rpf *RatingProfile) GetRatingPlansForPrefix(cd *CallDescriptor) (err error
 func (rpf *RatingProfile) GetHistoryRecord(deleted bool) history.Record {
 	js, _ := json.Marshal(rpf)
 	return history.Record{
-		Id:       rpf.Id,
+		Id:       rpf.FullID(),
 		Filename: history.RATING_PROFILES_FN,
 		Payload:  js,
 		Deleted:  deleted,
 	}
 }
 
+/*
 type TenantRatingSubject struct {
 	Tenant, Subject string
 }
-
-func RatingProfileSubjectPrefixMatching(key string) (rp *RatingProfile, err error) {
-	if !rpSubjectPrefixMatching || strings.HasSuffix(key, utils.ANY) {
-		return ratingStorage.GetRatingProfile(key, utils.CACHED)
-	}
-	if rp, err = ratingStorage.GetRatingProfile(key, utils.CACHED); err == nil {
-		return rp, err
-	}
-	lastIndex := strings.LastIndex(key, utils.CONCATENATED_KEY_SEP)
-	baseKey := key[:lastIndex]
-	subject := key[lastIndex:]
-	lenSubject := len(subject)
-	for i := 1; i < lenSubject-1; i++ {
-		if rp, err = ratingStorage.GetRatingProfile(baseKey+subject[:lenSubject-i], utils.CACHED); err == nil {
-			return rp, err
-		}
-	}
-	return
-}
+*/

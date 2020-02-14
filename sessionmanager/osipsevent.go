@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/dec"
 	"github.com/accurateproject/accurate/engine"
 	"github.com/accurateproject/accurate/utils"
 	"github.com/accurateproject/osipsdagram"
@@ -58,7 +59,7 @@ func (osipsev *OsipsEvent) GetName() string {
 	return osipsev.osipsEvent.Name
 }
 
-func (osipsev *OsipsEvent) GetCgrId(timezone string) string {
+func (osipsev *OsipsEvent) GetUniqueID(timezone string) string {
 	setupTime, _ := osipsev.GetSetupTime(utils.META_DEFAULT, timezone)
 	return utils.Sha1(osipsev.GetUUID(), setupTime.UTC().String())
 }
@@ -110,20 +111,20 @@ func (osipsev *OsipsEvent) GetCategory(fieldName string) string {
 	if strings.HasPrefix(fieldName, utils.STATIC_VALUE_PREFIX) { // Static value
 		return fieldName[len(utils.STATIC_VALUE_PREFIX):]
 	}
-	return utils.FirstNonEmpty(osipsev.osipsEvent.AttrValues[fieldName], osipsev.osipsEvent.AttrValues[CGR_CATEGORY], config.CgrConfig().DefaultCategory)
+	return utils.FirstNonEmpty(osipsev.osipsEvent.AttrValues[fieldName], osipsev.osipsEvent.AttrValues[CGR_CATEGORY], *config.Get().General.DefaultCategory)
 }
 
 func (osipsev *OsipsEvent) GetTenant(fieldName string) string {
 	if strings.HasPrefix(fieldName, utils.STATIC_VALUE_PREFIX) { // Static value
 		return fieldName[len(utils.STATIC_VALUE_PREFIX):]
 	}
-	return utils.FirstNonEmpty(osipsev.osipsEvent.AttrValues[fieldName], osipsev.osipsEvent.AttrValues[CGR_TENANT], config.CgrConfig().DefaultTenant)
+	return utils.FirstNonEmpty(osipsev.osipsEvent.AttrValues[fieldName], osipsev.osipsEvent.AttrValues[CGR_TENANT], *config.Get().General.DefaultTenant)
 }
 func (osipsev *OsipsEvent) GetReqType(fieldName string) string {
 	if strings.HasPrefix(fieldName, utils.STATIC_VALUE_PREFIX) { // Static value
 		return fieldName[len(utils.STATIC_VALUE_PREFIX):]
 	}
-	return utils.FirstNonEmpty(osipsev.osipsEvent.AttrValues[fieldName], osipsev.osipsEvent.AttrValues[CGR_REQTYPE], config.CgrConfig().DefaultReqType)
+	return utils.FirstNonEmpty(osipsev.osipsEvent.AttrValues[fieldName], osipsev.osipsEvent.AttrValues[CGR_REQTYPE], *config.Get().General.DefaultRequestType)
 }
 func (osipsev *OsipsEvent) GetSetupTime(fieldName, timezone string) (time.Time, error) {
 	sTimeStr := utils.FirstNonEmpty(osipsev.osipsEvent.AttrValues[fieldName], osipsev.osipsEvent.AttrValues[OSIPS_SETUP_TIME], osipsev.osipsEvent.AttrValues[OSIPS_EVENT_TIME])
@@ -248,7 +249,7 @@ func (osipsev *OsipsEvent) DialogId() string {
 
 func (osipsEv *OsipsEvent) AsStoredCdr(timezone string) *engine.CDR {
 	storCdr := new(engine.CDR)
-	storCdr.CGRID = osipsEv.GetCgrId(timezone)
+	storCdr.UniqueID = osipsEv.GetUniqueID(timezone)
 	storCdr.ToR = utils.VOICE
 	storCdr.OriginID = osipsEv.GetUUID()
 	storCdr.OriginHost = osipsEv.GetOriginatorIP(utils.META_DEFAULT)
@@ -267,17 +268,17 @@ func (osipsEv *OsipsEvent) AsStoredCdr(timezone string) *engine.CDR {
 	storCdr.Supplier = osipsEv.GetSupplier(utils.META_DEFAULT)
 	storCdr.DisconnectCause = osipsEv.GetDisconnectCause(utils.META_DEFAULT)
 	storCdr.ExtraFields = osipsEv.GetExtraFields()
-	storCdr.Cost = -1
+	storCdr.Cost = dec.NewVal(-1, 0)
 	return storCdr
 }
 
 // Computes duration out of setup time of the callEnd
 func (osipsEv *OsipsEvent) updateDurationFromEvent(updatedOsipsEv *OsipsEvent) error {
-	endTime, err := updatedOsipsEv.GetSetupTime(TIME, config.CgrConfig().DefaultTimezone)
+	endTime, err := updatedOsipsEv.GetSetupTime(TIME, *config.Get().General.DefaultTimezone)
 	if err != nil {
 		return err
 	}
-	answerTime, err := osipsEv.GetAnswerTime(utils.META_DEFAULT, config.CgrConfig().DefaultTimezone)
+	answerTime, err := osipsEv.GetAnswerTime(utils.META_DEFAULT, *config.Get().General.DefaultTimezone)
 	osipsEv.osipsEvent.AttrValues[OSIPS_DURATION] = endTime.Sub(answerTime).String()
 	osipsEv.osipsEvent.AttrValues["method"] = "UPDATE" // So we can know it is an end event
 	osipsEv.osipsEvent.AttrValues[OSIPS_SIPCODE] = updatedOsipsEv.osipsEvent.AttrValues[OSIPS_SIPCODE]
@@ -290,4 +291,8 @@ func (osipsEv *OsipsEvent) ComputeLcr() bool {
 	} else {
 		return computeLcr
 	}
+}
+
+func (osipsEv *OsipsEvent) AsMapStringIface() (map[string]interface{}, error) {
+	return nil, utils.ErrNotImplemented
 }

@@ -1,97 +1,64 @@
 package engine
 
 import (
-	"fmt"
 	"reflect"
 	"strings"
 	"sync"
-	"time"
 
+	"github.com/accurateproject/accurate/dec"
 	"github.com/accurateproject/accurate/utils"
+	"go.uber.org/zap"
 )
 
 type StatsInterface interface {
-	GetValues(string, *map[string]float64) error
-	GetQueueIds(int, *[]string) error
-	GetQueue(string, *StatsQueue) error
+	GetValues(utils.AttrStatsQueueID, *map[string]float64) error
+	GetQueueIDs(string, *[]string) error
+	GetQueue(utils.AttrStatsQueueID, *StatsQueue) error
 	GetQueueTriggers(string, *ActionTriggers) error
 	AppendCDR(*CDR, *int) error
 	AddQueue(*CdrStats, *int) error
-	RemoveQueue(string, *int) error
-	ReloadQueues([]string, *int) error
-	ResetQueues([]string, *int) error
+	DisableQueue(utils.AttrStatsQueueDisable, *int) error
+	RemoveQueue(utils.AttrStatsQueueIDs, *int) error
+	ReloadQueues(utils.AttrStatsQueueIDs, *int) error
+	ResetQueues(utils.AttrStatsQueueIDs, *int) error
 	Stop(int, *int) error
 }
 
 type Stats struct {
-	queues              map[string]*StatsQueue
-	queueSavers         map[string]*queueSaver
-	mux                 sync.RWMutex
-	ratingDb            RatingStorage
-	accountingDb        AccountingStorage
-	defaultSaveInterval time.Duration
+	queues       map[string]*StatsQueue
+	mux          sync.RWMutex
+	ratingDB     RatingStorage
+	accountingDB AccountingStorage
+	cdrDB        CdrStorage
 }
 
-type queueSaver struct {
-	ticker       *time.Ticker
-	stopper      chan bool
-	save         func(*queueSaver)
-	sq           *StatsQueue
-	ratingDb     RatingStorage
-	accountingDb AccountingStorage
-}
+func NewStats(ratingDB RatingStorage, accountingDB AccountingStorage, cdrDB CdrStorage) *Stats {
+	cdrStats := &Stats{ratingDB: ratingDB, accountingDB: accountingDB, cdrDB: cdrDB}
 
-func newQueueSaver(saveInterval time.Duration, sq *StatsQueue, rdb RatingStorage, adb AccountingStorage) *queueSaver {
-	svr := &queueSaver{
-		ticker:       time.NewTicker(saveInterval),
-		stopper:      make(chan bool),
-		sq:           sq,
-		accountingDb: adb,
-	}
-	go func(saveInterval time.Duration, sq *StatsQueue, adb AccountingStorage) {
-		for {
-			select {
-			case <-svr.ticker.C:
-				sq.Save(rdb, adb)
-			case <-svr.stopper:
-				break
-			}
-		}
-	}(saveInterval, sq, adb)
-	return svr
-}
-
-func (svr *queueSaver) stop() {
-	svr.sq.Save(svr.ratingDb, svr.accountingDb)
-	svr.ticker.Stop()
-	svr.stopper <- true
-}
-
-func NewStats(ratingDb RatingStorage, accountingDb AccountingStorage, saveInterval time.Duration) *Stats {
-	cdrStats := &Stats{ratingDb: ratingDb, accountingDb: accountingDb, defaultSaveInterval: saveInterval}
-	if css, err := ratingDb.GetAllCdrStats(); err == nil {
-		cdrStats.UpdateQueues(css, nil)
-	} else {
-		utils.Logger.Err(fmt.Sprintf("Cannot load cdr stats: %v", err))
+	if err := cdrStats.UpdateQueues(""); err != nil {
+		utils.Logger.Error("cannot load cdr stats", zap.Error(err))
 	}
 	return cdrStats
 }
 
-func (s *Stats) GetQueueIds(in int, ids *[]string) error {
+func (s *Stats) GetQueueIDs(tenant string, ids *[]string) error {
 	s.mux.Lock()
 	defer s.mux.Unlock()
 	result := make([]string, 0)
 	for id, _ := range s.queues {
-		result = append(result, id)
+		parts := strings.SplitN(id, utils.CONCATENATED_KEY_SEP, 2)
+		if parts[0] == tenant {
+			result = append(result, id)
+		}
 	}
 	*ids = result
 	return nil
 }
 
-func (s *Stats) GetQueue(id string, sq *StatsQueue) error {
+func (s *Stats) GetQueue(attr utils.AttrStatsQueueID, sq *StatsQueue) error {
 	s.mux.Lock()
 	defer s.mux.Unlock()
-	q, found := s.queues[id]
+	q, found := s.queues[utils.ConcatKey(attr.Tenant, attr.ID)]
 	if !found {
 		return utils.ErrNotFound
 	}
@@ -99,26 +66,26 @@ func (s *Stats) GetQueue(id string, sq *StatsQueue) error {
 	return nil
 }
 
-func (s *Stats) GetQueueTriggers(id string, ats *ActionTriggers) error {
+func (s *Stats) GetQueueTriggers(attr utils.AttrStatsQueueID, ats *ActionTriggers) error {
 	s.mux.Lock()
 	defer s.mux.Unlock()
-	q, found := s.queues[id]
+	q, found := s.queues[utils.ConcatKey(attr.Tenant, attr.ID)]
 	if !found {
 		return utils.ErrNotFound
 	}
-	if q.conf.Triggers != nil {
-		*ats = q.conf.Triggers
+	if q.getTriggers() != nil {
+		*ats = q.getTriggers()
 	} else {
 		*ats = ActionTriggers{}
 	}
 	return nil
 }
 
-func (s *Stats) GetValues(sqID string, values *map[string]float64) error {
+func (s *Stats) GetMetrics(attr utils.AttrStatsQueueID, values *map[string]*dec.Dec) error {
 	s.mux.RLock()
 	defer s.mux.RUnlock()
-	if sq, ok := s.queues[sqID]; ok {
-		*values = sq.GetStats()
+	if sq, ok := s.queues[utils.ConcatKey(attr.Tenant, attr.ID)]; ok {
+		*values = sq.getMetricValues()
 		return nil
 	}
 	return utils.ErrNotFound
@@ -130,54 +97,82 @@ func (s *Stats) AddQueue(cs *CdrStats, out *int) error {
 	if s.queues == nil {
 		s.queues = make(map[string]*StatsQueue)
 	}
-	if s.queueSavers == nil {
-		s.queueSavers = make(map[string]*queueSaver)
-	}
 	var sq *StatsQueue
 	var exists bool
-	if sq, exists = s.queues[cs.Id]; exists {
-		sq.UpdateConf(cs)
+	id := utils.ConcatKey(cs.Tenant, cs.Name)
+	if sq, exists = s.queues[id]; exists {
+		sq.updateConf(cs)
 	} else {
-		sq = NewStatsQueue(cs)
-		s.queues[cs.Id] = sq
+		sq = NewStatsQueue(cs, s.accountingDB, s.cdrDB)
+		s.queues[id] = sq
 	}
 	// save the conf
-	if err := s.ratingDb.SetCdrStats(cs); err != nil {
+	if err := s.ratingDB.SetCdrStats(cs); err != nil {
 		return err
-	}
-	if _, exists = s.queueSavers[sq.GetId()]; !exists {
-		s.setupQueueSaver(sq)
 	}
 	return nil
 }
 
-func (s *Stats) RemoveQueue(qID string, out *int) error {
+func (s *Stats) RemoveQueue(attr utils.AttrStatsQueueIDs, out *int) error {
 	s.mux.Lock()
 	defer s.mux.Unlock()
 	if s.queues == nil {
 		s.queues = make(map[string]*StatsQueue)
 	}
-	if s.queueSavers == nil {
-		s.queueSavers = make(map[string]*queueSaver)
+
+	for _, id := range attr.IDs {
+		qID := utils.ConcatKey(attr.Tenant, id)
+		delete(s.queues, qID)
+		// remove conf
+		if err := s.ratingDB.RemoveCdrStats(attr.Tenant, id); err != nil {
+			return err
+		}
+		// remove stats queue
+		if err := s.accountingDB.RemoveCdrStatsQueue(attr.Tenant, id); err != nil {
+			return err
+		}
 	}
-
-	delete(s.queues, qID)
-	delete(s.queueSavers, qID)
-
 	return nil
 }
 
-func (s *Stats) ReloadQueues(ids []string, out *int) error {
-	if len(ids) == 0 {
-		if css, err := s.ratingDb.GetAllCdrStats(); err == nil {
-			s.UpdateQueues(css, nil)
-		} else {
-			return fmt.Errorf("Cannot load cdr stats: %v", err)
-		}
+func (s *Stats) DisableQueue(attr utils.AttrStatsQueueDisable, out *int) error {
+	s.mux.Lock()
+	defer s.mux.Unlock()
+	if s.queues == nil {
+		s.queues = make(map[string]*StatsQueue)
 	}
-	for _, id := range ids {
-		if cs, err := s.ratingDb.GetCdrStats(id); err == nil {
-			s.AddQueue(cs, nil)
+	// get the conf
+	cs, err := s.ratingDB.GetCdrStats(attr.Tenant, attr.ID)
+	if err != nil {
+		return err
+	}
+	cs.Disabled = attr.Disable
+	var sq *StatsQueue
+	var exists bool
+	id := utils.ConcatKey(cs.Tenant, cs.Name)
+	if sq, exists = s.queues[id]; exists {
+		sq.updateConf(cs)
+	} else {
+		sq = NewStatsQueue(cs, s.accountingDB, s.cdrDB)
+		s.queues[id] = sq
+	}
+	// save the conf
+	if err := s.ratingDB.SetCdrStats(cs); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Stats) ReloadQueues(attr utils.AttrStatsQueueIDs, out *int) error {
+	if len(attr.IDs) == 0 {
+		return s.UpdateQueues(attr.Tenant)
+
+	}
+	for _, id := range attr.IDs {
+		if cs, err := s.ratingDB.GetCdrStats(attr.Tenant, id); err == nil {
+			if err := s.AddQueue(cs, nil); err != nil {
+				return err
+			}
 		} else {
 			return err
 		}
@@ -185,31 +180,28 @@ func (s *Stats) ReloadQueues(ids []string, out *int) error {
 	return nil
 }
 
-func (s *Stats) ResetQueues(ids []string, out *int) error {
-	if len(ids) == 0 {
+func (s *Stats) ResetQueues(attr utils.AttrStatsQueueIDs, out *int) error {
+	if len(attr.IDs) == 0 {
 		for _, sq := range s.queues {
-			sq.Cdrs = make([]*QCdr, 0)
-			sq.metrics = make(map[string]Metric, len(sq.conf.Metrics))
-			for _, m := range sq.conf.Metrics {
-				if metric := CreateMetric(m); metric != nil {
-					sq.metrics[m] = metric
-				}
+			if err := sq.resetQCDRs(); err != nil {
+				utils.Logger.Error("error reseting stats queue items: ", zap.Error(err))
+				return err
 			}
+			sq.resetMetrics()
 		}
 	} else {
-		for _, id := range ids {
+		for _, id := range attr.IDs {
+			id = utils.ConcatKey(attr.Tenant, id)
 			sq, exists := s.queues[id]
 			if !exists {
-				utils.Logger.Warning(fmt.Sprintf("Cannot reset queue id %v: Not Fund", id))
+				utils.Logger.Warn("cannot reset queue, Not Found", zap.String("id", id))
 				continue
 			}
-			sq.Cdrs = make([]*QCdr, 0)
-			sq.metrics = make(map[string]Metric, len(sq.conf.Metrics))
-			for _, m := range sq.conf.Metrics {
-				if metric := CreateMetric(m); metric != nil {
-					sq.metrics[m] = metric
-				}
+			if err := sq.resetQCDRs(); err != nil {
+				utils.Logger.Error("error reseting stats queue items: ", zap.Error(err))
+				return err
 			}
+			sq.resetMetrics()
 		}
 	}
 	return nil
@@ -218,74 +210,43 @@ func (s *Stats) ResetQueues(ids []string, out *int) error {
 // change the existing ones
 // add new ones
 // delete the ones missing from the new list
-func (s *Stats) UpdateQueues(css []*CdrStats, out *int) error {
+func (s *Stats) UpdateQueues(tenant string) error {
 	s.mux.Lock()
 	defer s.mux.Unlock()
 	oldQueues := s.queues
-	oldSavers := s.queueSavers
-	s.queues = make(map[string]*StatsQueue, len(css))
-	s.queueSavers = make(map[string]*queueSaver, len(css))
-	for _, cs := range css {
+	s.queues = make(map[string]*StatsQueue)
+	csIter := s.ratingDB.Iterator(ColCrs, "", map[string]interface{}{"tenant": tenant})
+	cs := &CdrStats{}
+	for csIter.Next(cs) {
 		var sq *StatsQueue
 		var existing bool
 		if oldQueues != nil {
-			if sq, existing = oldQueues[cs.Id]; existing {
-				sq.UpdateConf(cs)
-				s.queueSavers[cs.Id] = oldSavers[cs.Id]
-				delete(oldSavers, cs.Id)
+			id := utils.ConcatKey(cs.Tenant, cs.Name)
+			if sq, existing = oldQueues[id]; existing {
+				sq.updateConf(cs)
 			}
 		}
 		if sq == nil {
-			sq = NewStatsQueue(cs)
-			// load queue from storage if exists
-			if saved, err := s.accountingDb.GetCdrStatsQueue(sq.GetId()); err == nil {
-				sq.Load(saved)
+			sq = NewStatsQueue(cs, s.accountingDB, s.cdrDB)
+			if err := sq.load(); err != nil {
+				utils.Logger.Error("error restoring stats queue items:", zap.Error(err))
+				return err
 			}
-			s.setupQueueSaver(sq)
 		}
-		s.queues[cs.Id] = sq
+		s.queues[utils.ConcatKey(cs.Tenant, cs.Name)] = sq
+		cs = &CdrStats{}
 	}
-	// stop obsolete savers
-	for _, saver := range oldSavers {
-		saver.stop()
+	if err := csIter.Close(); err != nil {
+		return err
 	}
 	return nil
-}
-
-func (s *Stats) setupQueueSaver(sq *StatsQueue) {
-	if sq == nil {
-		return
-	}
-	// setup queue saver
-	if s.queueSavers == nil {
-		s.queueSavers = make(map[string]*queueSaver)
-	}
-	var si time.Duration
-	if sq.conf != nil {
-		si = sq.conf.SaveInterval
-	}
-	if si == 0 {
-		si = s.defaultSaveInterval
-	}
-	if si > 0 {
-		s.queueSavers[sq.GetId()] = newQueueSaver(si, sq, s.ratingDb, s.accountingDb)
-	}
 }
 
 func (s *Stats) AppendCDR(cdr *CDR, out *int) error {
 	s.mux.RLock()
 	defer s.mux.RUnlock()
 	for _, sq := range s.queues {
-		sq.AppendCDR(cdr)
-	}
-	return nil
-}
-
-func (s *Stats) Stop(int, *int) error {
-	s.mux.RLock()
-	defer s.mux.RUnlock()
-	for _, saver := range s.queueSavers {
-		saver.stop()
+		sq.appendCDR(cdr)
 	}
 	return nil
 }

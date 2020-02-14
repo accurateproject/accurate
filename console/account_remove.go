@@ -1,11 +1,13 @@
 package console
 
-import "github.com/accurateproject/accurate/utils"
+import (
+	"github.com/accurateproject/accurate/api/v1"
+)
 
 func init() {
 	c := &CmdRemoveAccount{
 		name:      "account_remove",
-		rpcMethod: "ApierV1.RemoveAccount",
+		rpcMethod: "ApiV1.RemoveAccount",
 	}
 	commands[c.Name()] = c
 	c.CommandExecuter = &CommandExecuter{c}
@@ -15,7 +17,7 @@ func init() {
 type CmdRemoveAccount struct {
 	name      string
 	rpcMethod string
-	rpcParams *utils.AttrRemoveAccount
+	rpcParams *v1.AttrRemoveAccount
 	*CommandExecuter
 }
 
@@ -29,7 +31,7 @@ func (self *CmdRemoveAccount) RpcMethod() string {
 
 func (self *CmdRemoveAccount) RpcParams(reset bool) interface{} {
 	if reset || self.rpcParams == nil {
-		self.rpcParams = &utils.AttrRemoveAccount{}
+		self.rpcParams = &v1.AttrRemoveAccount{}
 	}
 	return self.rpcParams
 }

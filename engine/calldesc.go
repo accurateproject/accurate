@@ -3,16 +3,14 @@ package engine
 import (
 	"errors"
 	"fmt"
-	"log"
 
-	"sort"
-	"strings"
 	"time"
 
 	"github.com/accurateproject/accurate/cache2go"
-	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/dec"
 	"github.com/accurateproject/accurate/utils"
 	"github.com/accurateproject/rpcclient"
+	"go.uber.org/zap"
 )
 
 const (
@@ -20,42 +18,14 @@ const (
 	RECURSION_MAX_DEPTH = 3
 	MIN_PREFIX_MATCH    = 1
 	FALLBACK_SUBJECT    = utils.ANY
-	DB                  = "map"
 )
-
-func init() {
-	var err error
-	switch DB {
-	case "map":
-		ratingStorage, _ = NewMapStorage()
-		accountingStorage, _ = NewMapStorage()
-	case "mongo":
-		ratingStorage, err = NewMongoStorage("127.0.0.1", "27017", "cgrates_rating_test", "", "", nil, &config.CacheConfig{RatingPlans: &config.CacheParamConfig{Precache: true}}, 10)
-		if err != nil {
-			log.Fatal(err)
-		}
-		accountingStorage, err = NewMongoStorage("127.0.0.1", "27017", "cgrates_accounting_test", "", "", nil, &config.CacheConfig{RatingPlans: &config.CacheParamConfig{Precache: true}}, 10)
-		if err != nil {
-			log.Fatal(err)
-		}
-	case "redis":
-		ratingStorage, _ = NewRedisStorage("127.0.0.1:6379", 12, "", utils.MSGPACK, utils.REDIS_MAX_CONNS, &config.CacheConfig{RatingPlans: &config.CacheParamConfig{Precache: true}}, 10)
-		if err != nil {
-			log.Fatal(err)
-		}
-		accountingStorage, _ = NewRedisStorage("127.0.0.1:6379", 13, "", utils.MSGPACK, utils.REDIS_MAX_CONNS, &config.CacheConfig{RatingPlans: &config.CacheParamConfig{Precache: true}}, 10)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-}
 
 var (
 	ratingStorage            RatingStorage
 	accountingStorage        AccountingStorage
+	simpleAccounts           *SimpleAccounts
 	cdrStorage               CdrStorage
-	debitPeriod              = 10 * time.Second
-	globalRoundingDecimals   = 6
+	globalRoundingDecimals   int32 = 9
 	historyScribe            rpcclient.RpcClientConnection
 	pubSubServer             rpcclient.RpcClientConnection
 	userService              rpcclient.RpcClientConnection
@@ -73,9 +43,32 @@ func SetAccountingStorage(ag AccountingStorage) {
 	accountingStorage = ag
 }
 
+func SetCdrStorage(cStorage CdrStorage) {
+	cdrStorage = cStorage
+}
+
+func EnsureIndexes() error {
+	if ratingStorage != nil {
+		if err := ratingStorage.EnsureIndexes(); err != nil {
+			return err
+		}
+	}
+	if accountingStorage != nil {
+		if err := accountingStorage.EnsureIndexes(); err != nil {
+			return err
+		}
+	}
+	if cdrStorage != nil {
+		if err := cdrStorage.EnsureIndexes(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Sets the global rounding method and decimal precision for GetCost method
 func SetRoundingDecimals(rd int) {
-	globalRoundingDecimals = rd
+	globalRoundingDecimals = int32(rd)
 }
 
 func SetRpSubjectPrefixMatching(flag bool) {
@@ -84,13 +77,6 @@ func SetRpSubjectPrefixMatching(flag bool) {
 
 func SetLcrSubjectPrefixMatching(flag bool) {
 	lcrSubjectPrefixMatching = flag
-}
-
-/*
-Sets the database for CDR storing, used by *cdrlog in first place
-*/
-func SetCdrStorage(cStorage CdrStorage) {
-	cdrStorage = cStorage
 }
 
 // Exported method to set the history scribe.
@@ -108,6 +94,18 @@ func SetUserService(us rpcclient.RpcClientConnection) {
 
 func SetAliasService(as rpcclient.RpcClientConnection) {
 	aliasService = as
+}
+
+func InitSimpleAccounts() error {
+	if accountingStorage != nil {
+		simpleAccounts = NewSimpleAccounts(accountingStorage)
+		return simpleAccounts.LoadFromStorage("")
+	}
+	return nil
+}
+
+func GetSimpleAccounts() *SimpleAccounts {
+	return simpleAccounts
 }
 
 func Publish(event CgrEvent) {
@@ -129,20 +127,30 @@ type CallDescriptor struct {
 	DurationIndex                         time.Duration // the call duration so far (till TimeEnd)
 	FallbackSubject                       string        // the subject to check for destination if not found on primary subject
 	RatingInfos                           RatingInfos
-	Increments                            Increments
+	Increments                            []*Increment
 	TOR                                   string            // used unit balances selector
 	ExtraFields                           map[string]string // Extra fields, mostly used for user profile matching
 	// session limits
-	MaxRate         float64
-	MaxRateUnit     time.Duration
-	MaxCostSoFar    float64
-	CgrID           string
-	RunID           string
-	ForceDuration   bool // for Max debit if less than duration return err
-	PerformRounding bool // flag for rating info rounding
-	DryRun          bool
-	account         *Account
-	testCallcost    *CallCost // testing purpose only!
+	MaxRate           float64
+	MaxRateUnit       time.Duration
+	MaxCostSoFar      *dec.Dec
+	UniqueID          string
+	RunID             string
+	ForceDuration     bool // for Max debit if less than duration return err
+	PerformRounding   bool // flag for rating info rounding
+	DryRun            bool
+	PostActionTrigger bool
+	ExeATIDs          map[string][]string
+	UnexeATIDs        map[string][]string
+	account           *Account
+	testCallcost      *CallCost // testing purpose only!
+}
+
+func (cd *CallDescriptor) GetMaxCostSoFar() *dec.Dec {
+	if cd.MaxCostSoFar == nil {
+		cd.MaxCostSoFar = dec.New()
+	}
+	return cd.MaxCostSoFar
 }
 
 func (cd *CallDescriptor) ValidateCallData() error {
@@ -163,13 +171,13 @@ func (cd *CallDescriptor) AddRatingInfo(ris ...*RatingInfo) {
 // Gets and caches the user balance information.
 func (cd *CallDescriptor) getAccount() (ub *Account, err error) {
 	if cd.account == nil {
-		cd.account, err = accountingStorage.GetAccount(cd.GetAccountKey())
+		cd.account, err = accountingStorage.GetAccount(cd.Tenant, cd.getAccountName())
 	}
 	if cd.account != nil && cd.account.Disabled {
 		return nil, utils.ErrAccountDisabled
 	}
 	if err != nil || cd.account == nil {
-		utils.Logger.Warning(fmt.Sprintf("Account: %s, not found (%v)", cd.GetAccountKey(), err))
+		utils.Logger.Warn("account not found", zap.String("tenant", cd.Tenant), zap.String("name", cd.getAccountName()), zap.Error(err))
 		return nil, utils.ErrAccountNotFound
 	}
 	return cd.account, err
@@ -180,21 +188,20 @@ Restores the activation periods for the specified prefix from storage.
 */
 func (cd *CallDescriptor) LoadRatingPlans() (err error) {
 	var rec int
-	err, rec = cd.getRatingPlansForPrefix(cd.GetKey(cd.Subject), 1)
+	err, rec = cd.getRatingPlansForPrefix(cd.Direction, cd.Tenant, cd.Category, cd.Subject, 1)
 	if err == utils.ErrNotFound && rec == 1 {
 		//if err != nil || !cd.continousRatingInfos() {
 		// use the default subject only if the initial one was not found
-		//utils.Logger.Debug(fmt.Sprintf("Try the default subject for %s and account: %s, subject: %s", cd.Destination, cd.GetAccountKey(), cd.GetKey(cd.Subject)))
-		err, _ = cd.getRatingPlansForPrefix(cd.GetKey(FALLBACK_SUBJECT), 1)
+		err, _ = cd.getRatingPlansForPrefix(cd.Direction, cd.Tenant, cd.Category, FALLBACK_SUBJECT, 1)
 	}
 	//load the rating plans
 	if err != nil {
-		utils.Logger.Err(fmt.Sprintf("Rating plan not found for destination %s and account: %s, subject: %s", cd.Destination, cd.GetAccountKey(), cd.GetKey(cd.Subject)))
+		utils.Logger.Warn("Rating plan not found for destination and account: ", zap.String("destination", cd.Destination), zap.String("tenant", cd.Tenant), zap.String("name", cd.getAccountName()), zap.String("direction", cd.Direction), zap.String("category", cd.Category), zap.String("subject", cd.Subject))
 		return utils.ErrRatingPlanNotFound
 
 	}
 	if !cd.continousRatingInfos() {
-		utils.Logger.Err(fmt.Sprintf("Destination %s not authorized for account: %s, subject: %s", cd.Destination, cd.GetAccountKey(), cd.GetKey(cd.Subject)))
+		utils.Logger.Debug("Destination not authorized for account", zap.String("destination", cd.Destination), zap.String("tenant", cd.Tenant), zap.String("name", cd.getAccountName()), zap.String("direction", cd.Direction), zap.String("category", cd.Category), zap.String("subject", cd.Subject))
 		return utils.ErrUnauthorizedDestination
 	}
 	return
@@ -202,11 +209,12 @@ func (cd *CallDescriptor) LoadRatingPlans() (err error) {
 
 // FIXME: this method is not exhaustive but will cover 99% of cases just good
 // it will not cover very long calls with very short activation periods for rates
-func (cd *CallDescriptor) getRatingPlansForPrefix(key string, recursionDepth int) (error, int) {
+func (cd *CallDescriptor) getRatingPlansForPrefix(direction, tenant, category, subject string, recursionDepth int) (error, int) {
 	if recursionDepth > RECURSION_MAX_DEPTH {
 		return utils.ErrMaxRecursionDepth, recursionDepth
 	}
-	rpf, err := RatingProfileSubjectPrefixMatching(key)
+	rpf, err := ratingStorage.GetRatingProfile(direction, tenant, category, subject, rpSubjectPrefixMatching, utils.CACHED)
+	//log.Print("rating profile: ", utils.ToIJSON(rpf))
 	if err != nil || rpf == nil {
 		return utils.ErrNotFound, recursionDepth
 	}
@@ -237,7 +245,7 @@ func (cd *CallDescriptor) getRatingPlansForPrefix(key string, recursionDepth int
 					tempCD.TimeEnd = cd.RatingInfos[index+1].ActivationTime
 				}
 				for _, fbk := range ri.FallbackKeys {
-					if err, _ := tempCD.getRatingPlansForPrefix(fbk, recursionDepth); err != nil {
+					if err, _ := tempCD.getRatingPlansForPrefix(cd.Direction, cd.Tenant, cd.Category, fbk, recursionDepth); err != nil {
 						continue
 					}
 					// extract the rate infos and break
@@ -309,17 +317,17 @@ func (cd *CallDescriptor) addRatingInfos(ris RatingInfos) bool {
 
 // GetKey constructs the key for the storage lookup.
 // The prefixLen is limiting the length of the destination prefix.
-func (cd *CallDescriptor) GetKey(subject string) string {
-	return utils.ConcatenatedKey(cd.Direction, cd.Tenant, cd.Category, subject)
-}
+/*func (cd *CallDescriptor) GetKey(subject string) string {
+	return utils.ConcatKey(cd.Direction, cd.Tenant, cd.Category, subject)
+}*/
 
-// GetAccountKey returns the key used to retrive the user balance involved in this call
-func (cd *CallDescriptor) GetAccountKey() string {
+// getAccountKey returns the key used to retrive the user balance involved in this call
+func (cd *CallDescriptor) getAccountName() string {
 	subj := cd.Subject
 	if cd.Account != "" {
 		subj = cd.Account
 	}
-	return utils.ConcatenatedKey(cd.Tenant, subj)
+	return subj
 }
 
 // Splits the received timespan into sub time spans according to the activation periods intervals.
@@ -373,7 +381,6 @@ func (cd *CallDescriptor) splitInTimeSpans() (timespans []*TimeSpan) {
 		//log.Printf("==============%v==================", i)
 		//log.Printf("TS: %+v", timespans[i])
 		rp := timespans[i].ratingInfo
-		// utils.Logger.Debug(fmt.Sprintf("rp: %+v", rp))
 		//timespans[i].RatingPlan = nil
 		rateIntervals := rp.SelectRatingIntevalsForTimespan(timespans[i])
 		//log.Print("RIs: ", utils.ToJSON(rateIntervals))
@@ -406,10 +413,8 @@ func (cd *CallDescriptor) splitInTimeSpans() (timespans []*TimeSpan) {
 		//log.Print(timespans[i].RateInterval.Timing)
 	}
 
-	//utils.Logger.Debug(fmt.Sprintf("After SplitByRateInterval: %+v", timespans))
 	//log.Printf("After SplitByRateInterval: %+v", timespans[0].RateInterval.Timing)
 	timespans = cd.roundTimeSpansToIncrement(timespans)
-	// utils.Logger.Debug(fmt.Sprintf("After round: %+v", timespans))
 	//log.Printf("After round: %+v", timespans[0].RateInterval.Timing)
 	return
 }
@@ -453,24 +458,24 @@ func (cd *CallDescriptor) GetCost() (*CallCost, error) {
 		return cc, err
 	}
 
-	cost := 0.0
+	cost := dec.New()
 	for i, ts := range cc.Timespans {
 		// only add connect fee if this is the first/only call cost request
 		//log.Printf("Interval: %+v", ts.RateInterval.Timing)
 		if cd.LoopIndex == 0 && i == 0 && ts.RateInterval != nil {
-			cost += ts.RateInterval.Rating.ConnectFee
+			cost.AddS(ts.RateInterval.Rating.ConnectFee)
 		}
 		//log.Printf("TS: %+v", ts)
 		// handle max cost
 		maxCost, strategy := ts.RateInterval.GetMaxCost()
 
 		ts.Cost = ts.CalculateCost()
-		cost += ts.Cost
-		cd.MaxCostSoFar += cost
+		cost.AddS(ts.Cost)
+		cd.GetMaxCostSoFar().AddS(cost)
 		//log.Print("Before: ", cost)
-		if strategy != "" && maxCost > 0 {
+		if strategy != "" && maxCost.GtZero() {
 			//log.Print("HERE: ", strategy, maxCost)
-			if strategy == utils.MAX_COST_FREE && cd.MaxCostSoFar >= maxCost {
+			if strategy == utils.MAX_COST_FREE && cd.GetMaxCostSoFar().Cmp(maxCost) >= 0 {
 				cost = maxCost
 				cd.MaxCostSoFar = maxCost
 			}
@@ -478,10 +483,9 @@ func (cd *CallDescriptor) GetCost() (*CallCost, error) {
 		}
 		//log.Print("Cost: ", cost)
 	}
-	cc.Cost = cost
+	cc.GetCost().Set(cost)
 	// global rounding
-	roundingDecimals, roundingMethod := cc.GetLongestRounding()
-	cc.Cost = utils.Round(cc.Cost, roundingDecimals, roundingMethod)
+	cc.GetCost().Round(globalRoundingDecimals)
 
 	return cc, nil
 }
@@ -492,6 +496,7 @@ func (cd *CallDescriptor) getCost() (*CallCost, error) {
 		cc := cd.CreateCallCost()
 		// add RatingInfo
 		err := cd.LoadRatingPlans()
+
 		if err == nil && len(cd.RatingInfos) > 0 {
 			ts := &TimeSpan{
 				TimeStart: cd.TimeStart,
@@ -509,33 +514,30 @@ func (cd *CallDescriptor) getCost() (*CallCost, error) {
 		cd.TOR = utils.VOICE
 	}
 	err := cd.LoadRatingPlans()
-	//log.Print("ERR: ", err)
-	//log.Print("RI: ", utils.ToJSON(cd.RatingInfos))
+	//log.Printf("RI: %+v (%v)", utils.ToJSON(cd.RatingInfos), err)
 	if err != nil {
-		//utils.Logger.Err(fmt.Sprintf("error getting cost for key <%s>: %s", cd.GetKey(cd.Subject), err.Error()))
-		return &CallCost{Cost: -1}, err
+		//utils.Logger.Error(fmt.Sprintf("error getting cost for key <%s>: %s", cd.GetKey(cd.Subject), err.Error()))
+		return &CallCost{Cost: dec.NewVal(-1, 0)}, err
 	}
 	timespans := cd.splitInTimeSpans()
-	cost := 0.0
-
+	cost := dec.New()
 	for i, ts := range timespans {
 		ts.createIncrementsSlice()
 		// only add connect fee if this is the first/only call cost request
 		//log.Printf("Interval: %+v", ts.RateInterval.Timing)
 		if cd.LoopIndex == 0 && i == 0 && ts.RateInterval != nil {
-			cost += ts.RateInterval.Rating.ConnectFee
+			cost.AddS(ts.RateInterval.Rating.ConnectFee)
 		}
-		cost += ts.CalculateCost()
+		cost.AddS(ts.CalculateCost())
 	}
 
 	//startIndex := len(fmt.Sprintf("%s:%s:%s:", cd.Direction, cd.Tenant, cd.Category))
 	cc := cd.CreateCallCost()
-	cc.Cost = cost
+	cc.GetCost().Set(cost)
 	cc.Timespans = timespans
 
 	// global rounding
-	roundingDecimals, roundingMethod := cc.GetLongestRounding()
-	cc.Cost = utils.Round(cc.Cost, roundingDecimals, roundingMethod)
+	cc.GetCost().Round(globalRoundingDecimals)
 	//utils.Logger.Info(fmt.Sprintf("<Rater> Get Cost: %s => %v", cd.GetKey(), cc))
 	cc.Timespans.Compress()
 	cc.UpdateRatedUsage()
@@ -549,11 +551,12 @@ If the user has postpayed plan it returns -1.
 */
 func (origCD *CallDescriptor) getMaxSessionDuration(origAcc *Account) (time.Duration, error) {
 	// clone the account for discarding chenges on debit dry run
-	//log.Printf("ORIG CD: %+v", origCD)
+	//log.Print("ORIG CD: ", utils.ToIJSON(origCD))
 	account := origAcc.Clone()
 	if account.AllowNegative {
 		return -1, nil
 	}
+	//log.Print("ACC: ", utils.ToIJSON(account))
 	// for zero duration index
 	if origCD.DurationIndex < origCD.TimeEnd.Sub(origCD.TimeStart) {
 		origCD.DurationIndex = origCD.TimeEnd.Sub(origCD.TimeStart)
@@ -561,60 +564,49 @@ func (origCD *CallDescriptor) getMaxSessionDuration(origAcc *Account) (time.Dura
 	if origCD.TOR == "" {
 		origCD.TOR = utils.VOICE
 	}
-	//utils.Logger.Debug("ORIG: " + utils.ToJSON(origCD))
 	cd := origCD.Clone()
 	initialDuration := cd.TimeEnd.Sub(cd.TimeStart)
-	//utils.Logger.Debug(fmt.Sprintf("INITIAL_DURATION: %v", initialDuration))
 	defaultBalance := account.GetDefaultMoneyBalance()
 
 	//use this to check what increment was payed with debt
-	initialDefaultBalanceValue := defaultBalance.GetValue()
-
-	//utils.Logger.Debug("ACCOUNT: " + utils.ToJSON(account))
-	//utils.Logger.Debug("DEFAULT_BALANCE: " + utils.ToJSON(defaultBalance))
-
+	initialDefaultBalanceValue := dec.New().Set(defaultBalance.GetValue())
 	cc, err := cd.debit(account, true, false)
-	//utils.Logger.Debug("CC: " + utils.ToJSON(cc))
-	//log.Print("CC: ", utils.ToIJSON(cc))
-	//utils.Logger.Debug(fmt.Sprintf("ERR: %v", err))
+	//log.Print("CC: ", utils.ToIJSON(cc), err)
 	if err != nil {
 		return 0, err
 	}
-
-	//log.Printf("CC: %+v", cc)
 	// not enough credit for connect fee
 	if cc.negativeConnectFee == true {
 		return 0, nil
 	}
 
-	var totalCost float64
+	totalCost := dec.New()
 	var totalDuration time.Duration
 	cc.Timespans.Decompress()
-	//log.Printf("ACC: %+v", account)
 	for _, ts := range cc.Timespans {
-		//if ts.RateInterval != nil {
-		//log.Printf("TS: %+v", ts)
-		//utils.Logger.Debug("TS: " + utils.ToJSON(ts))
-		//}
 		if cd.MaxRate > 0 && cd.MaxRateUnit > 0 {
 			rate, _, rateUnit := ts.RateInterval.GetRateParameters(ts.GetGroupStart())
-			if rate/rateUnit.Seconds() > cd.MaxRate/cd.MaxRateUnit.Seconds() {
-				//utils.Logger.Debug(fmt.Sprintf("0_INIT DUR %v, TOTAL DUR: %v", initialDuration, totalDuration))
+			/*x := rate.QuoS(dec.NewFloat(rateUnit.Seconds()))
+			y := dec.NewFloat(cd.MaxRate / cd.MaxRateUnit.Seconds())
+			r := rate.QuoS(dec.NewFloat(rateUnit.Seconds())).Cmp(dec.NewFloat(cd.MaxRate / cd.MaxRateUnit.Seconds()))
+			log.Print(x.Internals())
+			log.Print(y.Internals())
+			log.Printf("%s %s %v", x.String(), y.String(), r)*/
+			if rate.QuoS(dec.NewFloat(rateUnit.Seconds())).Cmp(dec.NewFloat(cd.MaxRate/cd.MaxRateUnit.Seconds())) > 0 {
 				return utils.MinDuration(initialDuration, totalDuration), nil
 			}
 		}
 		if ts.Increments == nil {
 			ts.createIncrementsSlice()
 		}
-		for _, incr := range ts.Increments {
-			//utils.Logger.Debug("INCR: " + utils.ToJSON(incr))
-			totalCost += incr.Cost
-			if incr.BalanceInfo.Monetary != nil && incr.BalanceInfo.Monetary.UUID == defaultBalance.Uuid {
-				initialDefaultBalanceValue -= incr.Cost
-				if initialDefaultBalanceValue < 0 {
+		ts.Increments.Reset()
+		for _, incr := ts.Increments.Next(); incr != nil; _, incr = ts.Increments.Next() {
+			totalCost.AddS(incr.Cost)
+			if incr.BalanceInfo.Monetary != nil && incr.BalanceInfo.Monetary.UUID == defaultBalance.UUID {
+				initialDefaultBalanceValue.SubS(incr.getCost())
+				if initialDefaultBalanceValue.LtZero() {
 					// this increment was payed with debt
 					// TODO: improve this check
-					//utils.Logger.Debug(fmt.Sprintf("1_INIT DUR %v, TOTAL DUR: %v", initialDuration, totalDuration))
 					return utils.MinDuration(initialDuration, totalDuration), nil
 
 				}
@@ -623,22 +615,22 @@ func (origCD *CallDescriptor) getMaxSessionDuration(origAcc *Account) (time.Dura
 			//log.Print("INC: ", utils.ToJSON(incr))
 			if totalDuration >= initialDuration {
 				// we have enough, return
-				//utils.Logger.Debug(fmt.Sprintf("2_INIT DUR %v, TOTAL DUR: %v", initialDuration, totalDuration))
 				return initialDuration, nil
 			}
 		}
 	}
-	//utils.Logger.Debug(fmt.Sprintf("3_INIT DUR %v, TOTAL DUR: %v", initialDuration, totalDuration))
-
 	return utils.MinDuration(initialDuration, totalDuration), nil
 }
 
 func (cd *CallDescriptor) GetMaxSessionDuration() (duration time.Duration, err error) {
-	cd.account = nil // make sure it's not cached
-	if account, err := cd.getAccount(); err != nil {
-		return 0, err
-	} else {
-		if memberIds, err := account.GetUniqueSharedGroupMembers(cd); err == nil {
+	var account *Account
+	if _, err := Guardian.Guard(func() (interface{}, error) {
+		cd.account = nil // make sure it's not cached
+		account, err = cd.getAccount()
+		if err != nil || account == nil {
+			return 0, err
+		}
+		if memberIds, sgerr := account.GetUniqueSharedGroupMembers(cd); sgerr == nil {
 			if _, err := Guardian.Guard(func() (interface{}, error) {
 				duration, err = cd.getMaxSessionDuration(account)
 				return 0, err
@@ -646,15 +638,21 @@ func (cd *CallDescriptor) GetMaxSessionDuration() (duration time.Duration, err e
 				return 0, err
 			}
 		} else {
-			return 0, err
+			return 0, sgerr
 		}
-		return duration, err
+		return 0, err
+	}, 0, cd.getAccountName()); err != nil {
+		return 0, err
 	}
+	return duration, err
 }
 
 // Interface method used to add/substract an amount of cents or bonus seconds (as returned by GetCost method)
 // from user's money balance.
 func (cd *CallDescriptor) debit(account *Account, dryRun bool, goNegative bool) (cc *CallCost, err error) {
+	if cd.PostActionTrigger {
+		account.processPostActionTriggers(cd.ExeATIDs[account.Name], cd.UnexeATIDs[account.Name])
+	}
 	if cd.GetDuration() == 0 {
 		cc = cd.CreateCallCost()
 		// add RatingInfo
@@ -672,26 +670,19 @@ func (cd *CallDescriptor) debit(account *Account, dryRun bool, goNegative bool) 
 	if cd.TOR == "" {
 		cd.TOR = utils.VOICE
 	}
-	//log.Printf("Debit CD: %+v", cd)
+	//log.Printf("Debit CD: %s", utils.ToIJSON(cd))
 	cc, err = account.debitCreditBalance(cd, !dryRun, dryRun, goNegative)
-	//log.Printf("HERE: %+v %v", cc, err)
+	//log.Printf("HERE: %s %v", utils.ToIJSON(cc), err)
 	if err != nil {
-		utils.Logger.Err(fmt.Sprintf("<Rater> Error getting cost for account key <%s>: %s", cd.GetAccountKey(), err.Error()))
+		utils.Logger.Error("<Rater> Error getting cost for account key ", zap.String("tenant", cd.Tenant), zap.String("name", cd.getAccountName()), zap.Error(err))
 		return nil, err
 	}
 	cc.updateCost()
 	cc.UpdateRatedUsage()
 	cc.Timespans.Compress()
 	if !dryRun {
-		accountingStorage.SetAccount(account)
-	}
-	if cd.PerformRounding {
-		cc.Round()
-		roundIncrements := cc.GetRoundIncrements()
-		if len(roundIncrements) != 0 {
-			rcd := cc.CreateCallDescriptor()
-			rcd.Increments = roundIncrements
-			rcd.RefundRounding()
+		if err := accountingStorage.SetAccount(account); err != nil {
+			return cc, err
 		}
 	}
 	//log.Printf("OUT CC: ", cc)
@@ -699,21 +690,30 @@ func (cd *CallDescriptor) debit(account *Account, dryRun bool, goNegative bool) 
 }
 
 func (cd *CallDescriptor) Debit() (cc *CallCost, err error) {
-	cd.account = nil // make sure it's not cached
-	// lock all group members
-	if account, err := cd.getAccount(); err != nil {
-		return nil, err
-	} else {
+	var account *Account
+	if _, err := Guardian.Guard(func() (interface{}, error) {
+		cd.account = nil // make sure it's not cached
+		account, err = cd.getAccount()
+		if err != nil || account == nil {
+			return nil, err
+		}
+		// lock all group members
 		if memberIds, sgerr := account.GetUniqueSharedGroupMembers(cd); sgerr == nil {
-			_, err = Guardian.Guard(func() (interface{}, error) {
+			if _, err := Guardian.Guard(func() (interface{}, error) {
 				cc, err = cd.debit(account, cd.DryRun, true)
 				return 0, err
-			}, 0, memberIds.Slice()...)
+			}, 0, memberIds.Slice()...); err != nil {
+				return nil, err
+			}
+
 		} else {
 			return nil, sgerr
 		}
-		return cc, err
+		return nil, err
+	}, 0, cd.getAccountName()); err != nil {
+		return nil, err
 	}
+	return cc, err
 }
 
 // Interface method used to add/substract an amount of cents or bonus seconds (as returned by GetCost method)
@@ -721,18 +721,21 @@ func (cd *CallDescriptor) Debit() (cc *CallCost, err error) {
 // This methods combines the Debit and GetMaxSessionDuration and will debit the max available time as returned
 // by the GetMaxSessionDuration method. The amount filed has to be filled in call descriptor.
 func (cd *CallDescriptor) MaxDebit() (cc *CallCost, err error) {
-	cd.account = nil // make sure it's not cached
-	if account, err := cd.getAccount(); err != nil {
-		return nil, err
-	} else {
+	var account *Account
+	if _, err := Guardian.Guard(func() (interface{}, error) {
+		cd.account = nil // make sure it's not cached
+		account, err = cd.getAccount()
+		if err != nil || account == nil {
+			return 0, err
+		}
 		//log.Printf("ACC: %+v", account)
-		if memberIDs, err := account.GetUniqueSharedGroupMembers(cd); err == nil {
-			_, err = Guardian.Guard(func() (interface{}, error) {
+		if memberIDs, sgerr := account.GetUniqueSharedGroupMembers(cd); sgerr == nil {
+			if _, err := Guardian.Guard(func() (interface{}, error) {
 				remainingDuration, err := cd.getMaxSessionDuration(account)
 				if err != nil && cd.GetDuration() > 0 {
 					return 0, err
 				}
-				// check ForceDuartion
+				// check ForceDuration
 				if cd.ForceDuration && !account.AllowNegative && remainingDuration < cd.GetDuration() {
 					return 0, utils.ErrInsufficientCredit
 				}
@@ -740,7 +743,12 @@ func (cd *CallDescriptor) MaxDebit() (cc *CallCost, err error) {
 				if err != nil || remainingDuration == 0 {
 					cc = cd.CreateCallCost()
 					if cd.GetDuration() == 0 {
+						// process post action triggers
+						if cd.PostActionTrigger {
+							account.processPostActionTriggers(cd.ExeATIDs[account.Name], cd.UnexeATIDs[account.Name])
+						}
 						// add RatingInfo
+						//log.Print("CD: ", utils.ToIJSON(cd))
 						err := cd.LoadRatingPlans()
 						if err == nil && len(cd.RatingInfos) > 0 {
 							ts := &TimeSpan{
@@ -760,30 +768,35 @@ func (cd *CallDescriptor) MaxDebit() (cc *CallCost, err error) {
 					cd.TimeEnd = cd.TimeStart.Add(remainingDuration)
 					cd.DurationIndex -= initialDuration - remainingDuration
 				}
-				//log.Print("Remaining duration: ", remainingDuration)
+				//log.Print("CDHERE: ", utils.ToIJSON(cd))
+				//log.Print("ACCHERE: ", utils.ToIJSON(account))
 				cc, err = cd.debit(account, cd.DryRun, true)
-				//log.Print(balanceMap[0].Value, balanceMap[1].Value)
 				return 0, err
-			}, 0, memberIDs.Slice()...)
-			if err != nil {
-				return cc, err
+			}, 0, memberIDs.Slice()...); err != nil {
+				return nil, err
 			}
 		} else {
-			return nil, err
+			return nil, sgerr
 		}
+		return nil, err
+	}, 0, cd.getAccountName()); err != nil {
+		return nil, err
 	}
 	return cc, err
 }
 
 func (cd *CallDescriptor) RefundIncrements() error {
+	//log.Print("CD: ", utils.ToIJSON(cd))
 	// get account list for locking
 	// all must be locked in order to use cache
 	accMap := make(utils.StringMap)
-	cd.Increments.Decompress()
 	for _, increment := range cd.Increments {
 		if increment.BalanceInfo.Monetary != nil || increment.BalanceInfo.Unit != nil {
 			accMap[increment.BalanceInfo.AccountID] = true
 		}
+	}
+	if len(accMap) == 0 {
+		return nil
 	}
 	// start increment refunding loop
 	_, err := Guardian.Guard(func() (interface{}, error) {
@@ -791,35 +804,39 @@ func (cd *CallDescriptor) RefundIncrements() error {
 		for _, increment := range cd.Increments {
 			account, found := accountsCache[increment.BalanceInfo.AccountID]
 			if !found {
-				if acc, err := accountingStorage.GetAccount(increment.BalanceInfo.AccountID); err == nil && acc != nil {
+				if acc, err := accountingStorage.GetAccount(cd.Tenant, increment.BalanceInfo.AccountID); err == nil && acc != nil {
 					account = acc
 					accountsCache[increment.BalanceInfo.AccountID] = account
+
+					account.processPostActionTriggers(cd.ExeATIDs[account.Name], cd.UnexeATIDs[account.Name])
 					// will save the account only once at the end of the function
 					defer accountingStorage.SetAccount(account)
 				}
 			}
+			//log.Print("ACC: ", utils.ToIJSON(account))
 			if account == nil {
-				utils.Logger.Warning(fmt.Sprintf("Could not get the account to be refunded: %s", increment.BalanceInfo.AccountID))
+				utils.Logger.Warn("Could not get the account to be refunded: ", zap.String("name", increment.BalanceInfo.AccountID))
 				continue
 			}
 			//utils.Logger.Info(fmt.Sprintf("Refunding increment %+v", increment))
 			var balance *Balance
 			unitType := cd.TOR
 			cc := cd.CreateCallCost()
+			cc.postActionTrigger = false
 			if increment.BalanceInfo.Unit != nil && increment.BalanceInfo.Unit.UUID != "" {
 				if balance = account.BalanceMap[unitType].GetBalance(increment.BalanceInfo.Unit.UUID); balance == nil {
 					return 0, nil
 				}
-				balance.AddValue(increment.Duration.Seconds())
-				account.countUnits(-increment.Duration.Seconds(), unitType, cc, balance)
+				balance.AddValue(dec.NewFloat(increment.Duration.Seconds()))
+				account.countUnits(dec.NewFloat(-increment.Duration.Seconds()), unitType, cc, balance)
 			}
 			// check money too
 			if increment.BalanceInfo.Monetary != nil && increment.BalanceInfo.Monetary.UUID != "" {
 				if balance = account.BalanceMap[utils.MONETARY].GetBalance(increment.BalanceInfo.Monetary.UUID); balance == nil {
 					return 0, nil
 				}
-				balance.AddValue(increment.Cost)
-				account.countUnits(-increment.Cost, utils.MONETARY, cc, balance)
+				balance.AddValue(increment.GetTotalCost())
+				account.countUnits(dec.New().Neg(increment.GetTotalCost()), utils.MONETARY, cc, balance)
 			}
 		}
 		return 0, nil
@@ -827,49 +844,14 @@ func (cd *CallDescriptor) RefundIncrements() error {
 	return err
 }
 
-func (cd *CallDescriptor) RefundRounding() error {
-	// get account list for locking
-	// all must be locked in order to use cache
-	accMap := make(utils.StringMap)
-	for _, inc := range cd.Increments {
-		accMap[inc.BalanceInfo.AccountID] = true
+func (cd *CallDescriptor) FlushCache(tenant string) (err error) {
+	cache2go.Flush(tenant)
+	if err := ratingStorage.PreloadRatingCache(); err != nil {
+		return err
 	}
-	// start increment refunding loop
-	_, err := Guardian.Guard(func() (interface{}, error) {
-		accountsCache := make(map[string]*Account)
-		for _, increment := range cd.Increments {
-			account, found := accountsCache[increment.BalanceInfo.AccountID]
-			if !found {
-				if acc, err := accountingStorage.GetAccount(increment.BalanceInfo.AccountID); err == nil && acc != nil {
-					account = acc
-					accountsCache[increment.BalanceInfo.AccountID] = account
-					// will save the account only once at the end of the function
-					defer accountingStorage.SetAccount(account)
-				}
-			}
-			if account == nil {
-				utils.Logger.Warning(fmt.Sprintf("Could not get the account to be refunded: %s", increment.BalanceInfo.AccountID))
-				continue
-			}
-			cc := cd.CreateCallCost()
-			if increment.BalanceInfo.Monetary != nil {
-				var balance *Balance
-				if balance = account.BalanceMap[utils.MONETARY].GetBalance(increment.BalanceInfo.Monetary.UUID); balance == nil {
-					return 0, nil
-				}
-				balance.AddValue(-increment.Cost)
-				account.countUnits(increment.Cost, utils.MONETARY, cc, balance)
-			}
-		}
-		return 0, nil
-	}, 0, accMap.Slice()...)
-	return err
-}
-
-func (cd *CallDescriptor) FlushCache() (err error) {
-	cache2go.Flush()
-	ratingStorage.PreloadRatingCache()
-	accountingStorage.PreloadAccountingCache()
+	if err := accountingStorage.PreloadAccountingCache(); err != nil {
+		return err
+	}
 	return nil
 
 }
@@ -877,14 +859,15 @@ func (cd *CallDescriptor) FlushCache() (err error) {
 // Creates a CallCost structure copying related data from CallDescriptor
 func (cd *CallDescriptor) CreateCallCost() *CallCost {
 	return &CallCost{
-		Direction:        cd.Direction,
-		Category:         cd.Category,
-		Tenant:           cd.Tenant,
-		Subject:          cd.Subject,
-		Account:          cd.Account,
-		Destination:      cd.Destination,
-		TOR:              cd.TOR,
-		deductConnectFee: cd.LoopIndex == 0,
+		Direction:         cd.Direction,
+		Category:          cd.Category,
+		Tenant:            cd.Tenant,
+		Subject:           cd.Subject,
+		Account:           cd.Account,
+		Destination:       cd.Destination,
+		TOR:               cd.TOR,
+		deductConnectFee:  cd.LoopIndex == 0,
+		postActionTrigger: cd.PostActionTrigger,
 	}
 }
 
@@ -902,53 +885,29 @@ func (cd *CallDescriptor) Clone() *CallDescriptor {
 		DurationIndex:   cd.DurationIndex,
 		MaxRate:         cd.MaxRate,
 		MaxRateUnit:     cd.MaxRateUnit,
-		MaxCostSoFar:    cd.MaxCostSoFar,
+		MaxCostSoFar:    dec.New().Set(cd.GetMaxCostSoFar()),
 		FallbackSubject: cd.FallbackSubject,
 		//RatingInfos:     cd.RatingInfos,
 		//Increments:      cd.Increments,
-		TOR:             cd.TOR,
-		ForceDuration:   cd.ForceDuration,
-		PerformRounding: cd.PerformRounding,
-		DryRun:          cd.DryRun,
-		CgrID:           cd.CgrID,
-		RunID:           cd.RunID,
+		TOR:               cd.TOR,
+		ForceDuration:     cd.ForceDuration,
+		PerformRounding:   cd.PerformRounding,
+		DryRun:            cd.DryRun,
+		UniqueID:          cd.UniqueID,
+		RunID:             cd.RunID,
+		PostActionTrigger: cd.PostActionTrigger,
+		ExeATIDs:          cd.ExeATIDs,
+		UnexeATIDs:        cd.UnexeATIDs,
 	}
-}
-
-func (cd *CallDescriptor) GetLCRFromStorage() (*LCR, error) {
-	keyVariants := []string{
-		utils.LCRKey(cd.Direction, cd.Tenant, cd.Category, cd.Account, cd.Subject),
-		utils.LCRKey(cd.Direction, cd.Tenant, cd.Category, cd.Account, utils.ANY),
-		utils.LCRKey(cd.Direction, cd.Tenant, cd.Category, utils.ANY, utils.ANY),
-		utils.LCRKey(cd.Direction, cd.Tenant, utils.ANY, utils.ANY, utils.ANY),
-		utils.LCRKey(cd.Direction, utils.ANY, utils.ANY, utils.ANY, utils.ANY),
-		utils.LCRKey(utils.ANY, utils.ANY, utils.ANY, utils.ANY, utils.ANY),
-	}
-	if lcrSubjectPrefixMatching {
-		var partialSubjects []string
-		lenSubject := len(cd.Subject)
-		for i := 1; i < lenSubject; i++ {
-			partialSubjects = append(partialSubjects, utils.LCRKey(cd.Direction, cd.Tenant, cd.Category, cd.Account, cd.Subject[:lenSubject-i]))
-		}
-		// insert partialsubjects into keyVariants
-		keyVariants = append(keyVariants[:1], append(partialSubjects, keyVariants[1:]...)...)
-	}
-	for _, key := range keyVariants {
-		if lcr, err := ratingStorage.GetLCR(key, utils.CACHED); err != nil && err != utils.ErrNotFound {
-			return nil, err
-		} else if err == nil {
-			return lcr, nil
-		}
-	}
-	return nil, utils.ErrNotFound
 }
 
 func (cd *CallDescriptor) GetLCR(stats rpcclient.RpcClientConnection, lcrFltr *LCRFilter, p *utils.Paginator) (*LCRCost, error) {
 	cd.account = nil // make sure it's not cached
-	lcr, err := cd.GetLCRFromStorage()
-	if err != nil {
-		return nil, err
+	lcr, err := ratingStorage.GetLCR(cd.Direction, cd.Tenant, cd.Category, cd.Account, cd.Subject, lcrSubjectPrefixMatching, utils.CACHED)
+	if err != nil || lcr == nil {
+		return nil, fmt.Errorf("could not get lcr: %v", err)
 	}
+	lcr.setParentLCR()
 	// sort by activation time
 	lcr.Sort()
 	// find if one ore more entries apply to this cd (create lcr timespans)
@@ -978,10 +937,10 @@ func (cd *CallDescriptor) GetLCR(stats rpcclient.RpcClientConnection, lcrFltr *L
 			lcrCD.Account = supplier
 			lcrCD.Subject = supplier
 			lcrCD.Category = lcrCost.Entry.RPCategory
-			fullSupplier := utils.ConcatenatedKey(lcrCD.Direction, lcrCD.Tenant, lcrCD.Category, lcrCD.Subject)
+			fullSupplier := utils.ConcatKey(lcrCD.Direction, lcrCD.Tenant, lcrCD.Category, lcrCD.Subject)
 			var cc *CallCost
 			var err error
-			if cd.account, err = accountingStorage.GetAccount(lcrCD.GetAccountKey()); err == nil {
+			if cd.account, err = accountingStorage.GetAccount(lcrCD.Tenant, lcrCD.getAccountName()); err == nil {
 				if cd.account.Disabled {
 					lcrCost.SupplierCosts = append(lcrCost.SupplierCosts, &LCRSupplierCost{
 						Supplier: fullSupplier,
@@ -1002,7 +961,7 @@ func (cd *CallDescriptor) GetLCR(stats rpcclient.RpcClientConnection, lcrFltr *L
 			} else {
 				lcrCost.SupplierCosts = append(lcrCost.SupplierCosts, &LCRSupplierCost{
 					Supplier: fullSupplier,
-					Cost:     cc.Cost,
+					Cost:     dec.New().Set(cc.GetCost()),
 					Duration: cc.GetDuration(),
 				})
 			}
@@ -1013,26 +972,25 @@ func (cd *CallDescriptor) GetLCR(stats rpcclient.RpcClientConnection, lcrFltr *L
 		if category == utils.META_DEFAULT {
 			category = lcr.Category
 		}
-		ratingProfileSearchKey := utils.ConcatenatedKey(lcr.Direction, lcr.Tenant, lcrCost.Entry.RPCategory)
-		//log.Print("KEY: ", ratingProfileSearchKey)
-		suppliers := cache2go.GetEntriesKeys(utils.RATING_PROFILE_PREFIX + ratingProfileSearchKey)
+		suppliers, err := ratingStorage.GetRatingProfiles(lcr.Direction, lcr.Tenant, lcrCost.Entry.RPCategory, "", utils.CACHED)
+		if err != nil {
+			utils.Logger.Error("<GetLCR> error getting suppliers: ", zap.Error(err))
+		}
 		for _, supplier := range suppliers {
 			//log.Print("Supplier: ", supplier)
-			split := strings.Split(supplier, ":")
-			supplier = split[len(split)-1]
 			lcrCD := cd.Clone()
 			lcrCD.Category = category
-			lcrCD.Account = supplier
-			lcrCD.Subject = supplier
-			fullSupplier := utils.ConcatenatedKey(lcrCD.Direction, lcrCD.Tenant, lcrCD.Category, lcrCD.Subject)
+			lcrCD.Account = supplier.Subject
+			lcrCD.Subject = supplier.Subject
+			fullSupplier := utils.ConcatKey(lcrCD.Direction, lcrCD.Tenant, lcrCD.Category, lcrCD.Subject)
 			var qosSortParams []string
-			var asrValues sort.Float64Slice
-			var pddValues sort.Float64Slice
-			var acdValues sort.Float64Slice
-			var tcdValues sort.Float64Slice
-			var accValues sort.Float64Slice
-			var tccValues sort.Float64Slice
-			var ddcValues sort.Float64Slice
+			var asrValues dec.DecSlice
+			var pddValues dec.DecSlice
+			var acdValues dec.DecSlice
+			var tcdValues dec.DecSlice
+			var accValues dec.DecSlice
+			var tccValues dec.DecSlice
+			var ddcValues dec.DecSlice
 			// track if one value is never calculated
 			asrNeverConsidered := true
 			pddNeverConsidered := true
@@ -1049,172 +1007,163 @@ func (cd *CallDescriptor) GetLCR(stats rpcclient.RpcClientConnection, lcrFltr *L
 					})
 					continue
 				}
-				rpfKey := utils.ConcatenatedKey(ratingProfileSearchKey, supplier)
-				if rpf, err := RatingProfileSubjectPrefixMatching(rpfKey); err != nil {
-					lcrCost.SupplierCosts = append(lcrCost.SupplierCosts, &LCRSupplierCost{
-						Supplier: fullSupplier,
-						Error:    fmt.Sprintf("Rating plan error: %s", err.Error()),
-					})
-					continue
-				} else if rpf != nil {
-					rpf.RatingPlanActivations.Sort()
-					activeRas := rpf.RatingPlanActivations.GetActiveForCall(cd)
-					var cdrStatsQueueIds []string
-					for _, ra := range activeRas {
-						for _, qId := range ra.CdrStatQueueIds {
-							if qId != "" {
-								cdrStatsQueueIds = append(cdrStatsQueueIds, qId)
-							}
+				supplier.RatingPlanActivations.Sort()
+				activeRas := supplier.RatingPlanActivations.GetActiveForCall(cd)
+				var cdrStatsQueueIds []string
+				for _, ra := range activeRas {
+					for _, qID := range ra.CdrStatQueueIDs {
+						if qID != "" {
+							cdrStatsQueueIds = append(cdrStatsQueueIds, qID)
 						}
 					}
+				}
 
-					statsErr := false
-					var supplierQueues []*StatsQueue
-					for _, qId := range cdrStatsQueueIds {
-						if lcrCost.Entry.Strategy == LCR_STRATEGY_LOAD {
-							for _, qId := range cdrStatsQueueIds {
-								sq := &StatsQueue{}
-								if err := stats.Call("CDRStatsV1.GetQueue", qId, sq); err == nil {
-									if sq.conf.QueueLength == 0 { //only add qeues that don't have fixed length
-										supplierQueues = append(supplierQueues, sq)
-									}
-								}
-							}
-						} else {
-							statValues := make(map[string]float64)
-							if err := stats.Call("CDRStatsV1.GetValues", qId, &statValues); err != nil {
-								lcrCost.SupplierCosts = append(lcrCost.SupplierCosts, &LCRSupplierCost{
-									Supplier: fullSupplier,
-									Error:    fmt.Sprintf("Get stats values for queue id %s, error %s", qId, err.Error()),
-								})
-								statsErr = true
-								break
-							}
-							if asr, exists := statValues[ASR]; exists {
-								if asr > STATS_NA {
-									asrValues = append(asrValues, asr)
-								}
-								asrNeverConsidered = false
-							}
-							if pdd, exists := statValues[PDD]; exists {
-								if pdd > STATS_NA {
-									pddValues = append(pddValues, pdd)
-								}
-								pddNeverConsidered = false
-							}
-							if acd, exists := statValues[ACD]; exists {
-								if acd > STATS_NA {
-									acdValues = append(acdValues, acd)
-								}
-								acdNeverConsidered = false
-							}
-							if tcd, exists := statValues[TCD]; exists {
-								if tcd > STATS_NA {
-									tcdValues = append(tcdValues, tcd)
-								}
-								tcdNeverConsidered = false
-							}
-							if acc, exists := statValues[ACC]; exists {
-								if acc > STATS_NA {
-									accValues = append(accValues, acc)
-								}
-								accNeverConsidered = false
-							}
-							if tcc, exists := statValues[TCC]; exists {
-								if tcc > STATS_NA {
-									tccValues = append(tccValues, tcc)
-								}
-								tccNeverConsidered = false
-							}
-							if ddc, exists := statValues[TCC]; exists {
-								if ddc > STATS_NA {
-									ddcValues = append(ddcValues, ddc)
-								}
-								ddcNeverConsidered = false
-							}
-
-						}
-					}
+				statsErr := false
+				var supplierQueues []*StatsQueue
+				for _, qID := range cdrStatsQueueIds {
 					if lcrCost.Entry.Strategy == LCR_STRATEGY_LOAD {
-						if len(supplierQueues) > 0 {
-							lcrCost.SupplierCosts = append(lcrCost.SupplierCosts, &LCRSupplierCost{
-								Supplier:       fullSupplier,
-								supplierQueues: supplierQueues,
-							})
+						for _, qID := range cdrStatsQueueIds {
+							sq := &StatsQueue{}
+							if err := stats.Call("CDRStatsV1.GetQueue", utils.AttrStatsQueueID{Tenant: cd.Tenant, ID: qID}, sq); err == nil {
+								if sq.conf.QueueLength == 0 { //only add qeues that don't have fixed length
+									supplierQueues = append(supplierQueues, sq)
+								}
+							}
 						}
-						continue // next supplier
-					}
+					} else {
+						statValues := make(map[string]*dec.Dec)
+						if err := stats.Call("CDRStatsV1.GetValues", utils.AttrStatsQueueID{Tenant: cd.Tenant, ID: qID}, &statValues); err != nil {
+							lcrCost.SupplierCosts = append(lcrCost.SupplierCosts, &LCRSupplierCost{
+								Supplier: fullSupplier,
+								Error:    fmt.Sprintf("Get stats values for queue id %s, error %s", qID, err.Error()),
+							})
+							statsErr = true
+							break
+						}
+						if asr, exists := statValues[ASR]; exists {
+							if asr.Cmp(STATS_NA) > 0 {
+								asrValues = append(asrValues, asr)
+							}
+							asrNeverConsidered = false
+						}
+						if pdd, exists := statValues[PDD]; exists {
+							if pdd.Cmp(STATS_NA) > 0 {
+								pddValues = append(pddValues, pdd)
+							}
+							pddNeverConsidered = false
+						}
+						if acd, exists := statValues[ACD]; exists {
+							if acd.Cmp(STATS_NA) > 0 {
+								acdValues = append(acdValues, acd)
+							}
+							acdNeverConsidered = false
+						}
+						if tcd, exists := statValues[TCD]; exists {
+							if tcd.Cmp(STATS_NA) > 0 {
+								tcdValues = append(tcdValues, tcd)
+							}
+							tcdNeverConsidered = false
+						}
+						if acc, exists := statValues[ACC]; exists {
+							if acc.Cmp(STATS_NA) > 0 {
+								accValues = append(accValues, acc)
+							}
+							accNeverConsidered = false
+						}
+						if tcc, exists := statValues[TCC]; exists {
+							if tcc.Cmp(STATS_NA) > 0 {
+								tccValues = append(tccValues, tcc)
+							}
+							tccNeverConsidered = false
+						}
+						if ddc, exists := statValues[TCC]; exists {
+							if ddc.Cmp(STATS_NA) > 0 {
+								ddcValues = append(ddcValues, ddc)
+							}
+							ddcNeverConsidered = false
+						}
 
-					if statsErr { // Stats error in loop, to go next supplier
+					}
+				}
+				if lcrCost.Entry.Strategy == LCR_STRATEGY_LOAD {
+					if len(supplierQueues) > 0 {
+						lcrCost.SupplierCosts = append(lcrCost.SupplierCosts, &LCRSupplierCost{
+							Supplier:       fullSupplier,
+							supplierQueues: supplierQueues,
+						})
+					}
+					continue // next supplier
+				}
+
+				if statsErr { // Stats error in loop, to go next supplier
+					continue
+				}
+				asrValues.Sort()
+				pddValues.Sort()
+				acdValues.Sort()
+				tcdValues.Sort()
+				accValues.Sort()
+				tccValues.Sort()
+				ddcValues.Sort()
+
+				//log.Print(asrValues, acdValues)
+				if utils.IsSliceMember([]string{LCR_STRATEGY_QOS_THRESHOLD, LCR_STRATEGY_QOS}, lcrCost.Entry.Strategy) {
+					qosSortParams = lcrCost.Entry.GetParams()
+				}
+				if lcrCost.Entry.Strategy == LCR_STRATEGY_QOS_THRESHOLD {
+					// filter suppliers by qos thresholds
+					asrMin, asrMax, pddMin, pddMax, acdMin, acdMax, tcdMin, tcdMax, accMin, accMax, tccMin, tccMax, ddcMin, ddcMax := lcrCost.Entry.GetQOSLimits()
+					//log.Print(asrMin, asrMax, acdMin, acdMax)
+					// skip current supplier if off limits
+					if asrMin > 0 && len(asrValues) != 0 && asrValues[0].Cmp(dec.NewFloat(asrMin)) < 0 {
 						continue
 					}
-					asrValues.Sort()
-					pddValues.Sort()
-					acdValues.Sort()
-					tcdValues.Sort()
-					accValues.Sort()
-					tccValues.Sort()
-					ddcValues.Sort()
-
-					//log.Print(asrValues, acdValues)
-					if utils.IsSliceMember([]string{LCR_STRATEGY_QOS_THRESHOLD, LCR_STRATEGY_QOS}, lcrCost.Entry.Strategy) {
-						qosSortParams = lcrCost.Entry.GetParams()
+					if asrMax > 0 && len(asrValues) != 0 && asrValues[len(asrValues)-1].Cmp(dec.NewFloat(asrMax)) > 0 {
+						continue
 					}
-					if lcrCost.Entry.Strategy == LCR_STRATEGY_QOS_THRESHOLD {
-						// filter suppliers by qos thresholds
-						asrMin, asrMax, pddMin, pddMax, acdMin, acdMax, tcdMin, tcdMax, accMin, accMax, tccMin, tccMax, ddcMin, ddcMax := lcrCost.Entry.GetQOSLimits()
-						//log.Print(asrMin, asrMax, acdMin, acdMax)
-						// skip current supplier if off limits
-						if asrMin > 0 && len(asrValues) != 0 && asrValues[0] < asrMin {
-							continue
-						}
-						if asrMax > 0 && len(asrValues) != 0 && asrValues[len(asrValues)-1] > asrMax {
-							continue
-						}
-						if pddMin > 0 && len(pddValues) != 0 && pddValues[0] < pddMin.Seconds() {
-							continue
-						}
-						if pddMax > 0 && len(pddValues) != 0 && pddValues[len(pddValues)-1] > pddMax.Seconds() {
-							continue
-						}
-						if acdMin > 0 && len(acdValues) != 0 && acdValues[0] < acdMin.Seconds() {
-							continue
-						}
-						if acdMax > 0 && len(acdValues) != 0 && acdValues[len(acdValues)-1] > acdMax.Seconds() {
-							continue
-						}
-						if tcdMin > 0 && len(tcdValues) != 0 && tcdValues[0] < tcdMin.Seconds() {
-							continue
-						}
-						if tcdMax > 0 && len(tcdValues) != 0 && tcdValues[len(tcdValues)-1] > tcdMax.Seconds() {
-							continue
-						}
-						if accMin > 0 && len(accValues) != 0 && accValues[0] < accMin {
-							continue
-						}
-						if accMax > 0 && len(accValues) != 0 && accValues[len(accValues)-1] > accMax {
-							continue
-						}
-						if tccMin > 0 && len(tccValues) != 0 && tccValues[0] < tccMin {
-							continue
-						}
-						if tccMax > 0 && len(tccValues) != 0 && tccValues[len(tccValues)-1] > tccMax {
-							continue
-						}
-						if ddcMin > 0 && len(ddcValues) != 0 && ddcValues[0] < ddcMin {
-							continue
-						}
-						if ddcMax > 0 && len(ddcValues) != 0 && ddcValues[len(ddcValues)-1] > ddcMax {
-							continue
-						}
+					if pddMin > 0 && len(pddValues) != 0 && pddValues[0].Cmp(dec.NewFloat(pddMin.Seconds())) < 0 {
+						continue
+					}
+					if pddMax > 0 && len(pddValues) != 0 && pddValues[len(pddValues)-1].Cmp(dec.NewFloat(pddMax.Seconds())) > 0 {
+						continue
+					}
+					if acdMin > 0 && len(acdValues) != 0 && acdValues[0].Cmp(dec.NewFloat(acdMin.Seconds())) < 0 {
+						continue
+					}
+					if acdMax > 0 && len(acdValues) != 0 && acdValues[len(acdValues)-1].Cmp(dec.NewFloat(acdMax.Seconds())) > 0 {
+						continue
+					}
+					if tcdMin > 0 && len(tcdValues) != 0 && tcdValues[0].Cmp(dec.NewFloat(tcdMin.Seconds())) < 0 {
+						continue
+					}
+					if tcdMax > 0 && len(tcdValues) != 0 && tcdValues[len(tcdValues)-1].Cmp(dec.NewFloat(tcdMax.Seconds())) > 0 {
+						continue
+					}
+					if accMin > 0 && len(accValues) != 0 && accValues[0].Cmp(dec.NewFloat(accMin)) < 0 {
+						continue
+					}
+					if accMax > 0 && len(accValues) != 0 && accValues[len(accValues)-1].Cmp(dec.NewFloat(accMax)) > 0 {
+						continue
+					}
+					if tccMin > 0 && len(tccValues) != 0 && tccValues[0].Cmp(dec.NewFloat(tccMin)) < 0 {
+						continue
+					}
+					if tccMax > 0 && len(tccValues) != 0 && tccValues[len(tccValues)-1].Cmp(dec.NewFloat(tccMax)) > 0 {
+						continue
+					}
+					if ddcMin > 0 && len(ddcValues) != 0 && ddcValues[0].Cmp(dec.NewFloat(ddcMin)) < 0 {
+						continue
+					}
+					if ddcMax > 0 && len(ddcValues) != 0 && ddcValues[len(ddcValues)-1].Cmp(dec.NewFloat(ddcMax)) > 0 {
+						continue
 					}
 				}
 			}
 
 			var cc *CallCost
 			var err error
-			//log.Print("CD: ", lcrCD.GetAccountKey())
-			if cd.account, err = accountingStorage.GetAccount(lcrCD.GetAccountKey()); err == nil {
+			//log.Print("CD: ", lcrCD.getAccountKey())
+			if cd.account, err = accountingStorage.GetAccount(lcrCD.Tenant, lcrCD.getAccountName()); err == nil {
 				//log.Print("ACCCOUNT")
 				if cd.account.Disabled {
 					lcrCost.SupplierCosts = append(lcrCost.SupplierCosts, &LCRSupplierCost{
@@ -1237,10 +1186,10 @@ func (cd *CallDescriptor) GetLCR(stats rpcclient.RpcClientConnection, lcrFltr *L
 				continue
 			} else {
 				if lcrFltr != nil {
-					if lcrFltr.MinCost != nil && cc.Cost < *lcrFltr.MinCost {
+					if lcrFltr.MinCost != nil && cc.GetCost().Cmp(dec.NewFloat(*lcrFltr.MinCost)) < 0 {
 						continue // MinCost not reached, ignore the supplier
 					}
-					if lcrFltr.MaxCost != nil && cc.Cost >= *lcrFltr.MaxCost {
+					if lcrFltr.MaxCost != nil && cc.GetCost().Cmp(dec.NewFloat(*lcrFltr.MaxCost)) >= 0 {
 						continue // Equal or higher than MaxCost allowed, ignore the supplier
 					}
 				}
@@ -1249,7 +1198,7 @@ func (cd *CallDescriptor) GetLCR(stats rpcclient.RpcClientConnection, lcrFltr *L
 					Cost:     cc.Cost,
 					Duration: cc.GetDuration(),
 				}
-				qos := make(map[string]float64, 5)
+				qos := make(map[string]*dec.Dec, 5)
 				if !asrNeverConsidered {
 					qos[ASR] = utils.AvgNegative(asrValues)
 				}
@@ -1290,4 +1239,43 @@ func (cd *CallDescriptor) GetLCR(stats rpcclient.RpcClientConnection, lcrFltr *L
 		}
 	}
 	return lcrCost, nil
+}
+
+func (cd *CallDescriptor) NeedsUsers() bool {
+	if cd.Direction == utils.USERS {
+		return true
+	}
+	if cd.Category == utils.USERS {
+		return true
+	}
+	if cd.Tenant == utils.USERS {
+		return true
+	}
+	if cd.Subject == utils.USERS {
+		return true
+	}
+	if cd.Account == utils.USERS {
+		return true
+	}
+	if cd.Destination == utils.USERS {
+		return true
+	}
+	if cd.FallbackSubject == utils.USERS {
+		return true
+	}
+	if cd.TOR == utils.USERS {
+		return true
+	}
+	if cd.UniqueID == utils.USERS {
+		return true
+	}
+	if cd.RunID == utils.USERS {
+		return true
+	}
+	for _, value := range cd.ExtraFields {
+		if value == utils.USERS {
+			return true
+		}
+	}
+	return false
 }

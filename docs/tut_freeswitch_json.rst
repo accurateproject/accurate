@@ -10,7 +10,7 @@ Scenario
  - Have added inside default dialplan CGR own extensions just before routing towards users (*etc/freeswitch/dialplan/default.xml*).
  - FreeSWITCH configured to generate default *http-json* CDRs.
 
-- **CGRateS** with following components:
+- **AccuRate** with following components:
 
  - CGR-SM started as prepaid controller, with debits taking place at 5s intervals.
  - CGR-CDRS component receiving raw CDRs from FreeSWITCH, storing them and attaching costs inside CGR StorDB.
@@ -32,7 +32,7 @@ To verify that FreeSWITCH_ is running we run the console command:
  fs_cli -x status
 
 
-Starting **CGRateS** with custom configuration
+Starting **AccuRate** with custom configuration
 ----------------------------------------------
 
 ::
@@ -49,17 +49,17 @@ Check that cgrates is running
 CDR processing
 --------------
 
-At the end of each call FreeSWITCH_ will issue a http post with the CDR. This will reach inside **CGRateS** through the *CDRS* component (close to real-time). Once in-there it will be instantly rated and it is ready to be exported: 
+At the end of each call FreeSWITCH_ will issue a http post with the CDR. This will reach inside **AccuRate** through the *CDRS* component (close to real-time). Once in-there it will be instantly rated and it is ready to be exported: 
 
 ::
 
  cgr-console 'cdrs_export CdrFormat="csv" ExportDir="/tmp"'
 
 
-**CGRateS** Usage
+**AccuRate** Usage
 -----------------
 
-Since it is common to most of the tutorials, the example for **CGRateS** usage is provided in a separate page `here <http://cgrates.readthedocs.org/en/latest/tut_cgrates_usage.html>`_
+Since it is common to most of the tutorials, the example for **AccuRate** usage is provided in a separate page `here <http://cgrates.readthedocs.org/en/latest/tut_cgrates_usage.html>`_
 
 
 .. _FreeSWITCH: http://www.freeswitch.org/

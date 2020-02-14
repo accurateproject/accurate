@@ -8,7 +8,7 @@ ApierV1.ExportCsvCdrs
 ---------------------
 
 Used to request a new CDR export file. In can include specific interval for CDRs *answer_time*. Any of the two interval limits can be left unspecified hence resulting in the possibility to export complete database of CDRs with one API call.
- *NOTE*: Since CGRateS does not keep anywhere a history of exports, it becomes the responsibility of the system administrator to make sure that his exports are not doubled.
+ *NOTE*: Since AccuRate does not keep anywhere a history of exports, it becomes the responsibility of the system administrator to make sure that his exports are not doubled.
 
 
 **Request**:

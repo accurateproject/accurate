@@ -5,7 +5,7 @@ import "github.com/accurateproject/accurate/engine"
 func init() {
 	c := &CmdGetSharedGroup{
 		name:      "sharedgroup",
-		rpcMethod: "ApierV1.GetSharedGroup",
+		rpcMethod: "ApiV1.GetSharedGroup",
 	}
 	commands[c.Name()] = c
 	c.CommandExecuter = &CommandExecuter{c}

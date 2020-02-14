@@ -70,7 +70,7 @@ func (rl *ResourceLimit) RemoveUsage(ruID string) error {
 }
 
 // Pas the config as a whole so we can ask access concurrently
-func NewResourceLimiterService(cfg *config.CGRConfig, dataDB AccountingStorage, cdrStatS rpcclient.RpcClientConnection) (*ResourceLimiterService, error) {
+func NewResourceLimiterService(cfg *config.Config, dataDB AccountingStorage, cdrStatS rpcclient.RpcClientConnection) (*ResourceLimiterService, error) {
 	if cdrStatS != nil && reflect.ValueOf(cdrStatS).IsNil() {
 		cdrStatS = nil
 	}
@@ -92,14 +92,14 @@ func (rls *ResourceLimiterService) indexStringFilters(rlIDs []string) error {
 	newStringIndexes := make(map[string]map[string]utils.StringMap) // Index it transactional
 	var cacheIDsToIndex []string                                    // Cache keys of RLs to be indexed
 	if rlIDs == nil {
-		cacheIDsToIndex = cache2go.GetEntriesKeys(utils.ResourceLimitsPrefix)
+		//FIXME: cacheIDsToIndex = cache2go.GetEntriesKeys(utils.ResourceLimitsPrefix)
 	} else {
 		for _, rlID := range rlIDs {
 			cacheIDsToIndex = append(cacheIDsToIndex, utils.ResourceLimitsPrefix+rlID)
 		}
 	}
 	for _, cacheKey := range cacheIDsToIndex {
-		x, ok := cache2go.Get(cacheKey)
+		x, ok := cache2go.Get("FIXME", cacheKey)
 		if !ok {
 			return utils.ErrNotFound
 		}
@@ -189,7 +189,7 @@ func (rls *ResourceLimiterService) matchingResourceLimitsForEvent(ev map[string]
 			if _, hasIt := matchingResources[resName]; hasIt { // Already checked this RL
 				continue
 			}
-			x, ok := cache2go.Get(utils.ResourceLimitsPrefix + resName)
+			x, ok := cache2go.Get("FIXME", utils.ResourceLimitsPrefix+resName)
 			if !ok {
 				return nil, utils.ErrNotFound
 			}
@@ -217,7 +217,7 @@ func (rls *ResourceLimiterService) matchingResourceLimitsForEvent(ev map[string]
 		if _, hasIt := matchingResources[resName]; hasIt { // Already checked this RL
 			continue
 		}
-		x, ok := cache2go.Get(utils.ResourceLimitsPrefix + resName)
+		x, ok := cache2go.Get("FIXME: ", utils.ResourceLimitsPrefix+resName)
 		if !ok {
 			return nil, utils.ErrNotFound
 		}
@@ -239,7 +239,7 @@ func (rls *ResourceLimiterService) matchingResourceLimitsForEvent(ev map[string]
 }
 
 // Called to start the service
-func (rls *ResourceLimiterService) Start() error {
+func (rls *ResourceLimiterService) ListenAndServe() error {
 	if err := rls.cacheResourceLimits("ResourceLimiterServiceStart", nil); err != nil {
 		return err
 	}
@@ -247,7 +247,7 @@ func (rls *ResourceLimiterService) Start() error {
 }
 
 // Called to shutdown the service
-func (rls *ResourceLimiterService) Shutdown() error {
+func (rls *ResourceLimiterService) ServiceShutdown() error {
 	return nil
 }
 
@@ -309,7 +309,7 @@ func (rls *ResourceLimiterService) V1InitiateResourceUsage(attrs utils.AttrRLsRe
 		return utils.ErrResourceUnavailable
 	}
 	for _, rl := range matchingRLForEv {
-		cache2go.Set(utils.ResourceLimitsPrefix+rl.ID, rl, "")
+		cache2go.Set("FIXME:", utils.ResourceLimitsPrefix+rl.ID, rl, "")
 	}
 	*reply = utils.OK
 	return nil

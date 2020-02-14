@@ -1,8 +1,4 @@
 {
-
-// Real-time Charging System for Telecom & ISP environments
-// Copyright (C) ITsysCOM GmbH
-//
 // This file contains the default configuration hardcoded into CGRateS.
 // This is what you get when you load CGRateS with an empty configuration file.
 
@@ -60,7 +56,7 @@
 		"export_dir": "/tmp/cgr_kamevapi/cgrates/cdre",
 		"header_fields": [],
 		"content_fields": [
-			{"tag": "CgrId", "type": "*composed", "value": "CGRID"},
+			{"tag": "UniqueID", "type": "*composed", "value": "UniqueID"},
 			{"tag":"RunId", "type": "*composed", "value": "RunID"},
 			{"tag":"Tor", "type": "*composed", "value": "ToR"},
 			{"tag":"AccId", "type": "*composed", "value": "OriginID"},
@@ -91,8 +87,8 @@
 		"mask_length": 0,
 		"export_dir": "/tmp/cgr_kamevapi/cgrates/cdre",
 		"header_fields": [],
-		"content_fields": [	
-			{"tag": "CgrId", "type": "*composed", "value": "CGRID"},
+		"content_fields": [
+			{"tag": "UniqueID", "type": "*composed", "value": "UniqueID"},
 			{"tag":"AccId", "type": "*composed", "value": "OriginID"},
 			{"tag":"ReqType", "type": "*composed", "value": "RequestType"},
 			{"tag":"Tenant", "type": "*composed", "value": "Tenant"},

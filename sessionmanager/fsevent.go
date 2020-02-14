@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/accurateproject/accurate/config"
+	"github.com/accurateproject/accurate/dec"
 	"github.com/accurateproject/accurate/engine"
 	"github.com/accurateproject/accurate/utils"
 	"github.com/accurateproject/fsock"
@@ -121,9 +122,9 @@ func (fsev FSEvent) GetCategory(fieldName string) string {
 	if strings.HasPrefix(fieldName, utils.STATIC_VALUE_PREFIX) { // Static value
 		return fieldName[len(utils.STATIC_VALUE_PREFIX):]
 	}
-	return utils.FirstNonEmpty(fsev[fieldName], fsev[CATEGORY], config.CgrConfig().DefaultCategory)
+	return utils.FirstNonEmpty(fsev[fieldName], fsev[CATEGORY], *config.Get().General.DefaultCategory)
 }
-func (fsev FSEvent) GetCgrId(timezone string) string {
+func (fsev FSEvent) GetUniqueID(timezone string) string {
 	setupTime, _ := fsev.GetSetupTime(utils.META_DEFAULT, timezone)
 	return utils.Sha1(fsev[UUID], setupTime.UTC().String())
 }
@@ -137,7 +138,7 @@ func (fsev FSEvent) GetTenant(fieldName string) string {
 	if strings.HasPrefix(fieldName, utils.STATIC_VALUE_PREFIX) { // Static value
 		return fieldName[len(utils.STATIC_VALUE_PREFIX):]
 	}
-	return utils.FirstNonEmpty(fsev[fieldName], fsev[CSTMID], config.CgrConfig().DefaultTenant)
+	return utils.FirstNonEmpty(fsev[fieldName], fsev[CSTMID], *config.Get().General.DefaultTenant)
 }
 func (fsev FSEvent) GetReqType(fieldName string) string {
 	var reqTypeDetected = ""                     // Used to automatically disable processing of the request
@@ -149,7 +150,7 @@ func (fsev FSEvent) GetReqType(fieldName string) string {
 	if strings.HasPrefix(fieldName, utils.STATIC_VALUE_PREFIX) { // Static value
 		return fieldName[len(utils.STATIC_VALUE_PREFIX):]
 	}
-	return utils.FirstNonEmpty(fsev[fieldName], fsev[REQTYPE], reqTypeDetected, config.CgrConfig().DefaultReqType)
+	return utils.FirstNonEmpty(fsev[fieldName], fsev[REQTYPE], reqTypeDetected, *config.Get().General.DefaultRequestType)
 }
 func (fsev FSEvent) MissingParameter(timezone string) bool {
 	return strings.TrimSpace(fsev.GetDirection(utils.META_DEFAULT)) == "" ||
@@ -164,7 +165,7 @@ func (fsev FSEvent) MissingParameter(timezone string) bool {
 func (fsev FSEvent) GetSetupTime(fieldName, timezone string) (t time.Time, err error) {
 	fsSTimeStr, hasKey := fsev[SETUP_TIME]
 	if hasKey && fsSTimeStr != "0" {
-		// Discard the nanoseconds information since MySQL cannot store them in early versions and csv uses default seconds so CGRID will not corelate
+		// Discard the nanoseconds information since MySQL cannot store them in early versions and csv uses default seconds so UniqueID will not corelate
 		fsSTimeStr = fsSTimeStr[:len(fsSTimeStr)-6]
 	}
 	sTimeStr := utils.FirstNonEmpty(fsev[fieldName], fsSTimeStr)
@@ -176,7 +177,7 @@ func (fsev FSEvent) GetSetupTime(fieldName, timezone string) (t time.Time, err e
 func (fsev FSEvent) GetAnswerTime(fieldName, timezone string) (t time.Time, err error) {
 	fsATimeStr, hasKey := fsev[ANSWER_TIME]
 	if hasKey && fsATimeStr != "0" {
-		// Discard the nanoseconds information since MySQL cannot store them in early versions and csv uses default seconds so CGRID will not corelate
+		// Discard the nanoseconds information since MySQL cannot store them in early versions and csv uses default seconds so UniqueID will not corelate
 		fsATimeStr = fsATimeStr[:len(fsATimeStr)-6]
 	}
 	aTimeStr := utils.FirstNonEmpty(fsev[fieldName], fsATimeStr)
@@ -236,8 +237,8 @@ func (fsev FSEvent) GetOriginatorIP(fieldName string) string {
 
 func (fsev FSEvent) GetExtraFields() map[string]string {
 	extraFields := make(map[string]string)
-	for _, fldRule := range config.CgrConfig().SmFsConfig.ExtraFields {
-		extraFields[fldRule.Id] = fsev.ParseEventValue(fldRule, config.CgrConfig().DefaultTimezone)
+	for _, fldRule := range config.Get().SmFreeswitch.ExtraFields {
+		extraFields[fldRule.Id] = fsev.ParseEventValue(fldRule, *config.Get().General.DefaultTimezone)
 	}
 	return extraFields
 }
@@ -245,8 +246,8 @@ func (fsev FSEvent) GetExtraFields() map[string]string {
 // Used in derived charging and sittuations when we need to run regexp on fields
 func (fsev FSEvent) ParseEventValue(rsrFld *utils.RSRField, timezone string) string {
 	switch rsrFld.Id {
-	case utils.CGRID:
-		return rsrFld.ParseValue(fsev.GetCgrId(timezone))
+	case utils.UniqueID:
+		return rsrFld.ParseValue(fsev.GetUniqueID(timezone))
 	case utils.TOR:
 		return rsrFld.ParseValue(utils.VOICE)
 	case utils.ACCID:
@@ -304,16 +305,16 @@ func (fsev FSEvent) PassesFieldFilter(fieldFilter *utils.RSRField) (bool, string
 	if fieldFilter == nil {
 		return true, ""
 	}
-	if fieldFilter.IsStatic() && fsev.ParseEventValue(&utils.RSRField{Id: fieldFilter.Id}, config.CgrConfig().DefaultTimezone) == fsev.ParseEventValue(fieldFilter, config.CgrConfig().DefaultTimezone) {
-		return true, fsev.ParseEventValue(&utils.RSRField{Id: fieldFilter.Id}, config.CgrConfig().DefaultTimezone)
+	if fieldFilter.IsStatic() && fsev.ParseEventValue(&utils.RSRField{Id: fieldFilter.Id}, config.Get().General.DefaultTimezone) == fsev.ParseEventValue(fieldFilter, config.Get().General.DefaultTimezone) {
+		return true, fsev.ParseEventValue(&utils.RSRField{Id: fieldFilter.Id}, config.Get().General.DefaultTimezone)
 	}
 	preparedFilter := &utils.RSRField{Id: fieldFilter.Id, RSRules: make([]*utils.ReSearchReplace, len(fieldFilter.RSRules))} // Reset rules so they do not point towards same structures as original fieldFilter
 	for idx := range fieldFilter.RSRules {
 		// Hardcode the template with maximum of 5 groups ordered
 		preparedFilter.RSRules[idx] = &utils.ReSearchReplace{SearchRegexp: fieldFilter.RSRules[idx].SearchRegexp, ReplaceTemplate: utils.FILTER_REGEXP_TPL}
 	}
-	preparedVal := fsev.ParseEventValue(preparedFilter, config.CgrConfig().DefaultTimezone)
-	filteredValue := fsev.ParseEventValue(fieldFilter, config.CgrConfig().DefaultTimezone)
+	preparedVal := fsev.ParseEventValue(preparedFilter, config.Get().General.DefaultTimezone)
+	filteredValue := fsev.ParseEventValue(fieldFilter, config.Get().General.DefaultTimezone)
 	if preparedFilter.RegexpMatched() && (len(preparedVal) == 0 || preparedVal == filteredValue) {
 		return true, filteredValue
 	}
@@ -323,7 +324,7 @@ func (fsev FSEvent) PassesFieldFilter(fieldFilter *utils.RSRField) (bool, string
 
 func (fsev FSEvent) AsStoredCdr(timezone string) *engine.CDR {
 	storCdr := new(engine.CDR)
-	storCdr.CGRID = fsev.GetCgrId(timezone)
+	storCdr.UniqueID = fsev.GetUniqueID(timezone)
 	storCdr.ToR = utils.VOICE
 	storCdr.OriginID = fsev.GetUUID()
 	storCdr.OriginHost = fsev.GetOriginatorIP(utils.META_DEFAULT)
@@ -340,7 +341,7 @@ func (fsev FSEvent) AsStoredCdr(timezone string) *engine.CDR {
 	storCdr.Usage, _ = fsev.GetDuration(utils.META_DEFAULT)
 	storCdr.PDD, _ = fsev.GetPdd(utils.META_DEFAULT)
 	storCdr.ExtraFields = fsev.GetExtraFields()
-	storCdr.Cost = -1
+	storCdr.Cost = dec.NewVal(-1, 0)
 	storCdr.Supplier = fsev.GetSupplier(utils.META_DEFAULT)
 	storCdr.DisconnectCause = fsev.GetDisconnectCause(utils.META_DEFAULT)
 	return storCdr
@@ -357,7 +358,7 @@ func (fsev FSEvent) ComputeLcr() bool {
 // Used with RLs
 func (fsev FSEvent) AsMapStringInterface(timezone string) map[string]interface{} {
 	mp := make(map[string]interface{})
-	mp[utils.CGRID] = fsev.GetCgrId(timezone)
+	mp[utils.UniqueID] = fsev.GetUniqueID(timezone)
 	mp[utils.TOR] = utils.VOICE
 	mp[utils.ACCID] = fsev.GetUUID()
 	mp[utils.CDRHOST] = fsev.GetOriginatorIP(utils.META_DEFAULT)
@@ -394,7 +395,11 @@ func (fsev FSEvent) AsCallDescriptor() (*engine.CallDescriptor, error) {
 		Duration:    fsev[DURATION],
 		ExtraFields: fsev.GetExtraFields(),
 	}
-	return lcrReq.AsCallDescriptor(config.CgrConfig().DefaultTimezone)
+	return lcrReq.AsCallDescriptor(*config.Get().General.DefaultTimezone)
+}
+
+func (fsev FSEvent) AsMapStringIface() (map[string]interface{}, error) {
+	return nil, utils.ErrNotImplemented
 }
 
 // Converts a slice of strings into a FS array string, contains len(array) at first index since FS does not support len(ARRAY::) for now

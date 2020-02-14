@@ -1,17 +1,21 @@
-hash: 515de25ca69a14303925fbb4ee9848b45e8fc9a399514a476b4dfaaf93584387
-updated: 2016-08-22T20:01:46.525553585+03:00
+hash: 1f9e4ddc8e9d8f4be2010bd62a53a3505d956ab1e35ed63a164465ee16c0bcb5
+updated: 2017-02-28T17:30:49.675234592+02:00
 imports:
+- name: github.com/accurateproject/aringo
+  version: 47cdb110c5ff42bddf2b801dc5ae8ceb15d2d602
 - name: github.com/accurateproject/fsock
-  version: a8ffdbdfc8440016df008ba91e6f05f806d7a69f
+  version: c8ff017c108a65b69bc74fbbd1bf13b376951e57
 - name: github.com/accurateproject/kamevapi
-  version: a376b1f937ba959857929fa3e111c0f3243278c0
+  version: a2cdc52d56afb78d6c672ba9fa4178cf3671610b
 - name: github.com/accurateproject/osipsdagram
   version: 3d6beed663452471dec3ca194137a30d379d9e8f
 - name: github.com/accurateproject/rpcclient
-  version: 4de08da79a878ac1a6f45b897c1d37e889eb4c24
+  version: 399063410babe8d0334dc44daf45e92efdeb1e76
+- name: github.com/bit4bit/gami
+  version: 3a7f98e7efce7ed7f22c2169b666910b8abb15dc
 - name: github.com/cenk/hub
   version: 11382a9960d39b0ecda16fd01c424c11ff765a34
-- name: github.com/cenkalti/rpc2
+- name: github.com/cenk/rpc2
   version: 7ab76d2e88c77ca1a715756036d8264b2886acd2
 - name: github.com/ChrisTrenkamp/goxpath
   version: 4aad8d0161aae7d17df4755d2c1e86cd1fcaaab6
@@ -22,15 +26,26 @@ imports:
   - internal/parser/findutil
   - internal/parser/intfns
   - internal/parser/pathexpr
-  - internal/xconst
-  - internal/xsort
+  - literals/boollit
+  - literals/numlit
+  - literals/strlit
   - tree
   - tree/xmltree
   - tree/xmltree/xmlbuilder
   - tree/xmltree/xmlele
   - tree/xmltree/xmlnode
+  - xconst
+  - xfn
+  - xsort
 - name: github.com/DisposaBoy/JsonConfigReader
   version: 33a99fdf1d5ee1f79b5077e9c06f955ad356d5f4
+- name: github.com/ericlagergren/decimal
+  version: c37ac6f12cd2136615dee587edb8acd75f8e3271
+  subpackages:
+  - internal/arith
+  - internal/arith/checked
+  - internal/arith/pow
+  - internal/c
 - name: github.com/fiorix/go-diameter
   version: 81dbef1b2e101aef372726366d5ecbf7de15f9da
   subpackages:
@@ -41,41 +56,35 @@ imports:
   - diam/sm
   - diam/sm/smparser
   - diam/sm/smpeer
-- name: github.com/go-sql-driver/mysql
-  version: 0b58b37b664c21f3010e836f1b931e1d0b0b0685
 - name: github.com/gorhill/cronexpr
-  version: f0984319b44273e83de132089ae42b1810f4933b
+  version: d520615e531a6bf3fb69406b9eba718261285ec8
 - name: github.com/hashicorp/golang-lru
   version: 0a025b7e63adc15a622f29b0b2c4c3848243bbf6
   subpackages:
   - simplelru
-- name: github.com/jinzhu/gorm
-  version: 35a2a004d880453f0bbd3716bcc63da1cb15b77b
-- name: github.com/jinzhu/inflection
-  version: 74387dc39a75e970e7a3ae6a3386b5bd2e5c5cff
+- name: github.com/jeffail/tunny
+  version: c757dde1c2969a4756e8a99622e2f2ddbab35b10
 - name: github.com/kr/pty
   version: ce7fa45920dc37a92de8377972e52bc55ffa8d57
-- name: github.com/lib/pq
-  version: 80f8150043c80fb52dee6bc863a709cdac7ec8f8
-  subpackages:
-  - oid
-- name: github.com/mediocregopher/radix.v2
-  version: ae04b3eb3731f94789205d1268e0759371166605
-  subpackages:
-  - pool
-  - redis
 - name: github.com/mitchellh/mapstructure
   version: ca63d7c062ee3c9f34db231e352b60012b4fd0c1
 - name: github.com/peterh/liner
   version: 8975875355a81d612fafb9f5a6037bdcc2d9b073
-- name: github.com/ugorji/go
-  version: 4a1cb5252a6951f715a85d0e4be334c2a2dbf2a2
+- name: go.uber.org/atomic
+  version: 3b8db5e93c4c02efbc313e17b2e796b0914a01fb
+- name: go.uber.org/zap
+  version: d0f04d90ba7d8656474811feff10a4023f80e74a
   subpackages:
-  - codec
+  - buffer
+  - internal/bufferpool
+  - internal/exit
+  - internal/multierror
+  - zapcore
 - name: golang.org/x/net
   version: 7394c112eae4dba7e96bfcfe738e6373d61772b4
   subpackages:
   - context
+  - context/ctxhttp
   - html
   - html/atom
   - html/charset
@@ -84,6 +93,7 @@ imports:
   version: a646d33e2ee3172a661fc09bca23bb4889a41bc8
   subpackages:
   - unix
+  - windows
 - name: golang.org/x/text
   version: d69c40b4be55797923cec7457fac7a244d91a9b6
   subpackages:
@@ -103,7 +113,7 @@ imports:
   - runes
   - transform
 - name: gopkg.in/fsnotify.v1
-  version: a8a77c9133d2d6fd8334f3260d06f60e8d80a5fb
+  version: v1.4.2
 - name: gopkg.in/mgo.v2
   version: 3f83fa5005286a7fe593b055f0d7771a7dce4655
   subpackages:
@@ -111,4 +121,82 @@ imports:
   - internal/json
   - internal/sasl
   - internal/scram
-testImports: []
+testImports:
+- name: github.com/Azure/go-ansiterm
+  version: fa152c58bc15761d0200cb75fe958b89a9d4888e
+  subpackages:
+  - winterm
+- name: github.com/cenk/backoff
+  version: 32cd0c5b3aef12c76ed64aaf678f6c79736be7dc
+- name: github.com/cenkalti/rpc2
+  version: 7ab76d2e88c77ca1a715756036d8264b2886acd2
+- name: github.com/docker/docker
+  version: 092cba3727bb9b4a2f0e922cd6c0f93ea270e363
+  subpackages:
+  - api/types
+  - api/types/blkiodev
+  - api/types/container
+  - api/types/filters
+  - api/types/mount
+  - api/types/network
+  - api/types/registry
+  - api/types/strslice
+  - api/types/swarm
+  - api/types/versions
+  - opts
+  - pkg/archive
+  - pkg/fileutils
+  - pkg/homedir
+  - pkg/idtools
+  - pkg/ioutils
+  - pkg/jsonlog
+  - pkg/jsonmessage
+  - pkg/longpath
+  - pkg/pools
+  - pkg/promise
+  - pkg/stdcopy
+  - pkg/system
+  - pkg/term
+  - pkg/term/windows
+- name: github.com/docker/go-connections
+  version: 7da10c8c50cad14494ec818dcdfb6506265c0086
+  subpackages:
+  - nat
+- name: github.com/docker/go-units
+  version: 0dadbb0345b35ec7ef35e228dabb8de89a65bf52
+- name: github.com/fsouza/go-dockerclient
+  version: 000a4bc90f4caf682cdb0d464f93435c196e61dd
+- name: github.com/go-sql-driver/mysql
+  version: 0b58b37b664c21f3010e836f1b931e1d0b0b0685
+- name: github.com/hashicorp/go-cleanhttp
+  version: 3573b8b52aa7b37b9358d966a898feb387f62437
+- name: github.com/jinzhu/gorm
+  version: 35a2a004d880453f0bbd3716bcc63da1cb15b77b
+- name: github.com/jinzhu/inflection
+  version: 74387dc39a75e970e7a3ae6a3386b5bd2e5c5cff
+- name: github.com/lib/pq
+  version: 80f8150043c80fb52dee6bc863a709cdac7ec8f8
+  subpackages:
+  - oid
+- name: github.com/mediocregopher/radix.v2
+  version: ae04b3eb3731f94789205d1268e0759371166605
+  subpackages:
+  - pool
+  - redis
+- name: github.com/Microsoft/go-winio
+  version: fff283ad5116362ca252298cfc9b95828956d85d
+- name: github.com/opencontainers/runc
+  version: 4f21aea40d060d0171b1c94861f2f63f4a6029d0
+  subpackages:
+  - libcontainer/system
+  - libcontainer/user
+- name: github.com/pkg/errors
+  version: 645ef00459ed84a119197bfb8d8205042c6df63d
+- name: github.com/Sirupsen/logrus
+  version: 26709e2714106fb8ad40b773b711ebce25b78914
+- name: github.com/ugorji/go
+  version: 4a1cb5252a6951f715a85d0e4be334c2a2dbf2a2
+  subpackages:
+  - codec
+- name: gopkg.in/ory-am/dockertest.v3
+  version: e4828e807797a7641fcd457716870dfc2f9e82ff

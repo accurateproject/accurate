@@ -2,41 +2,53 @@ package engine
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 
 	"github.com/accurateproject/accurate/history"
+	"github.com/accurateproject/accurate/utils"
 )
 
 /*
 The struture that is saved to storage.
 */
 type RatingPlan struct {
-	Id               string
-	Timings          map[string]*RITiming
-	Ratings          map[string]*RIRate
-	DestinationRates map[string]RPRateList
+	Tenant           string                  `bson:"tenant"`
+	Name             string                  `bson:"name"`
+	Timings          map[string]*RITiming    `bson:"timings"`
+	Ratings          map[string]*RIRate      `bson:"ratings"`
+	DRates           map[string]*DRate       `bson:"d_rates"`
+	DestinationRates map[string]*DRateHelper `bson:"destination_rates"`
 }
 
-type RPRate struct {
-	Timing string
-	Rating string
-	Weight float64
+type DRate struct {
+	Timing string  `bson:"timing"`
+	Rating string  `bson:"rating"`
+	Weight float64 `bson:"weight"`
 }
 
-func (rpr *RPRate) Equal(orpr *RPRate) bool {
+type DRateHelper struct {
+	DRateKeys map[string]struct{}
+	CodeName  string
+}
+
+func (rpr *DRate) hash() string {
+	return utils.Sha1(fmt.Sprintf("%v", rpr))[:6]
+}
+
+func (rpr *DRate) Equal(orpr *DRate) bool {
 	return rpr.Timing == orpr.Timing && rpr.Rating == orpr.Rating && rpr.Weight == orpr.Weight
 }
 
-type RPRateList []*RPRate
-
-func (rp *RatingPlan) RateIntervalList(dId string) RateIntervalList {
-	ril := make(RateIntervalList, len(rp.DestinationRates[dId]))
-	for i, rpr := range rp.DestinationRates[dId] {
-		ril[i] = &RateInterval{
+func (rp *RatingPlan) RateIntervalList(code string) RateIntervalList {
+	ril := make(RateIntervalList, 0)
+	for rprTag := range rp.DestinationRates[code].DRateKeys {
+		rpr := rp.DRates[rprTag]
+		ril = append(ril, &RateInterval{
 			Timing: rp.Timings[rpr.Timing],
 			Rating: rp.Ratings[rpr.Rating],
 			Weight: rpr.Weight,
-		}
+		})
 	}
 	return ril
 }
@@ -46,46 +58,44 @@ func (rp *RatingPlan) RateIntervalList(dId string) RateIntervalList {
 /*
 Adds one ore more intervals to the internal interval list only if it is not allready in the list.
 */
-func (rp *RatingPlan) AddRateInterval(dId string, ris ...*RateInterval) {
+func (rp *RatingPlan) AddRateInterval(code, name string, ris ...*RateInterval) {
+	//log.Printf("Code %v with RIS: %+v", code, utils.ToIJSON(ris))
 	if rp.DestinationRates == nil {
 		rp.Timings = make(map[string]*RITiming)
 		rp.Ratings = make(map[string]*RIRate)
-		rp.DestinationRates = make(map[string]RPRateList, 1)
+		rp.DRates = make(map[string]*DRate)
+		rp.DestinationRates = make(map[string]*DRateHelper)
 	}
 	for _, ri := range ris {
-		rpr := &RPRate{Weight: ri.Weight}
+		rpr := &DRate{Weight: ri.Weight}
 		if ri.Timing != nil {
-			timingTag := ri.Timing.Stringify()
+			timingTag := ri.Timing.hash()
 			rp.Timings[timingTag] = ri.Timing
 			rpr.Timing = timingTag
 		}
 		if ri.Rating != nil {
-			ratingTag := ri.Rating.Stringify()
+			ratingTag := ri.Rating.hash()
 			rp.Ratings[ratingTag] = ri.Rating
 			rpr.Rating = ratingTag
 		}
-		found := false
-		for _, erpr := range rp.DestinationRates[dId] {
-			if erpr.Equal(rpr) {
-				found = true
-				break
-			}
+		drateHash := rpr.hash()
+		rp.DRates[drateHash] = rpr
+		if rp.DestinationRates[code] == nil {
+			rp.DestinationRates[code] = &DRateHelper{DRateKeys: make(map[string]struct{}), CodeName: name}
 		}
-		if !found {
-			rp.DestinationRates[dId] = append(rp.DestinationRates[dId], rpr)
-		}
+		rp.DestinationRates[code].DRateKeys[drateHash] = struct{}{}
 	}
 }
 
 func (rp *RatingPlan) Equal(o *RatingPlan) bool {
-	return rp.Id == o.Id
+	return rp.Tenant == o.Tenant && rp.Name == o.Name
 }
 
 // history record method
 func (rp *RatingPlan) GetHistoryRecord() history.Record {
 	js, _ := json.Marshal(rp)
 	return history.Record{
-		Id:       rp.Id,
+		Id:       utils.ConcatKey(rp.Tenant, rp.Name),
 		Filename: history.RATING_PLANS_FN,
 		Payload:  js,
 	}
@@ -132,13 +142,13 @@ func (rp *RatingPlan) getFirstUnsaneRating() string {
 			if i < (len(rating.Rates) - 1) {
 				nextRate := rating.Rates[i+1]
 				if nextRate.GroupIntervalStart <= rate.GroupIntervalStart {
-					return rating.tag
+					return utils.ToJSON(rating)
 				}
 				if math.Mod(nextRate.GroupIntervalStart.Seconds(), rate.RateIncrement.Seconds()) != 0 {
-					return rating.tag
+					return utils.ToJSON(rating)
 				}
 				if rate.RateUnit == 0 || rate.RateIncrement == 0 {
-					return rating.tag
+					return utils.ToJSON(rating)
 				}
 			}
 		}
@@ -150,7 +160,7 @@ func (rp *RatingPlan) getFirstUnsaneTiming() string {
 	for _, timing := range rp.Timings {
 		if (len(timing.Years) != 0 || len(timing.Months) != 0 || len(timing.MonthDays) != 0) &&
 			len(timing.WeekDays) != 0 {
-			return timing.tag
+			return utils.ToJSON(timing)
 		}
 	}
 	return ""

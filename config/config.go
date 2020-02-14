@@ -1,1049 +1,464 @@
 package config
 
 import (
-	"errors"
-	"fmt"
+	"bytes"
+	"encoding/json"
+	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strconv"
+	"regexp"
 	"strings"
 	"time"
 
+	"github.com/DisposaBoy/JsonConfigReader"
 	"github.com/accurateproject/accurate/utils"
 )
 
-const (
-	DISABLED = "disabled"
-	JSON     = "json"
-	GOB      = "gob"
-	POSTGRES = "postgres"
-	MONGO    = "mongo"
-	REDIS    = "redis"
-	SAME     = "same"
-	FS       = "freeswitch"
-)
+var defaultConfig *Config
 
-var (
-	cgrCfg            *CGRConfig     // will be shared
-	dfltFsConnConfig  *FsConnConfig  // Default FreeSWITCH Connection configuration, built out of json default configuration
-	dfltKamConnConfig *KamConnConfig // Default Kamailio Connection configuration
-	dfltHaPoolConfig  *HaPoolConfig
-)
-
-// Used to retrieve system configuration from other packages
-func CgrConfig() *CGRConfig {
-	return cgrCfg
+func init() {
+	Reset()
 }
 
-// Used to set system configuration from other places
-func SetCgrConfig(cfg *CGRConfig) {
-	cgrCfg = cfg
-}
+func LoadBytes(data []byte, overwriteDefault bool) (err error) {
+	// replace all env variables
+	rp := regexp.MustCompile(`(\$\$\w+)`)
+	env_replaced := rp.ReplaceAllStringFunc(string(data), func(s string) string {
+		return os.Getenv(strings.Trim(s, "$$"))
+	})
+	//log.Print(env_replaced)
+	r := JsonConfigReader.New(bytes.NewBufferString(env_replaced))
 
-func NewDefaultCGRConfig() (*CGRConfig, error) {
-	cfg := new(CGRConfig)
-	cfg.InstanceID = utils.GenUUID()
-	cfg.DataFolderPath = "/usr/share/cgrates/"
-	cfg.SmGenericConfig = new(SmGenericConfig)
-	cfg.CacheConfig = new(CacheConfig)
-	cfg.SmFsConfig = new(SmFsConfig)
-	cfg.SmKamConfig = new(SmKamConfig)
-	cfg.SmOsipsConfig = new(SmOsipsConfig)
-	cfg.diameterAgentCfg = new(DiameterAgentCfg)
-	cfg.ConfigReloads = make(map[string]chan struct{})
-	cfg.ConfigReloads[utils.CDRC] = make(chan struct{}, 1)
-	cfg.ConfigReloads[utils.CDRC] <- struct{}{} // Unlock the channel
-	cfg.ConfigReloads[utils.CDRE] = make(chan struct{}, 1)
-	cfg.ConfigReloads[utils.CDRE] <- struct{}{} // Unlock the channel
-	cfg.ConfigReloads[utils.SURETAX] = make(chan struct{}, 1)
-	cfg.ConfigReloads[utils.SURETAX] <- struct{}{} // Unlock the channel
-	cfg.ConfigReloads[utils.DIAMETER_AGENT] = make(chan struct{}, 1)
-	cfg.ConfigReloads[utils.DIAMETER_AGENT] <- struct{}{} // Unlock the channel
-	cgrJsonCfg, err := NewCgrJsonCfgFromReader(strings.NewReader(CGRATES_CFG_JSON))
-	if err != nil {
-		return nil, err
+	newConf := &Config{}
+	if err = json.NewDecoder(r).Decode(newConf); err != nil {
+		return err
 	}
-	cfg.MaxCallDuration = time.Duration(3) * time.Hour // Hardcoded for now
-	if err := cfg.loadFromJsonCfg(cgrJsonCfg); err != nil {
-		return nil, err
-	}
-	cfg.dfltCdreProfile = cfg.CdreProfiles[utils.META_DEFAULT].Clone() // So default will stay unique, will have nil pointer in case of no defaults loaded which is an extra check
-	cfg.dfltCdrcProfile = cfg.CdrcProfiles["/var/spool/cgrates/cdrc/in"][0].Clone()
-	dfltFsConnConfig = cfg.SmFsConfig.EventSocketConns[0] // We leave it crashing here on purpose if no Connection defaults defined
-	dfltKamConnConfig = cfg.SmKamConfig.EvapiConns[0]
-	if err := cfg.checkConfigSanity(); err != nil {
-		return nil, err
-	}
-	return cfg, nil
-}
+	defaultMap := utils.ToMapMapStringInterface(defaultConfig)
+	newMap := utils.ToMapMapStringInterface(newConf)
 
-func NewCGRConfigFromJsonString(cfgJsonStr string) (*CGRConfig, error) {
-	cfg := new(CGRConfig)
-	if jsnCfg, err := NewCgrJsonCfgFromReader(strings.NewReader(cfgJsonStr)); err != nil {
-		return nil, err
-	} else if err := cfg.loadFromJsonCfg(jsnCfg); err != nil {
-		return nil, err
-	}
-	return cfg, nil
-}
-
-func NewCGRConfigFromJsonStringWithDefaults(cfgJsonStr string) (*CGRConfig, error) {
-	cfg, _ := NewDefaultCGRConfig()
-	if jsnCfg, err := NewCgrJsonCfgFromReader(strings.NewReader(cfgJsonStr)); err != nil {
-		return nil, err
-	} else if err := cfg.loadFromJsonCfg(jsnCfg); err != nil {
-		return nil, err
-	}
-	return cfg, nil
-}
-
-// Reads all .json files out of a folder/subfolders and loads them up in lexical order
-func NewCGRConfigFromFolder(cfgDir string) (*CGRConfig, error) {
-	cfg, err := NewDefaultCGRConfig()
-	if err != nil {
-		return nil, err
-	}
-	fi, err := os.Stat(cfgDir)
-	if err != nil {
-		if strings.HasSuffix(err.Error(), "no such file or directory") {
-			return cfg, nil
+	for key, value := range newMap {
+		if err = utils.Merge(defaultMap[key], value, overwriteDefault); err != nil {
+			return err
 		}
-		return nil, err
-	} else if !fi.IsDir() && cfgDir != utils.CONFIG_DIR { // If config dir defined, needs to exist, not checking for default
-		return nil, fmt.Errorf("Path: %s not a directory.", cfgDir)
 	}
+
+	return
+}
+
+func LoadFile(filePath string, overwriteDefault bool) error {
+	data, err := ioutil.ReadFile(filePath)
+	if err != nil {
+		return err
+	}
+	return LoadBytes(data, overwriteDefault)
+}
+
+func LoadPath(path string) error {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	overwriteDefault := true
 	if fi.IsDir() {
-		jsonFilesFound := false
-		err = filepath.Walk(cfgDir, func(path string, info os.FileInfo, err error) error {
+		if err := filepath.Walk(path, func(walkPath string, info os.FileInfo, err error) error {
 			if !info.IsDir() {
-				return nil
-			}
-			cfgFiles, err := filepath.Glob(filepath.Join(path, "*.json"))
-			if err != nil {
-				return err
-			}
-			if cfgFiles == nil { // No need of processing further since there are no config files in the folder
-				return nil
-			}
-			if !jsonFilesFound {
-				jsonFilesFound = true
-			}
-			for _, jsonFilePath := range cfgFiles {
-				if cgrJsonCfg, err := NewCgrJsonCfgFromFile(jsonFilePath); err != nil {
-					return err
-				} else if err := cfg.loadFromJsonCfg(cgrJsonCfg); err != nil {
-					return err
+				if filepath.Ext(walkPath) != ".json" {
+					return nil
 				}
+				od := overwriteDefault
+				overwriteDefault = false
+				return LoadFile(walkPath, od)
 			}
 			return nil
-		})
-		if err != nil {
-			return nil, err
-		} else if !jsonFilesFound {
-			return nil, fmt.Errorf("No config file found on path %s", cfgDir)
+		}); err != nil {
+			return err
 		}
-	}
-	if err := cfg.checkConfigSanity(); err != nil {
-		return nil, err
-	}
-	return cfg, nil
-}
-
-// Holds system configuration, defaults are overwritten with values from config file if found
-type CGRConfig struct {
-	InstanceID               string // Identifier for this engine instance
-	TpDbType                 string
-	TpDbHost                 string // The host to connect to. Values that start with / are for UNIX domain sockets.
-	TpDbPort                 string // The port to bind to.
-	TpDbName                 string // The name of the database to connect to.
-	TpDbUser                 string // The user to sign in as.
-	TpDbPass                 string // The user's password.
-	DataDbType               string
-	DataDbHost               string // The host to connect to. Values that start with / are for UNIX domain sockets.
-	DataDbPort               string // The port to bind to.
-	DataDbName               string // The name of the database to connect to.
-	DataDbUser               string // The user to sign in as.
-	DataDbPass               string // The user's password.
-	LoadHistorySize          int    // Maximum number of records to archive in load history
-	StorDBType               string // Should reflect the database type used to store logs
-	StorDBHost               string // The host to connect to. Values that start with / are for UNIX domain sockets.
-	StorDBPort               string // Th e port to bind to.
-	StorDBName               string // The name of the database to connect to.
-	StorDBUser               string // The user to sign in as.
-	StorDBPass               string // The user's password.
-	StorDBMaxOpenConns       int    // Maximum database connections opened
-	StorDBMaxIdleConns       int    // Maximum idle connections to keep opened
-	StorDBCDRSIndexes        []string
-	DBDataEncoding           string // The encoding used to store object data in strings: <msgpack|json>
-	CacheConfig              *CacheConfig
-	RPCJSONListen            string        // RPC JSON listening address
-	RPCGOBListen             string        // RPC GOB listening address
-	HTTPListen               string        // HTTP listening address
-	DefaultReqType           string        // Use this request type if not defined on top
-	DefaultCategory          string        // set default type of record
-	DefaultTenant            string        // set default tenant
-	DefaultTimezone          string        // default timezone for timestamps where not specified <""|UTC|Local|$IANA_TZ_DB>
-	Reconnects               int           // number of recconect attempts in case of connection lost <-1 for infinite | nb>
-	ConnectTimeout           time.Duration // timeout for RPC connection attempts
-	ReplyTimeout             time.Duration // timeout replies if not reaching back
-	ConnectAttempts          int           // number of initial connection attempts before giving up
-	ResponseCacheTTL         time.Duration // the life span of a cached response
-	InternalTtl              time.Duration // maximum duration to wait for internal connections before giving up
-	RoundingDecimals         int           // Number of decimals to round end prices at
-	HttpSkipTlsVerify        bool          // If enabled Http Client will accept any TLS certificate
-	TpExportPath             string        // Path towards export folder for offline Tariff Plans
-	HttpPosterAttempts       int
-	HttpFailedDir            string          // Directory path where we store failed http requests
-	MaxCallDuration          time.Duration   // The maximum call duration (used by responder when querying DerivedCharging) // ToDo: export it in configuration file
-	LockingTimeout           time.Duration   // locking mechanism timeout to avoid deadlocks
-	RALsEnabled              bool            // start standalone server (no balancer)
-	RALsBalancer             string          // balancer address host:port
-	RALsCDRStatSConns        []*HaPoolConfig // address where to reach the cdrstats service. Empty to disable stats gathering  <""|internal|x.y.z.y:1234>
-	RALsHistorySConns        []*HaPoolConfig
-	RALsPubSubSConns         []*HaPoolConfig
-	RALsUserSConns           []*HaPoolConfig
-	RALsAliasSConns          []*HaPoolConfig
-	RpSubjectPrefixMatching  bool // enables prefix matching for the rating profile subject
-	LcrSubjectPrefixMatching bool // enables prefix matching for the lcr subject
-	BalancerEnabled          bool
-	SchedulerEnabled         bool
-	CDRSEnabled              bool                 // Enable CDR Server service
-	CDRSExtraFields          []*utils.RSRField    // Extra fields to store in CDRs
-	CDRSStoreCdrs            bool                 // store cdrs in storDb
-	CDRSRaterConns           []*HaPoolConfig      // address where to reach the Rater for cost calculation: <""|internal|x.y.z.y:1234>
-	CDRSPubSubSConns         []*HaPoolConfig      // address where to reach the pubsub service: <""|internal|x.y.z.y:1234>
-	CDRSUserSConns           []*HaPoolConfig      // address where to reach the users service: <""|internal|x.y.z.y:1234>
-	CDRSAliaseSConns         []*HaPoolConfig      // address where to reach the aliases service: <""|internal|x.y.z.y:1234>
-	CDRSStatSConns           []*HaPoolConfig      // address where to reach the cdrstats service. Empty to disable stats gathering  <""|internal|x.y.z.y:1234>
-	CDRSCdrReplication       []*CdrReplicationCfg // Replicate raw CDRs to a number of servers
-	CDRStatsEnabled          bool                 // Enable CDR Stats service
-	CDRStatsSaveInterval     time.Duration        // Save interval duration
-	CdreProfiles             map[string]*CdreConfig
-	CdrcProfiles             map[string][]*CdrcConfig // Number of CDRC instances running imports, format map[dirPath][]{Configs}
-	SmGenericConfig          *SmGenericConfig
-	SmFsConfig               *SmFsConfig              // SMFreeSWITCH configuration
-	SmKamConfig              *SmKamConfig             // SM-Kamailio Configuration
-	SmOsipsConfig            *SmOsipsConfig           // SMOpenSIPS Configuration
-	diameterAgentCfg         *DiameterAgentCfg        // DiameterAgent configuration
-	HistoryServer            string                   // Address where to reach the master history server: <internal|x.y.z.y:1234>
-	HistoryServerEnabled     bool                     // Starts History as server: <true|false>.
-	HistoryDir               string                   // Location on disk where to store history files.
-	HistorySaveInterval      time.Duration            // The timout duration between pubsub writes
-	PubSubServerEnabled      bool                     // Starts PubSub as server: <true|false>.
-	AliasesServerEnabled     bool                     // Starts PubSub as server: <true|false>.
-	UserServerEnabled        bool                     // Starts User as server: <true|false>
-	UserServerIndexes        []string                 // List of user profile field indexes
-	resourceLimiterCfg       *ResourceLimiterConfig   // Configuration for resource limiter
-	MailerServer             string                   // The server to use when sending emails out
-	MailerAuthUser           string                   // Authenticate to email server using this user
-	MailerAuthPass           string                   // Authenticate to email server with this password
-	MailerFromAddr           string                   // From address used when sending emails out
-	DataFolderPath           string                   // Path towards data folder, for tests internal usage, not loading out of .json options
-	sureTaxCfg               *SureTaxCfg              // Load here SureTax configuration, as pointer so we can have runtime reloads in the future
-	ConfigReloads            map[string]chan struct{} // Signals to specific entities that a config reload should occur
-	// Cache defaults loaded from json and needing clones
-	dfltCdreProfile *CdreConfig // Default cdreConfig profile
-	dfltCdrcProfile *CdrcConfig // Default cdrcConfig profile
-}
-
-func (self *CGRConfig) checkConfigSanity() error {
-	// Rater checks
-	if self.RALsEnabled {
-		if self.RALsBalancer == utils.MetaInternal && !self.BalancerEnabled {
-			return errors.New("Balancer not enabled but requested by Rater component.")
-		}
-		for _, connCfg := range self.RALsCDRStatSConns {
-			if connCfg.Address == utils.MetaInternal && !self.CDRStatsEnabled {
-				return errors.New("CDRStats not enabled but requested by Rater component.")
-			}
-		}
-		for _, connCfg := range self.RALsHistorySConns {
-			if connCfg.Address == utils.MetaInternal && !self.HistoryServerEnabled {
-				return errors.New("History server not enabled but requested by Rater component.")
-			}
-		}
-		for _, connCfg := range self.RALsPubSubSConns {
-			if connCfg.Address == utils.MetaInternal && !self.PubSubServerEnabled {
-				return errors.New("PubSub server not enabled but requested by Rater component.")
-			}
-		}
-		for _, connCfg := range self.RALsAliasSConns {
-			if connCfg.Address == utils.MetaInternal && !self.AliasesServerEnabled {
-				return errors.New("Alias server not enabled but requested by Rater component.")
-			}
-		}
-		for _, connCfg := range self.RALsUserSConns {
-			if connCfg.Address == utils.MetaInternal && !self.UserServerEnabled {
-				return errors.New("User service not enabled but requested by Rater component.")
-			}
-		}
-	}
-	// CDRServer checks
-	if self.CDRSEnabled {
-		for _, cdrsRaterConn := range self.CDRSRaterConns {
-			if cdrsRaterConn.Address == utils.MetaInternal && !self.RALsEnabled {
-				return errors.New("RALs not enabled but requested by CDRS component.")
-			}
-		}
-		for _, connCfg := range self.CDRSPubSubSConns {
-			if connCfg.Address == utils.MetaInternal && !self.PubSubServerEnabled {
-				return errors.New("PubSubS not enabled but requested by CDRS component.")
-			}
-		}
-		for _, connCfg := range self.CDRSUserSConns {
-			if connCfg.Address == utils.MetaInternal && !self.UserServerEnabled {
-				return errors.New("UserS not enabled but requested by CDRS component.")
-			}
-		}
-		for _, connCfg := range self.CDRSAliaseSConns {
-			if connCfg.Address == utils.MetaInternal && !self.AliasesServerEnabled {
-				return errors.New("AliaseS not enabled but requested by CDRS component.")
-			}
-		}
-		for _, connCfg := range self.CDRSStatSConns {
-			if connCfg.Address == utils.MetaInternal && !self.CDRStatsEnabled {
-				return errors.New("CDRStatS not enabled but requested by CDRS component.")
-			}
-		}
-	}
-	// CDRC sanity checks
-	for _, cdrcCfgs := range self.CdrcProfiles {
-		for _, cdrcInst := range cdrcCfgs {
-			if !cdrcInst.Enabled {
-				continue
-			}
-			if len(cdrcInst.CdrsConns) == 0 {
-				return fmt.Errorf("<CDRC> Instance: %s, CdrC enabled but no CDRS defined!", cdrcInst.ID)
-			}
-			for _, conn := range cdrcInst.CdrsConns {
-				if conn.Address == utils.MetaInternal && !self.CDRSEnabled {
-					return errors.New("CDRS not enabled but referenced from CDRC")
-				}
-			}
-			if len(cdrcInst.ContentFields) == 0 {
-				return errors.New("CdrC enabled but no fields to be processed defined!")
-			}
-			if cdrcInst.CdrFormat == utils.CSV {
-				for _, cdrFld := range cdrcInst.ContentFields {
-					for _, rsrFld := range cdrFld.Value {
-						if _, errConv := strconv.Atoi(rsrFld.Id); errConv != nil && !rsrFld.IsStatic() {
-							return fmt.Errorf("CDR fields must be indices in case of .csv files, have instead: %s", rsrFld.Id)
-						}
-					}
-				}
-			}
-		}
-	}
-	// SMGeneric checks
-	if self.SmGenericConfig.Enabled {
-		if len(self.SmGenericConfig.RALsConns) == 0 {
-			return errors.New("<SMGeneric> RALs definition is mandatory!")
-		}
-		for _, smgRALsConn := range self.SmGenericConfig.RALsConns {
-			if smgRALsConn.Address == utils.MetaInternal && !self.RALsEnabled {
-				return errors.New("<SMGeneric> RALs not enabled but requested by SMGeneric component.")
-			}
-		}
-		if len(self.SmGenericConfig.CDRsConns) == 0 {
-			return errors.New("<SMGeneric> CDRs definition is mandatory!")
-		}
-		for _, smgCDRSConn := range self.SmGenericConfig.CDRsConns {
-			if smgCDRSConn.Address == utils.MetaInternal && !self.CDRSEnabled {
-				return errors.New("<SMGeneric> CDRS not enabled but referenced by SMGeneric component")
-			}
-		}
-	}
-	// SMFreeSWITCH checks
-	if self.SmFsConfig.Enabled {
-		if len(self.SmFsConfig.RALsConns) == 0 {
-			return errors.New("<SMFreeSWITCH> RALs definition is mandatory!")
-		}
-		for _, smFSRaterConn := range self.SmFsConfig.RALsConns {
-			if smFSRaterConn.Address == utils.MetaInternal && !self.RALsEnabled {
-				return errors.New("<SMFreeSWITCH> RALs not enabled but requested by SMFreeSWITCH component.")
-			}
-		}
-		if len(self.SmFsConfig.CDRsConns) == 0 {
-			return errors.New("<SMFreeSWITCH> CDRS definition is mandatory!")
-		}
-		for _, smFSCDRSConn := range self.SmFsConfig.CDRsConns {
-			if smFSCDRSConn.Address == utils.MetaInternal && !self.CDRSEnabled {
-				return errors.New("CDRS not enabled but referenced by SMFreeSWITCH component")
-			}
-		}
-		for _, smFSRLsConn := range self.SmFsConfig.RLsConns {
-			if smFSRLsConn.Address == utils.MetaInternal && !self.resourceLimiterCfg.Enabled {
-				return errors.New("RLs not enabled but referenced by SMFreeSWITCH component")
-			}
-		}
-	}
-	// SM-Kamailio checks
-	if self.SmKamConfig.Enabled {
-		if len(self.SmKamConfig.RALsConns) == 0 {
-			return errors.New("Rater definition is mandatory!")
-		}
-		for _, smKamRaterConn := range self.SmKamConfig.RALsConns {
-			if smKamRaterConn.Address == utils.MetaInternal && !self.RALsEnabled {
-				return errors.New("Rater not enabled but requested by SM-Kamailio component.")
-			}
-		}
-		if len(self.SmKamConfig.CDRsConns) == 0 {
-			return errors.New("Cdrs definition is mandatory!")
-		}
-		for _, smKamCDRSConn := range self.SmKamConfig.CDRsConns {
-			if smKamCDRSConn.Address == utils.MetaInternal && !self.CDRSEnabled {
-				return errors.New("CDRS not enabled but referenced by SM-Kamailio component")
-			}
-		}
-	}
-	// SMOpenSIPS checks
-	if self.SmOsipsConfig.Enabled {
-		if len(self.SmOsipsConfig.RALsConns) == 0 {
-			return errors.New("<SMOpenSIPS> Rater definition is mandatory!")
-		}
-		for _, smOsipsRaterConn := range self.SmOsipsConfig.RALsConns {
-			if smOsipsRaterConn.Address == utils.MetaInternal && !self.RALsEnabled {
-				return errors.New("<SMOpenSIPS> RALs not enabled but requested by SMOpenSIPS component.")
-			}
-		}
-		if len(self.SmOsipsConfig.CDRsConns) == 0 {
-			return errors.New("<SMOpenSIPS> CDRs definition is mandatory!")
-		}
-
-		for _, smOsipsCDRSConn := range self.SmOsipsConfig.CDRsConns {
-			if smOsipsCDRSConn.Address == utils.MetaInternal && !self.CDRSEnabled {
-				return errors.New("<SMOpenSIPS> CDRS not enabled but referenced by SMOpenSIPS component")
-			}
-		}
-	}
-	// DAgent checks
-	if self.diameterAgentCfg.Enabled {
-		for _, daSMGConn := range self.diameterAgentCfg.SMGenericConns {
-			if daSMGConn.Address == utils.MetaInternal && !self.SmGenericConfig.Enabled {
-				return errors.New("SMGeneric not enabled but referenced by DiameterAgent component")
-			}
-		}
-		for _, daPubSubSConn := range self.diameterAgentCfg.PubSubConns {
-			if daPubSubSConn.Address == utils.MetaInternal && !self.PubSubServerEnabled {
-				return errors.New("PubSubS not enabled but requested by DiameterAgent component.")
-			}
-		}
-	}
-	// ResourceLimiter checks
-	if self.resourceLimiterCfg != nil && self.resourceLimiterCfg.Enabled {
-		for _, connCfg := range self.resourceLimiterCfg.CDRStatConns {
-			if connCfg.Address == utils.MetaInternal && !self.CDRStatsEnabled {
-				return errors.New("CDRStats not enabled but requested by ResourceLimiter component.")
-			}
-		}
+	} else {
+		od := overwriteDefault
+		overwriteDefault = false
+		return LoadFile(path, od)
 	}
 	return nil
 }
 
-// Loads from json configuration object, will be used for defaults, config from file and reload, might need lock
-func (self *CGRConfig) loadFromJsonCfg(jsnCfg *CgrJsonCfg) error {
-
-	// Load sections out of JSON config, stop on error
-	jsnGeneralCfg, err := jsnCfg.GeneralJsonCfg()
-	if err != nil {
-		return err
-	}
-
-	// Load sections out of JSON config, stop on error
-	jsnCacheCfg, err := jsnCfg.CacheJsonCfg()
-	if err != nil {
-		return err
-	}
-
-	jsnListenCfg, err := jsnCfg.ListenJsonCfg()
-	if err != nil {
-		return err
-	}
-
-	jsnTpDbCfg, err := jsnCfg.DbJsonCfg(TPDB_JSN)
-	if err != nil {
-		return err
-	}
-
-	jsnDataDbCfg, err := jsnCfg.DbJsonCfg(DATADB_JSN)
-	if err != nil {
-		return err
-	}
-
-	jsnStorDbCfg, err := jsnCfg.DbJsonCfg(STORDB_JSN)
-	if err != nil {
-		return err
-	}
-
-	jsnBalancerCfg, err := jsnCfg.BalancerJsonCfg()
-	if err != nil {
-		return err
-	}
-
-	jsnRALsCfg, err := jsnCfg.RalsJsonCfg()
-	if err != nil {
-		return err
-	}
-
-	jsnSchedCfg, err := jsnCfg.SchedulerJsonCfg()
-	if err != nil {
-		return err
-	}
-
-	jsnCdrsCfg, err := jsnCfg.CdrsJsonCfg()
-	if err != nil {
-		return err
-	}
-
-	jsnCdrstatsCfg, err := jsnCfg.CdrStatsJsonCfg()
-	if err != nil {
-		return err
-	}
-
-	jsnCdreCfg, err := jsnCfg.CdreJsonCfgs()
-	if err != nil {
-		return err
-	}
-
-	jsnCdrcCfg, err := jsnCfg.CdrcJsonCfg()
-	if err != nil {
-		return err
-	}
-
-	jsnSmGenericCfg, err := jsnCfg.SmGenericJsonCfg()
-	if err != nil {
-		return err
-	}
-
-	jsnSmFsCfg, err := jsnCfg.SmFsJsonCfg()
-	if err != nil {
-		return err
-	}
-
-	jsnSmKamCfg, err := jsnCfg.SmKamJsonCfg()
-	if err != nil {
-		return err
-	}
-
-	jsnSmOsipsCfg, err := jsnCfg.SmOsipsJsonCfg()
-	if err != nil {
-		return err
-	}
-
-	jsnDACfg, err := jsnCfg.DiameterAgentJsonCfg()
-	if err != nil {
-		return err
-	}
-
-	jsnHistServCfg, err := jsnCfg.HistServJsonCfg()
-	if err != nil {
-		return err
-	}
-
-	jsnPubSubServCfg, err := jsnCfg.PubSubServJsonCfg()
-	if err != nil {
-		return err
-	}
-
-	jsnAliasesServCfg, err := jsnCfg.AliasesServJsonCfg()
-	if err != nil {
-		return err
-	}
-
-	jsnUserServCfg, err := jsnCfg.UserServJsonCfg()
-	if err != nil {
-		return err
-	}
-
-	jsnRLSCfg, err := jsnCfg.ResourceLimiterJsonCfg()
-	if err != nil {
-		return err
-	}
-
-	jsnMailerCfg, err := jsnCfg.MailerJsonCfg()
-	if err != nil {
-		return err
-	}
-
-	jsnSureTaxCfg, err := jsnCfg.SureTaxJsonCfg()
-	if err != nil {
-		return err
-	}
-
-	// All good, start populating config variables
-	if jsnTpDbCfg != nil {
-		if jsnTpDbCfg.Db_type != nil {
-			self.TpDbType = *jsnTpDbCfg.Db_type
-		}
-		if jsnTpDbCfg.Db_host != nil {
-			self.TpDbHost = *jsnTpDbCfg.Db_host
-		}
-		if jsnTpDbCfg.Db_port != nil {
-			self.TpDbPort = strconv.Itoa(*jsnTpDbCfg.Db_port)
-		}
-		if jsnTpDbCfg.Db_name != nil {
-			self.TpDbName = *jsnTpDbCfg.Db_name
-		}
-		if jsnTpDbCfg.Db_user != nil {
-			self.TpDbUser = *jsnTpDbCfg.Db_user
-		}
-		if jsnTpDbCfg.Db_password != nil {
-			self.TpDbPass = *jsnTpDbCfg.Db_password
-		}
-	}
-
-	if jsnDataDbCfg != nil {
-		if jsnDataDbCfg.Db_type != nil {
-			self.DataDbType = *jsnDataDbCfg.Db_type
-		}
-		if jsnDataDbCfg.Db_host != nil {
-			self.DataDbHost = *jsnDataDbCfg.Db_host
-		}
-		if jsnDataDbCfg.Db_port != nil {
-			self.DataDbPort = strconv.Itoa(*jsnDataDbCfg.Db_port)
-		}
-		if jsnDataDbCfg.Db_name != nil {
-			self.DataDbName = *jsnDataDbCfg.Db_name
-		}
-		if jsnDataDbCfg.Db_user != nil {
-			self.DataDbUser = *jsnDataDbCfg.Db_user
-		}
-		if jsnDataDbCfg.Db_password != nil {
-			self.DataDbPass = *jsnDataDbCfg.Db_password
-		}
-		if jsnDataDbCfg.Load_history_size != nil {
-			self.LoadHistorySize = *jsnDataDbCfg.Load_history_size
-		}
-	}
-
-	if jsnStorDbCfg != nil {
-		if jsnStorDbCfg.Db_type != nil {
-			self.StorDBType = *jsnStorDbCfg.Db_type
-		}
-		if jsnStorDbCfg.Db_host != nil {
-			self.StorDBHost = *jsnStorDbCfg.Db_host
-		}
-		if jsnStorDbCfg.Db_port != nil {
-			self.StorDBPort = strconv.Itoa(*jsnStorDbCfg.Db_port)
-		}
-		if jsnStorDbCfg.Db_name != nil {
-			self.StorDBName = *jsnStorDbCfg.Db_name
-		}
-		if jsnStorDbCfg.Db_user != nil {
-			self.StorDBUser = *jsnStorDbCfg.Db_user
-		}
-		if jsnStorDbCfg.Db_password != nil {
-			self.StorDBPass = *jsnStorDbCfg.Db_password
-		}
-		if jsnStorDbCfg.Max_open_conns != nil {
-			self.StorDBMaxOpenConns = *jsnStorDbCfg.Max_open_conns
-		}
-		if jsnStorDbCfg.Max_idle_conns != nil {
-			self.StorDBMaxIdleConns = *jsnStorDbCfg.Max_idle_conns
-		}
-		if jsnStorDbCfg.Cdrs_indexes != nil {
-			self.StorDBCDRSIndexes = *jsnStorDbCfg.Cdrs_indexes
-		}
-	}
-
-	if jsnGeneralCfg != nil {
-		if jsnGeneralCfg.Dbdata_encoding != nil {
-			self.DBDataEncoding = *jsnGeneralCfg.Dbdata_encoding
-		}
-		if jsnGeneralCfg.Default_request_type != nil {
-			self.DefaultReqType = *jsnGeneralCfg.Default_request_type
-		}
-		if jsnGeneralCfg.Default_category != nil {
-			self.DefaultCategory = *jsnGeneralCfg.Default_category
-		}
-		if jsnGeneralCfg.Default_tenant != nil {
-			self.DefaultTenant = *jsnGeneralCfg.Default_tenant
-		}
-		if jsnGeneralCfg.Connect_attempts != nil {
-			self.ConnectAttempts = *jsnGeneralCfg.Connect_attempts
-		}
-		if jsnGeneralCfg.Response_cache_ttl != nil {
-			if self.ResponseCacheTTL, err = utils.ParseDurationWithSecs(*jsnGeneralCfg.Response_cache_ttl); err != nil {
-				return err
-			}
-		}
-		if jsnGeneralCfg.Reconnects != nil {
-			self.Reconnects = *jsnGeneralCfg.Reconnects
-		}
-		if jsnGeneralCfg.Connect_timeout != nil {
-			if self.ConnectTimeout, err = utils.ParseDurationWithSecs(*jsnGeneralCfg.Connect_timeout); err != nil {
-				return err
-			}
-		}
-		if jsnGeneralCfg.Reply_timeout != nil {
-			if self.ReplyTimeout, err = utils.ParseDurationWithSecs(*jsnGeneralCfg.Reply_timeout); err != nil {
-				return err
-			}
-		}
-		if jsnGeneralCfg.Rounding_decimals != nil {
-			self.RoundingDecimals = *jsnGeneralCfg.Rounding_decimals
-		}
-		if jsnGeneralCfg.Http_skip_tls_verify != nil {
-			self.HttpSkipTlsVerify = *jsnGeneralCfg.Http_skip_tls_verify
-		}
-		if jsnGeneralCfg.Tpexport_dir != nil {
-			self.TpExportPath = *jsnGeneralCfg.Tpexport_dir
-		}
-		if jsnGeneralCfg.Httpposter_attempts != nil {
-			self.HttpPosterAttempts = *jsnGeneralCfg.Httpposter_attempts
-		}
-		if jsnGeneralCfg.Http_failed_dir != nil {
-			self.HttpFailedDir = *jsnGeneralCfg.Http_failed_dir
-		}
-		if jsnGeneralCfg.Default_timezone != nil {
-			self.DefaultTimezone = *jsnGeneralCfg.Default_timezone
-		}
-		if jsnGeneralCfg.Internal_ttl != nil {
-			if self.InternalTtl, err = utils.ParseDurationWithSecs(*jsnGeneralCfg.Internal_ttl); err != nil {
-				return err
-			}
-		}
-		if jsnGeneralCfg.Locking_timeout != nil {
-			if self.LockingTimeout, err = utils.ParseDurationWithSecs(*jsnGeneralCfg.Locking_timeout); err != nil {
-				return err
-			}
-		}
-	}
-
-	if jsnCacheCfg != nil {
-		if err := self.CacheConfig.loadFromJsonCfg(jsnCacheCfg); err != nil {
-			return err
-		}
-	}
-
-	if jsnListenCfg != nil {
-		if jsnListenCfg.Rpc_json != nil {
-			self.RPCJSONListen = *jsnListenCfg.Rpc_json
-		}
-		if jsnListenCfg.Rpc_gob != nil {
-			self.RPCGOBListen = *jsnListenCfg.Rpc_gob
-		}
-		if jsnListenCfg.Http != nil {
-			self.HTTPListen = *jsnListenCfg.Http
-		}
-	}
-
-	if jsnRALsCfg != nil {
-		if jsnRALsCfg.Enabled != nil {
-			self.RALsEnabled = *jsnRALsCfg.Enabled
-		}
-		if jsnRALsCfg.Balancer != nil {
-			self.RALsBalancer = *jsnRALsCfg.Balancer
-		}
-		if jsnRALsCfg.Cdrstats_conns != nil {
-			self.RALsCDRStatSConns = make([]*HaPoolConfig, len(*jsnRALsCfg.Cdrstats_conns))
-			for idx, jsnHaCfg := range *jsnRALsCfg.Cdrstats_conns {
-				self.RALsCDRStatSConns[idx] = NewDfltHaPoolConfig()
-				self.RALsCDRStatSConns[idx].loadFromJsonCfg(jsnHaCfg)
-			}
-		}
-		if jsnRALsCfg.Historys_conns != nil {
-			self.RALsHistorySConns = make([]*HaPoolConfig, len(*jsnRALsCfg.Historys_conns))
-			for idx, jsnHaCfg := range *jsnRALsCfg.Historys_conns {
-				self.RALsHistorySConns[idx] = NewDfltHaPoolConfig()
-				self.RALsHistorySConns[idx].loadFromJsonCfg(jsnHaCfg)
-			}
-		}
-		if jsnRALsCfg.Pubsubs_conns != nil {
-			self.RALsPubSubSConns = make([]*HaPoolConfig, len(*jsnRALsCfg.Pubsubs_conns))
-			for idx, jsnHaCfg := range *jsnRALsCfg.Pubsubs_conns {
-				self.RALsPubSubSConns[idx] = NewDfltHaPoolConfig()
-				self.RALsPubSubSConns[idx].loadFromJsonCfg(jsnHaCfg)
-			}
-		}
-		if jsnRALsCfg.Aliases_conns != nil {
-			self.RALsAliasSConns = make([]*HaPoolConfig, len(*jsnRALsCfg.Aliases_conns))
-			for idx, jsnHaCfg := range *jsnRALsCfg.Aliases_conns {
-				self.RALsAliasSConns[idx] = NewDfltHaPoolConfig()
-				self.RALsAliasSConns[idx].loadFromJsonCfg(jsnHaCfg)
-			}
-		}
-		if jsnRALsCfg.Users_conns != nil {
-			self.RALsUserSConns = make([]*HaPoolConfig, len(*jsnRALsCfg.Users_conns))
-			for idx, jsnHaCfg := range *jsnRALsCfg.Users_conns {
-				self.RALsUserSConns[idx] = NewDfltHaPoolConfig()
-				self.RALsUserSConns[idx].loadFromJsonCfg(jsnHaCfg)
-			}
-		}
-		if jsnRALsCfg.Rp_subject_prefix_matching != nil {
-			self.RpSubjectPrefixMatching = *jsnRALsCfg.Rp_subject_prefix_matching
-		}
-		if jsnRALsCfg.Lcr_subject_prefix_matching != nil {
-			self.LcrSubjectPrefixMatching = *jsnRALsCfg.Lcr_subject_prefix_matching
-		}
-	}
-
-	if jsnBalancerCfg != nil && jsnBalancerCfg.Enabled != nil {
-		self.BalancerEnabled = *jsnBalancerCfg.Enabled
-	}
-
-	if jsnSchedCfg != nil && jsnSchedCfg.Enabled != nil {
-		self.SchedulerEnabled = *jsnSchedCfg.Enabled
-	}
-
-	if jsnCdrsCfg != nil {
-		if jsnCdrsCfg.Enabled != nil {
-			self.CDRSEnabled = *jsnCdrsCfg.Enabled
-		}
-		if jsnCdrsCfg.Extra_fields != nil {
-			if self.CDRSExtraFields, err = utils.ParseRSRFieldsFromSlice(*jsnCdrsCfg.Extra_fields); err != nil {
-				return err
-			}
-		}
-		if jsnCdrsCfg.Store_cdrs != nil {
-			self.CDRSStoreCdrs = *jsnCdrsCfg.Store_cdrs
-		}
-		if jsnCdrsCfg.Rals_conns != nil {
-			self.CDRSRaterConns = make([]*HaPoolConfig, len(*jsnCdrsCfg.Rals_conns))
-			for idx, jsnHaCfg := range *jsnCdrsCfg.Rals_conns {
-				self.CDRSRaterConns[idx] = NewDfltHaPoolConfig()
-				self.CDRSRaterConns[idx].loadFromJsonCfg(jsnHaCfg)
-			}
-		}
-		if jsnCdrsCfg.Pubsubs_conns != nil {
-			self.CDRSPubSubSConns = make([]*HaPoolConfig, len(*jsnCdrsCfg.Pubsubs_conns))
-			for idx, jsnHaCfg := range *jsnCdrsCfg.Pubsubs_conns {
-				self.CDRSPubSubSConns[idx] = NewDfltHaPoolConfig()
-				self.CDRSPubSubSConns[idx].loadFromJsonCfg(jsnHaCfg)
-			}
-		}
-		if jsnCdrsCfg.Users_conns != nil {
-			self.CDRSUserSConns = make([]*HaPoolConfig, len(*jsnCdrsCfg.Users_conns))
-			for idx, jsnHaCfg := range *jsnCdrsCfg.Users_conns {
-				self.CDRSUserSConns[idx] = NewDfltHaPoolConfig()
-				self.CDRSUserSConns[idx].loadFromJsonCfg(jsnHaCfg)
-			}
-		}
-		if jsnCdrsCfg.Aliases_conns != nil {
-			self.CDRSAliaseSConns = make([]*HaPoolConfig, len(*jsnCdrsCfg.Aliases_conns))
-			for idx, jsnHaCfg := range *jsnCdrsCfg.Aliases_conns {
-				self.CDRSAliaseSConns[idx] = NewDfltHaPoolConfig()
-				self.CDRSAliaseSConns[idx].loadFromJsonCfg(jsnHaCfg)
-			}
-		}
-		if jsnCdrsCfg.Cdrstats_conns != nil {
-			self.CDRSStatSConns = make([]*HaPoolConfig, len(*jsnCdrsCfg.Cdrstats_conns))
-			for idx, jsnHaCfg := range *jsnCdrsCfg.Cdrstats_conns {
-				self.CDRSStatSConns[idx] = NewDfltHaPoolConfig()
-				self.CDRSStatSConns[idx].loadFromJsonCfg(jsnHaCfg)
-			}
-		}
-		if jsnCdrsCfg.Cdr_replication != nil {
-			self.CDRSCdrReplication = make([]*CdrReplicationCfg, len(*jsnCdrsCfg.Cdr_replication))
-			for idx, rplJsonCfg := range *jsnCdrsCfg.Cdr_replication {
-				self.CDRSCdrReplication[idx] = new(CdrReplicationCfg)
-				if rplJsonCfg.Transport != nil {
-					self.CDRSCdrReplication[idx].Transport = *rplJsonCfg.Transport
-				}
-				if rplJsonCfg.Address != nil {
-					self.CDRSCdrReplication[idx].Address = *rplJsonCfg.Address
-				}
-				if rplJsonCfg.Synchronous != nil {
-					self.CDRSCdrReplication[idx].Synchronous = *rplJsonCfg.Synchronous
-				}
-				self.CDRSCdrReplication[idx].Attempts = 1
-				if rplJsonCfg.Attempts != nil {
-					self.CDRSCdrReplication[idx].Attempts = *rplJsonCfg.Attempts
-				}
-				if rplJsonCfg.Cdr_filter != nil {
-					if self.CDRSCdrReplication[idx].CdrFilter, err = utils.ParseRSRFields(*rplJsonCfg.Cdr_filter, utils.INFIELD_SEP); err != nil {
-						return err
-					}
-				}
-			}
-		}
-	}
-
-	if jsnCdrstatsCfg != nil {
-		if jsnCdrstatsCfg.Enabled != nil {
-			self.CDRStatsEnabled = *jsnCdrstatsCfg.Enabled
-			if jsnCdrstatsCfg.Save_Interval != nil {
-				if self.CDRStatsSaveInterval, err = utils.ParseDurationWithSecs(*jsnCdrstatsCfg.Save_Interval); err != nil {
-					return err
-				}
-			}
-		}
-	}
-
-	if jsnCdreCfg != nil {
-		if self.CdreProfiles == nil {
-			self.CdreProfiles = make(map[string]*CdreConfig)
-		}
-		for profileName, jsnCdre1Cfg := range jsnCdreCfg {
-			if _, hasProfile := self.CdreProfiles[profileName]; !hasProfile { // New profile, create before loading from json
-				self.CdreProfiles[profileName] = new(CdreConfig)
-				if profileName != utils.META_DEFAULT {
-					self.CdreProfiles[profileName] = self.dfltCdreProfile.Clone() // Clone default so we do not inherit pointers
-				}
-			}
-			if err = self.CdreProfiles[profileName].loadFromJsonCfg(jsnCdre1Cfg); err != nil { // Update the existing profile with content from json config
-				return err
-			}
-		}
-	}
-	if jsnCdrcCfg != nil {
-		if self.CdrcProfiles == nil {
-			self.CdrcProfiles = make(map[string][]*CdrcConfig)
-		}
-		for _, jsnCrc1Cfg := range jsnCdrcCfg {
-			if jsnCrc1Cfg.Id == nil || *jsnCrc1Cfg.Id == "" {
-				return errors.New("CDRC profile without an id")
-			}
-			if *jsnCrc1Cfg.Id == utils.META_DEFAULT {
-				if self.dfltCdrcProfile == nil {
-					self.dfltCdrcProfile = new(CdrcConfig)
-				}
-			}
-			indxFound := -1 // Will be different than -1 if an instance with same id will be found
-			pathFound := "" // Will be populated with the path where slice of cfgs was found
-			var cdrcInstCfg *CdrcConfig
-			for path := range self.CdrcProfiles {
-				for i := range self.CdrcProfiles[path] {
-					if self.CdrcProfiles[path][i].ID == *jsnCrc1Cfg.Id {
-						indxFound = i
-						pathFound = path
-						cdrcInstCfg = self.CdrcProfiles[path][i]
-						break
-					}
-				}
-			}
-			if cdrcInstCfg == nil {
-				cdrcInstCfg = self.dfltCdrcProfile.Clone()
-			}
-			if err := cdrcInstCfg.loadFromJsonCfg(jsnCrc1Cfg); err != nil {
-				return err
-			}
-			if cdrcInstCfg.CdrInDir == "" {
-				return errors.New("CDRC profile without cdr_in_dir")
-			}
-			if _, hasDir := self.CdrcProfiles[cdrcInstCfg.CdrInDir]; !hasDir {
-				self.CdrcProfiles[cdrcInstCfg.CdrInDir] = make([]*CdrcConfig, 0)
-			}
-			if indxFound != -1 { // Replace previous config so we have inheritance
-				self.CdrcProfiles[pathFound][indxFound] = cdrcInstCfg
-			} else {
-				self.CdrcProfiles[cdrcInstCfg.CdrInDir] = append(self.CdrcProfiles[cdrcInstCfg.CdrInDir], cdrcInstCfg)
-			}
-		}
-	}
-	if jsnSmGenericCfg != nil {
-		if err := self.SmGenericConfig.loadFromJsonCfg(jsnSmGenericCfg); err != nil {
-			return err
-		}
-	}
-	if jsnSmFsCfg != nil {
-		if err := self.SmFsConfig.loadFromJsonCfg(jsnSmFsCfg); err != nil {
-			return err
-		}
-	}
-
-	if jsnSmKamCfg != nil {
-		if err := self.SmKamConfig.loadFromJsonCfg(jsnSmKamCfg); err != nil {
-			return err
-		}
-	}
-
-	if jsnSmOsipsCfg != nil {
-		if err := self.SmOsipsConfig.loadFromJsonCfg(jsnSmOsipsCfg); err != nil {
-			return err
-		}
-	}
-
-	if jsnDACfg != nil {
-		if err := self.diameterAgentCfg.loadFromJsonCfg(jsnDACfg); err != nil {
-			return err
-		}
-	}
-
-	if jsnHistServCfg != nil {
-		if jsnHistServCfg.Enabled != nil {
-			self.HistoryServerEnabled = *jsnHistServCfg.Enabled
-		}
-		if jsnHistServCfg.History_dir != nil {
-			self.HistoryDir = *jsnHistServCfg.History_dir
-		}
-		if jsnHistServCfg.Save_interval != nil {
-			if self.HistorySaveInterval, err = utils.ParseDurationWithSecs(*jsnHistServCfg.Save_interval); err != nil {
-				return err
-			}
-		}
-	}
-
-	if jsnPubSubServCfg != nil {
-		if jsnPubSubServCfg.Enabled != nil {
-			self.PubSubServerEnabled = *jsnPubSubServCfg.Enabled
-		}
-	}
-
-	if jsnAliasesServCfg != nil {
-		if jsnAliasesServCfg.Enabled != nil {
-			self.AliasesServerEnabled = *jsnAliasesServCfg.Enabled
-		}
-	}
-
-	if jsnRLSCfg != nil {
-		if self.resourceLimiterCfg == nil {
-			self.resourceLimiterCfg = new(ResourceLimiterConfig)
-		}
-		if self.resourceLimiterCfg.loadFromJsonCfg(jsnRLSCfg); err != nil {
-			return err
-		}
-	}
-
-	if jsnUserServCfg != nil {
-		if jsnUserServCfg.Enabled != nil {
-			self.UserServerEnabled = *jsnUserServCfg.Enabled
-		}
-		if jsnUserServCfg.Indexes != nil {
-			self.UserServerIndexes = *jsnUserServCfg.Indexes
-		}
-	}
-
-	if jsnMailerCfg != nil {
-		if jsnMailerCfg.Server != nil {
-			self.MailerServer = *jsnMailerCfg.Server
-		}
-		if jsnMailerCfg.Auth_user != nil {
-			self.MailerAuthUser = *jsnMailerCfg.Auth_user
-		}
-		if jsnMailerCfg.Auth_password != nil {
-			self.MailerAuthPass = *jsnMailerCfg.Auth_password
-		}
-		if jsnMailerCfg.From_address != nil {
-			self.MailerFromAddr = *jsnMailerCfg.From_address
-		}
-	}
-
-	if jsnSureTaxCfg != nil { // New config for SureTax
-		if self.sureTaxCfg, err = NewSureTaxCfgWithDefaults(); err != nil {
-			return err
-		}
-		if err := self.sureTaxCfg.loadFromJsonCfg(jsnSureTaxCfg); err != nil {
-			return err
-		}
-	}
-
-	return nil
+func Get() *Config {
+	return defaultConfig
 }
 
-// Use locking to retrieve the configuration, possibility later for runtime reload
-func (self *CGRConfig) SureTaxCfg() *SureTaxCfg {
-	cfgChan := <-self.ConfigReloads[utils.SURETAX] // Lock config for read or reloads
-	defer func() { self.ConfigReloads[utils.SURETAX] <- cfgChan }()
-	return self.sureTaxCfg
+func NewDefault() *Config {
+	return &Config{
+		General: &General{
+			InstanceID:         utils.StringPointer(utils.GenUUID()),
+			HttpSkipTlsVerify:  utils.BoolPointer(false),
+			RoundingDecimals:   utils.IntPointer(5),
+			TpexportDir:        utils.StringPointer("/var/spool/accurate/tpe"),
+			HttpPosterAttempts: utils.IntPointer(3),
+			HttpFailedDir:      utils.StringPointer("/var/spool/accurate/http_failed"),
+			DefaultRequestType: utils.StringPointer("*rated"),
+			DefaultCategory:    utils.StringPointer("call"),
+			DefaultTenant:      utils.StringPointer("accurate"),
+			DefaultTimezone:    utils.StringPointer("Local"),
+			ConnectAttempts:    utils.IntPointer(3),
+			Reconnects:         utils.IntPointer(-1),
+			ConnectTimeout:     durPointer(1 * time.Second),
+			ReplyTimeout:       durPointer(2 * time.Second),
+			ResponseCacheTtl:   durPointer(0 * time.Second),
+			InternalTtl:        durPointer(2 * time.Minute),
+			LockingTimeout:     durPointer(5 * time.Second),
+			LogLevel:           utils.IntPointer(6),
+		},
+
+		Cache: &Cache{
+			Destinations:   &CacheParam{Limit: 10000, Ttl: dur(0 * time.Second), Precache: false},
+			RatingPlans:    &CacheParam{Limit: 10000, Ttl: dur(0 * time.Second), Precache: true},
+			RatingProfiles: &CacheParam{Limit: 10000, Ttl: dur(0 * time.Second), Precache: false},
+			Lcr:            &CacheParam{Limit: 10000, Ttl: dur(0 * time.Second), Precache: false},
+			CdrStats:       &CacheParam{Limit: 10000, Ttl: dur(0 * time.Second), Precache: false},
+			Actions:        &CacheParam{Limit: 10000, Ttl: dur(0 * time.Second), Precache: false},
+			ActionPlans:    &CacheParam{Limit: 10000, Ttl: dur(0 * time.Second), Precache: false},
+			ActionTriggers: &CacheParam{Limit: 10000, Ttl: dur(0 * time.Second), Precache: false},
+			SharedGroups:   &CacheParam{Limit: 10000, Ttl: dur(0 * time.Second), Precache: false},
+			Aliases:        &CacheParam{Limit: 10000, Ttl: dur(0 * time.Second), Precache: false},
+		},
+
+		Listen: &Listen{
+			RpcJson: utils.StringPointer("127.0.0.1:2012"),
+			RpcGob:  utils.StringPointer("127.0.0.1:2013"),
+			Http:    utils.StringPointer("127.0.0.1:2080"),
+		},
+
+		TariffPlanDb: &TariffPlanDb{
+			Host:     utils.StringPointer("127.0.0.1"),
+			Port:     utils.StringPointer("27017"),
+			Name:     utils.StringPointer("tpdb"),
+			User:     utils.StringPointer("accurate"),
+			Password: utils.StringPointer("accuRate"),
+		},
+
+		DataDb: &DataDb{
+			Host:            utils.StringPointer("127.0.0.1"),
+			Port:            utils.StringPointer("27017"),
+			Name:            utils.StringPointer("datadb"),
+			User:            utils.StringPointer("accurate"),
+			Password:        utils.StringPointer("accuRate"),
+			LoadHistorySize: utils.IntPointer(10),
+		},
+
+		CdrDb: &CdrDb{
+			Host:         utils.StringPointer("127.0.0.1"),
+			Port:         utils.StringPointer("27017"),
+			Name:         utils.StringPointer("cdrdb"),
+			User:         utils.StringPointer("accurate"),
+			Password:     utils.StringPointer("accuRate"),
+			MaxOpenConns: utils.IntPointer(100),
+			MaxIdleConns: utils.IntPointer(10),
+			CdrsIndexes:  []string{},
+		},
+
+		Balancer: &Balancer{
+			Enabled: utils.BoolPointer(false),
+		},
+
+		Rals: &Rals{
+			Enabled:                  utils.BoolPointer(false),
+			Balancer:                 utils.StringPointer(""),
+			CdrStatsConns:            []*HaPool{},
+			HistorysConns:            []*HaPool{},
+			PubsubsConns:             []*HaPool{},
+			UsersConns:               []*HaPool{},
+			AliasesConns:             []*HaPool{},
+			RpSubjectPrefixMatching:  utils.BoolPointer(false),
+			LcrSubjectPrefixMatching: utils.BoolPointer(false),
+		},
+
+		Scheduler: &Scheduler{
+			Enabled: utils.BoolPointer(false),
+		},
+
+		Cdrs: &Cdrs{
+			Enabled:        utils.BoolPointer(false),
+			ExtraFields:    nil,
+			StoreCdrs:      utils.BoolPointer(true),
+			AccountSummary: utils.BoolPointer(false),
+			SmCostRetries:  utils.IntPointer(5),
+			RalsConns:      []*HaPool{&HaPool{Address: "*internal"}},
+			PubsubsConns:   []*HaPool{},
+			UsersConns:     []*HaPool{},
+			AliasesConns:   []*HaPool{},
+			CdrStatsConns:  []*HaPool{},
+			CdrReplication: []*CdrReplication{},
+		},
+
+		CdrStats: &CdrStats{
+			Enabled: utils.BoolPointer(false),
+		},
+
+		Cdrc: &[]*Cdrc{
+			&Cdrc{
+				ID:                       utils.StringPointer("*default"),
+				Enabled:                  utils.BoolPointer(false),
+				DryRun:                   utils.BoolPointer(false),
+				CdrsConns:                []*HaPool{&HaPool{Address: "*internal"}},
+				CdrFormat:                utils.StringPointer("csv"),
+				FieldSeparator:           utils.StringPointer(","),
+				Timezone:                 utils.StringPointer(""),
+				RunDelay:                 utils.IntPointer(0),
+				MaxOpenFiles:             utils.IntPointer(1024),
+				DataUsageMultiplyFactor:  utils.Float64Pointer(1024),
+				CdrInDir:                 utils.StringPointer("/var/spool/accurate/cdrc/in"),
+				CdrOutDir:                utils.StringPointer("/var/spool/accurate/cdrc/out"),
+				FailedCallsPrefix:        utils.StringPointer("missed_calls"),
+				CdrPath:                  utils.StringPointer(""),
+				CdrSourceID:              utils.StringPointer("freeswitch_csv"),
+				CdrFilter:                utils.ParseRSRFieldsMustCompile("", utils.INFIELD_SEP),
+				ContinueOnSuccess:        utils.BoolPointer(false),
+				PartialRecordCache:       durPointer(10 * time.Second),
+				PartialCacheExpiryAction: utils.StringPointer("*dump_to_file"),
+				HeaderFields:             []*CdrField{},
+				ContentFields: []*CdrField{
+					&CdrField{Tag: "TOR", FieldID: "ToR", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("2", utils.INFIELD_SEP), Mandatory: true},
+					&CdrField{Tag: "OriginID", FieldID: "OriginID", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("3", utils.INFIELD_SEP), Mandatory: true},
+					&CdrField{Tag: "RequestType", FieldID: "RequestType", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("4", utils.INFIELD_SEP), Mandatory: true},
+					&CdrField{Tag: "Direction", FieldID: "Direction", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("5", utils.INFIELD_SEP), Mandatory: true},
+					&CdrField{Tag: "Tenant", FieldID: "Tenant", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("6", utils.INFIELD_SEP), Mandatory: true},
+					&CdrField{Tag: "Category", FieldID: "Category", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("7", utils.INFIELD_SEP), Mandatory: true},
+					&CdrField{Tag: "Account", FieldID: "Account", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("8", utils.INFIELD_SEP), Mandatory: true},
+					&CdrField{Tag: "Subject", FieldID: "Subject", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("9", utils.INFIELD_SEP), Mandatory: true},
+					&CdrField{Tag: "Destination", FieldID: "Destination", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("10", utils.INFIELD_SEP), Mandatory: true},
+					&CdrField{Tag: "SetupTime", FieldID: "SetupTime", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("11", utils.INFIELD_SEP), Mandatory: true},
+					&CdrField{Tag: "AnswerTime", FieldID: "AnswerTime", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("12", utils.INFIELD_SEP), Mandatory: true},
+					&CdrField{Tag: "Usage", FieldID: "Usage", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("13", utils.INFIELD_SEP), Mandatory: true},
+				},
+				TrailerFields: []*CdrField{},
+				CacheDumpFields: []*CdrField{
+					&CdrField{Tag: "UniqueID", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("UniqueID", utils.INFIELD_SEP)},
+					&CdrField{Tag: "RunID", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("RunID", utils.INFIELD_SEP)},
+					&CdrField{Tag: "TOR", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("ToR", utils.INFIELD_SEP)},
+					&CdrField{Tag: "OriginID", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("OriginID", utils.INFIELD_SEP)},
+					&CdrField{Tag: "RequestType", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("RequestType", utils.INFIELD_SEP)},
+					&CdrField{Tag: "Direction", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("Direction", utils.INFIELD_SEP)},
+					&CdrField{Tag: "Tenant", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("Tenant", utils.INFIELD_SEP)},
+					&CdrField{Tag: "Category", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("Category", utils.INFIELD_SEP)},
+					&CdrField{Tag: "Account", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("Account", utils.INFIELD_SEP)},
+					&CdrField{Tag: "Subject", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("Subject", utils.INFIELD_SEP)},
+					&CdrField{Tag: "Destination", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("Destination", utils.INFIELD_SEP)},
+					&CdrField{Tag: "SetupTime", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("SetupTime", utils.INFIELD_SEP), Layout: "2006-01-02T15:04:05Z07:00"},
+					&CdrField{Tag: "AnswerTime", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("AnswerTime", utils.INFIELD_SEP), Layout: "2006-01-02T15:04:05Z07:00"},
+					&CdrField{Tag: "Usage", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("Usage", utils.INFIELD_SEP)},
+					&CdrField{Tag: "Cost", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("Cost", utils.INFIELD_SEP)},
+				},
+			},
+		},
+
+		Cdre: &map[string]*Cdre{
+			"*default": &Cdre{
+				CdrFormat:                  utils.StringPointer("csv"),
+				FieldSeparator:             utils.StringPointer(","),
+				DataUsageMultiplyFactor:    utils.Float64Pointer(1),
+				SmsUsageMultiplyFactor:     utils.Float64Pointer(1),
+				MmsUsageMultiplyFactor:     utils.Float64Pointer(1),
+				GenericUsageMultiplyFactor: utils.Float64Pointer(1),
+				CostMultiplyFactor:         utils.Float64Pointer(1),
+				ExportDirectory:            utils.StringPointer("/var/spool/accurate/cdre"),
+				HeaderFields:               []*CdrField{},
+				ContentFields: []*CdrField{
+					&CdrField{Tag: "UniqueID", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("UniqueID", utils.INFIELD_SEP)},
+					&CdrField{Tag: "RunID", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("RunID", utils.INFIELD_SEP)},
+					&CdrField{Tag: "TOR", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("ToR", utils.INFIELD_SEP)},
+					&CdrField{Tag: "OriginID", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("OriginID", utils.INFIELD_SEP)},
+					&CdrField{Tag: "RequestType", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("RequestType", utils.INFIELD_SEP)},
+					&CdrField{Tag: "Direction", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("Direction", utils.INFIELD_SEP)},
+					&CdrField{Tag: "Tenant", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("Tenant", utils.INFIELD_SEP)},
+					&CdrField{Tag: "Category", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("Category", utils.INFIELD_SEP)},
+					&CdrField{Tag: "Account", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("Account", utils.INFIELD_SEP)},
+					&CdrField{Tag: "Subject", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("Subject", utils.INFIELD_SEP)},
+					&CdrField{Tag: "Destination", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("Destination", utils.INFIELD_SEP)},
+					&CdrField{Tag: "SetupTime", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("SetupTime", utils.INFIELD_SEP), Layout: "2006-01-02T15:04:05Z07:00"},
+					&CdrField{Tag: "AnswerTime", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("AnswerTime", utils.INFIELD_SEP), Layout: "2006-01-02T15:04:05Z07:00"},
+					&CdrField{Tag: "Usage", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("Usage", utils.INFIELD_SEP)},
+					&CdrField{Tag: "Cost", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("Cost", utils.INFIELD_SEP), RoundingDecimals: 4},
+				},
+				TrailerFields: []*CdrField{},
+			},
+		},
+
+		SmGeneric: &SmGeneric{
+			Enabled:            utils.BoolPointer(false),
+			ListenBijson:       utils.StringPointer("127.0.0.1:2014"),
+			RalsConns:          []*HaPool{&HaPool{Address: "*internal"}},
+			CdrsConns:          []*HaPool{&HaPool{Address: "*internal"}},
+			DebitInterval:      durPointer(0 * time.Second),
+			MinCallDuration:    durPointer(0 * time.Second),
+			MaxCallDuration:    durPointer(3 * time.Hour),
+			SessionTtl:         durPointer(0 * time.Second),
+			SessionTtlLastUsed: nil,
+			SessionTtlUsage:    nil,
+			SessionIndexes:     []string{},
+			PostActionTrigger:  utils.BoolPointer(false),
+		},
+
+		SmFreeswitch: &SmFreeswitch{
+			Enabled:             utils.BoolPointer(false),
+			RalsConns:           []*HaPool{&HaPool{Address: "*internal"}},
+			CdrsConns:           []*HaPool{&HaPool{Address: "*internal"}},
+			RlsConns:            []*HaPool{},
+			CreateCdr:           utils.BoolPointer(false),
+			ExtraFields:         nil,
+			DebitInterval:       durPointer(10 * time.Second),
+			MinCallDuration:     durPointer(0 * time.Second),
+			MaxCallDuration:     durPointer(3 * time.Hour),
+			MinDurLowBalance:    durPointer(5 * time.Second),
+			LowBalanceAnnFile:   utils.StringPointer(""),
+			EmptyBalanceContext: utils.StringPointer(""),
+			EmptyBalanceAnnFile: utils.StringPointer(""),
+			SubscribePark:       utils.BoolPointer(true),
+			ChannelSyncInterval: durPointer(5 * time.Minute),
+			MaxWaitConnection:   durPointer(2 * time.Second),
+			EventSocketConns:    []*HaPool{&HaPool{Address: "127.0.0.1:8021", Password: "ClueCon", Reconnects: 5}},
+		},
+
+		SmKamailio: &SmKamailio{
+			Enabled:         utils.BoolPointer(false),
+			RalsConns:       []*HaPool{&HaPool{Address: "*internal"}},
+			CdrsConns:       []*HaPool{&HaPool{Address: "*internal"}},
+			CreateCdr:       utils.BoolPointer(false),
+			DebitInterval:   durPointer(10 * time.Second),
+			MinCallDuration: durPointer(0 * time.Second),
+			MaxCallDuration: durPointer(3 * time.Hour),
+			EvapiConns:      []*HaPool{&HaPool{Address: "127.0.0.1:8448", Reconnects: 5}},
+		},
+
+		SmOpensips: &SmOpensips{
+			Enabled:                 utils.BoolPointer(false),
+			ListenUdp:               utils.StringPointer("127.0.0.1:2020"),
+			RalsConns:               []*HaPool{&HaPool{Address: "*internal"}},
+			CdrsConns:               []*HaPool{&HaPool{Address: "*internal"}},
+			Reconnects:              utils.IntPointer(5),
+			CreateCdr:               utils.BoolPointer(false),
+			DebitInterval:           durPointer(10 * time.Second),
+			MinCallDuration:         durPointer(0 * time.Second),
+			MaxCallDuration:         durPointer(3 * time.Hour),
+			EventsSubscribeInterval: durPointer(60 * time.Second),
+			MiAddr:                  utils.StringPointer("127.0.0.1:8020"),
+		},
+
+		SmAsterisk: &SmAsterisk{
+			Enabled:        utils.BoolPointer(false),
+			SmGenericConns: []*HaPool{&HaPool{Address: "*internal"}},
+			CreateCdr:      utils.BoolPointer(false),
+			AsteriskConns:  []*HaPool{&HaPool{Address: "127.0.0.1:8088", User: "accurate", Password: "accuRate", ConnectAttempts: 3, Reconnects: 5}},
+		},
+
+		DiameterAgent: &DiameterAgent{
+			Enabled:            utils.BoolPointer(false),
+			Listen:             utils.StringPointer("127.0.0.1:3868"),
+			DictionariesDir:    utils.StringPointer("/usr/share/accurate/diameter/dict/"),
+			SmGenericConns:     []*HaPool{&HaPool{Address: "*internal"}},
+			PubsubsConns:       []*HaPool{},
+			CreateCdr:          utils.BoolPointer(true),
+			CdrRequiresSession: utils.BoolPointer(true),
+			DebitInterval:      durPointer(5 * time.Minute),
+			Timezone:           utils.StringPointer(""),
+			OriginHost:         utils.StringPointer("CC-DA"),
+			OriginRealm:        utils.StringPointer("accurate"),
+			VendorID:           utils.IntPointer(0),
+			ProductName:        utils.StringPointer("accuRate"),
+			RequestProcessors: []*RequestProcessor{
+				&RequestProcessor{
+					ID:                utils.StringPointer("*default"),
+					DryRun:            utils.BoolPointer(false),
+					PublishEvent:      utils.BoolPointer(false),
+					RequestFilter:     utils.ParseRSRFieldsMustCompile("Subscription-Id>Subscription-Id-Type(0)", utils.INFIELD_SEP),
+					Flags:             []string{},
+					ContinueOnSuccess: utils.BoolPointer(false),
+					AppendCca:         utils.BoolPointer(true),
+					CcrFields: []*CdrField{
+						&CdrField{Tag: "TOR", FieldID: "ToR", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("^*voice", utils.INFIELD_SEP), Mandatory: true},
+						&CdrField{Tag: "OriginID", FieldID: "OriginID", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("Session-Id", utils.INFIELD_SEP), Mandatory: true},
+						&CdrField{Tag: "RequestType", FieldID: "RequestType", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("^*users", utils.INFIELD_SEP), Mandatory: true},
+						&CdrField{Tag: "Direction", FieldID: "Direction", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("^*out", utils.INFIELD_SEP), Mandatory: true},
+						&CdrField{Tag: "Tenant", FieldID: "Tenant", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("^*users", utils.INFIELD_SEP), Mandatory: true},
+						&CdrField{Tag: "Category", FieldID: "Category", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("^call", utils.INFIELD_SEP), Mandatory: true},
+						&CdrField{Tag: "Account", FieldID: "Account", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("^*users", utils.INFIELD_SEP), Mandatory: true},
+						&CdrField{Tag: "Subject", FieldID: "Subject", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("^*users", utils.INFIELD_SEP), Mandatory: true},
+						&CdrField{Tag: "Destination", FieldID: "Destination", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("Service-Information>IN-Information>Real-Called-Number", utils.INFIELD_SEP), Mandatory: true},
+						&CdrField{Tag: "SetupTime", FieldID: "SetupTime", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("Event-Timestamp", utils.INFIELD_SEP), Mandatory: true},
+						&CdrField{Tag: "AnswerTime", FieldID: "AnswerTime", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("Event-Timestamp", utils.INFIELD_SEP), Mandatory: true},
+						&CdrField{Tag: "Usage", FieldID: "Usage", Type: "*handler", HandlerID: "*ccr_usage", Mandatory: true},
+						&CdrField{Tag: "SubscriberID", FieldID: "SubscriberId", Type: "*composed", Value: utils.ParseRSRFieldsMustCompile("Subscription-Id>Subscription-Id-Data", utils.INFIELD_SEP), Mandatory: true},
+					},
+					CcaFields: []*CdrField{
+						&CdrField{Tag: "GrantedUnits", FieldID: "Granted-Service-Unit>CC-Time", Type: "*handler", HandlerID: "*cca_usage", Mandatory: true},
+					},
+				},
+			},
+		},
+
+		Historys: &Historys{
+			Enabled:      utils.BoolPointer(false),
+			HistoryDir:   utils.StringPointer("/var/lib/accurate/history"),
+			SaveInterval: durPointer(1 * time.Second),
+		},
+
+		Pubsubs: &Pubsubs{
+			Enabled: utils.BoolPointer(false),
+		},
+
+		Aliases: &Aliases{
+			Enabled: utils.BoolPointer(false),
+		},
+
+		Users: &Users{
+			Enabled:         utils.BoolPointer(false),
+			Indexes:         []string{},
+			ComplexityMatch: utils.BoolPointer(false),
+		},
+
+		Rls: &Rls{
+			Enabled:           utils.BoolPointer(false),
+			CdrStatsConns:     []*HaPool{},
+			CacheDumpInterval: durPointer(0 * time.Second),
+			UsageTtl:          durPointer(3 * time.Hour),
+		},
+
+		Mailer: &Mailer{
+			Server:       utils.StringPointer("localhost"),
+			AuthUser:     utils.StringPointer("accurate"),
+			AuthPassword: utils.StringPointer("accuRate"),
+			FromAddress:  utils.StringPointer("cc-mailer@localhost.localdomain"),
+		},
+
+		SureTax: &SureTax{
+			Url:                  utils.StringPointer(""),
+			ClientNumber:         utils.StringPointer(""),
+			ValidationKey:        utils.StringPointer(""),
+			BusinessUnit:         utils.StringPointer(""),
+			Timezone:             utils.StringPointer("Local"),
+			IncludeLocalCost:     utils.BoolPointer(false),
+			ReturnFileCode:       utils.StringPointer("0"),
+			ResponseGroup:        utils.StringPointer("03"),
+			ResponseType:         utils.StringPointer("D4"),
+			RegulatoryCode:       utils.StringPointer("03"),
+			ClientTracking:       utils.ParseRSRFieldsMustCompile("UniqueID", utils.INFIELD_SEP),
+			CustomerNumber:       utils.ParseRSRFieldsMustCompile("Subject", utils.INFIELD_SEP),
+			OrigNumber:           utils.ParseRSRFieldsMustCompile("Subject", utils.INFIELD_SEP),
+			TermNumber:           utils.ParseRSRFieldsMustCompile("Destination", utils.INFIELD_SEP),
+			BillToNumber:         utils.ParseRSRFieldsMustCompile("", utils.INFIELD_SEP),
+			Zipcode:              utils.ParseRSRFieldsMustCompile("", utils.INFIELD_SEP),
+			Plus4:                utils.ParseRSRFieldsMustCompile("", utils.INFIELD_SEP),
+			P2PZipcode:           utils.ParseRSRFieldsMustCompile("", utils.INFIELD_SEP),
+			P2PPlus4:             utils.ParseRSRFieldsMustCompile("", utils.INFIELD_SEP),
+			Units:                utils.ParseRSRFieldsMustCompile("^1", utils.INFIELD_SEP),
+			UnitType:             utils.ParseRSRFieldsMustCompile("^00", utils.INFIELD_SEP),
+			TaxIncluded:          utils.ParseRSRFieldsMustCompile("^0", utils.INFIELD_SEP),
+			TaxSitusRule:         utils.ParseRSRFieldsMustCompile("^04", utils.INFIELD_SEP),
+			TransTypeCode:        utils.ParseRSRFieldsMustCompile("^010101", utils.INFIELD_SEP),
+			SalesTypeCode:        utils.ParseRSRFieldsMustCompile("^R", utils.INFIELD_SEP),
+			TaxExemptionCodeList: utils.ParseRSRFieldsMustCompile("", utils.INFIELD_SEP),
+		},
+	}
 }
 
-func (self *CGRConfig) DiameterAgentCfg() *DiameterAgentCfg {
-	cfgChan := <-self.ConfigReloads[utils.DIAMETER_AGENT] // Lock config for read or reloads
-	defer func() { self.ConfigReloads[utils.DIAMETER_AGENT] <- cfgChan }()
-	return self.diameterAgentCfg
-}
-
-func (self *CGRConfig) ResourceLimiterCfg() *ResourceLimiterConfig {
-	return self.resourceLimiterCfg
+func Reset() {
+	defaultConfig = NewDefault()
 }

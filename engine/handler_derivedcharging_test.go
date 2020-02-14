@@ -33,7 +33,7 @@ func TestHandleGetEmptyDC(t *testing.T) {
 
 // Accounting db has no DerivedChargers, configured defaults
 func TestHandleGetConfiguredDC(t *testing.T) {
-	cfgedDC := utils.DerivedChargers{&utils.DerivedCharger{RunId: "responder1", ReqTypeField: "test", DirectionField: "test", TenantField: "test",
+	cfgedDC := utils.DerivedChargerGroup{&utils.DerivedCharger{RunId: "responder1", ReqTypeField: "test", DirectionField: "test", TenantField: "test",
 		CategoryField: "test", AccountField: "test", SubjectField: "test", DestinationField: "test", SetupTimeField: "test", AnswerTimeField: "test", UsageField: "test"}}
 	cfgDcT.DerivedChargers = cfgedDC
 	attrs := utils.AttrDerivedChargers{Tenant: "cgrates.org", Category: "call", Direction: "*out", Account: "test3", Subject: "test3"}
@@ -46,8 +46,8 @@ func TestHandleGetConfiguredDC(t *testing.T) {
 
 // Receive composed derived chargers
 func TestHandleGetStoredDC(t *testing.T) {
-	keyCharger1 := utils.DerivedChargersKey("*out", "cgrates.org", "call", "rif", "rif")
-	charger1 := utils.DerivedChargers{
+	keyCharger1 := utils.DerivedChargerGroupKey("*out", "cgrates.org", "call", "rif", "rif")
+	charger1 := utils.DerivedChargerGroup{
 		&utils.DerivedCharger{RunId: "extra1", ReqTypeField: "^prepaid", DirectionField: "*default", TenantField: "*default", CategoryField: "*default",
 			AccountField: "rif", SubjectField: "rif", DestinationField: "*default", SetupTimeField: "*default", AnswerTimeField: "*default", UsageField: "*default"},
 		&utils.DerivedCharger{RunId: "extra2", ReqTypeField: "*default", DirectionField: "*default", TenantField: "*default", CategoryField: "*default",
@@ -76,7 +76,7 @@ func TestHandleGetStoredDC(t *testing.T) {
 */
 
 func TestHandleDeivedChargersMatchDestRet(t *testing.T) {
-	dcs := &utils.DerivedChargers{
+	dcs := &utils.DerivedChargerGroup{
 		DestinationIDs: utils.NewStringMap("RET"),
 	}
 	if !DerivedChargersMatchesDest(dcs, "0723045326") {
@@ -85,7 +85,7 @@ func TestHandleDeivedChargersMatchDestRet(t *testing.T) {
 }
 
 func TestHandleDeivedChargersMatchDestNat(t *testing.T) {
-	dcs := &utils.DerivedChargers{
+	dcs := &utils.DerivedChargerGroup{
 		DestinationIDs: utils.NewStringMap("NAT"),
 	}
 	if !DerivedChargersMatchesDest(dcs, "0723045326") {
@@ -94,7 +94,7 @@ func TestHandleDeivedChargersMatchDestNat(t *testing.T) {
 }
 
 func TestHandleDeivedChargersMatchDestNatRet(t *testing.T) {
-	dcs := &utils.DerivedChargers{
+	dcs := &utils.DerivedChargerGroup{
 		DestinationIDs: utils.NewStringMap("NAT", "RET"),
 	}
 	if !DerivedChargersMatchesDest(dcs, "0723045326") {
@@ -103,7 +103,7 @@ func TestHandleDeivedChargersMatchDestNatRet(t *testing.T) {
 }
 
 func TestHandleDeivedChargersMatchDestSpec(t *testing.T) {
-	dcs := &utils.DerivedChargers{
+	dcs := &utils.DerivedChargerGroup{
 		DestinationIDs: utils.NewStringMap("NAT", "SPEC"),
 	}
 	if !DerivedChargersMatchesDest(dcs, "0723045326") {
@@ -112,7 +112,7 @@ func TestHandleDeivedChargersMatchDestSpec(t *testing.T) {
 }
 
 func TestHandleDeivedChargersMatchDestNegativeSpec(t *testing.T) {
-	dcs := &utils.DerivedChargers{
+	dcs := &utils.DerivedChargerGroup{
 		DestinationIDs: utils.NewStringMap("NAT", "!SPEC"),
 	}
 	if DerivedChargersMatchesDest(dcs, "0723045326") {

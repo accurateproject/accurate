@@ -1,7 +1,7 @@
 3. Installation
 ===============
 
-CGRateS can be installed via packages as well as Go automated source install.
+AccuRate can be installed via packages as well as Go automated source install.
 We recommend using source installs for advanced users familiar with Go programming and packages for users not willing to be involved in the code building process.
 
 3.1. Using packages
@@ -10,9 +10,9 @@ We recommend using source installs for advanced users familiar with Go programmi
 3.1.1. Debian Jessie/Wheezy
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-This is for the moment the only packaged and the most recommended to use method to install CGRateS.
+This is for the moment the only packaged and the most recommended to use method to install AccuRate.
 
-On the server you want to install CGRateS, simply execute the following commands:
+On the server you want to install AccuRate, simply execute the following commands:
 
 ::
 
@@ -22,16 +22,16 @@ On the server you want to install CGRateS, simply execute the following commands
    apt-get update
    apt-get install cgrates
 
-Once the installation is completed, one should perform the :ref:`post-install` section in order to have the CGRateS properly set and ready to run.
-After *post-install* actions are performed, CGRateS will be configured in **/etc/cgrates/cgrates.json** and enabled in **/etc/default/cgrates**.
+Once the installation is completed, one should perform the :ref:`post-install` section in order to have the AccuRate properly set and ready to run.
+After *post-install* actions are performed, AccuRate will be configured in **/etc/cgrates/cgrates.json** and enabled in **/etc/default/cgrates**.
 
 3.2. Using source
 -----------------
 
-For developing CGRateS and switching between its versions, we are using the **new vendor directory feature** introduced in go 1.6.
+For developing AccuRate and switching between its versions, we are using the **new vendor directory feature** introduced in go 1.6.
 In a nutshell all the dependencies are installed and used from a folder named *vendor* placed in the root of the project.
 
-To manage this *vendor* folder we use a tool named `glide`_ which will download specific versions of the external packages used by CGRateS.
+To manage this *vendor* folder we use a tool named `glide`_ which will download specific versions of the external packages used by AccuRate.
 To configure the project with `glide`_ use the following commands:
 
 ::
@@ -43,7 +43,7 @@ To configure the project with `glide`_ use the following commands:
    ./build.sh
 
 The **glide install** command will install the external dependencies versions, specified in the **glide.lock** file, in the vendor folder.
-There are different versions for each CGRateS branch, versions that are recorded in the **lock** file when the GCRateS releases are made (using **glide update** command).
+There are different versions for each AccuRate branch, versions that are recorded in the **lock** file when the GCRateS releases are made (using **glide update** command).
 
 .. note:: The *vendor* folder **should not** be registered with the VCS we are using.
 
@@ -61,7 +61,7 @@ For more information and command options use `glide`_ readme page.
 3.3.1. Database setup
 ~~~~~~~~~~~~~~~~~~~~~
 
-For its operation CGRateS uses **one or more** database types, depending on its nature, install and configuration being further necessary.
+For its operation AccuRate uses **one or more** database types, depending on its nature, install and configuration being further necessary.
 
 At present we support the following databases:
 
@@ -73,17 +73,17 @@ Once installed there should be no special requirements in terms of setup since n
 - `MySQL`_
 Can be used as ``stor_db`` .
 Optimized for CDR archiving and offline Tariff Plan versioning.
-Once MySQL is installed, CGRateS database needs to be set-up out of provided scripts. (example for the paths set-up by debian package)
+Once MySQL is installed, AccuRate database needs to be set-up out of provided scripts. (example for the paths set-up by debian package)
 
 ::
 
    cd /usr/share/cgrates/storage/mysql/
-   ./setup_cgr_db.sh root CGRateS.org localhost
+   ./setup_cgr_db.sh root accuRate localhost
 
 - `PostgreSQL`_
 Can be used as ``stor_db`` .
 Optimized for CDR archiving and offline Tariff Plan versioning.
-Once PostgreSQL is installed, CGRateS database needs to be set-up out of provided scripts (example for the paths set-up by debian package)
+Once PostgreSQL is installed, AccuRate database needs to be set-up out of provided scripts (example for the paths set-up by debian package)
 
 ::
 
@@ -92,10 +92,10 @@ Once PostgreSQL is installed, CGRateS database needs to be set-up out of provide
 
 - `MongoDB`_
 Can be used as ``tariffplan_db`` - ``data_db`` - ``stor_db`` .
-It is the first database that can be used to store all kinds of data stored from CGRateS from accounts, tariff plans to cdrs and logs.
+It is the first database that can be used to store all kinds of data stored from AccuRate from accounts, tariff plans to cdrs and logs.
 This is provided as an alternative to Redis and/or MySQL/PostgreSQL and right now there are NO plans to drop support for any of them soon.
 
-Once MongoDB is installed, CGRateS database needs to be set-up out of provided scripts (example for the paths set-up by debian package)
+Once MongoDB is installed, AccuRate database needs to be set-up out of provided scripts (example for the paths set-up by debian package)
 
 ::
 

@@ -3,14 +3,14 @@
 Data importing
 ==============
 
-For importing the data into CGRateS database we are using cvs files. The import process can be started as many times it is desired with one ore more csv files and the existing values are overwritten. If the -flush option is used then the database is cleaned before importing.For more details see the cgr-loader tool from the tutorial chapter.
+For importing the data into AccuRate database we are using cvs files. The import process can be started as many times it is desired with one ore more csv files and the existing values are overwritten. If the -flush option is used then the database is cleaned before importing.For more details see the cgr-loader tool from the tutorial chapter.
 
 The rest of this section we will describe the content of every csv files.
 
 Rates profile
 --------------
 
-The rates profile describes the prices to be applied for various calls to various destinations in various time frames. When a call is made the CGRateS system will locate the rates to be applied to the call using the rating profiles.
+The rates profile describes the prices to be applied for various calls to various destinations in various time frames. When a call is made the AccuRate system will locate the rates to be applied to the call using the rating profiles.
 
 +------------+-----+-----------+-------------+----------------------+----------------+----------------------+
 | Tenant     | TOR | Direction | Subject     | RatesFallbackSubject | RatesTimingTag | ActivationTime       |

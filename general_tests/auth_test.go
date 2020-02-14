@@ -19,8 +19,8 @@ func TestAuthSetStorage(t *testing.T) {
 	engine.SetRatingStorage(ratingDbAuth)
 	acntDbAuth, _ = engine.NewMapStorageJson()
 	engine.SetAccountingStorage(acntDbAuth)
-	cfg, _ := config.NewDefaultCGRConfig()
-	config.SetCgrConfig(cfg)
+	config.Reset()
+	//cfg := config.Get()
 	rsponder = new(engine.Responder)
 
 }

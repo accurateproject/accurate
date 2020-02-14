@@ -93,7 +93,7 @@ func TestMetaValueExponent(t *testing.T) {
 	} else if val != "0.1" {
 		t.Error("Received: ", val)
 	}
-	if _, err = metaValueExponent(m, utils.ParseRSRFieldsMustCompile("Requested-Service-Unit>CC-Money>Unit-Value>Value-Digits;Requested-Service-Unit>CC-Money>Unit-Value>Exponent", utils.INFIELD_SEP), 10); err == nil {
+	if _, err := metaValueExponent(m, utils.ParseRSRFieldsMustCompile("Requested-Service-Unit>CC-Money>Unit-Value>Value-Digits;Requested-Service-Unit>CC-Money>Unit-Value>Exponent", utils.INFIELD_SEP), 10); err == nil {
 		t.Error("Should have received error") // Insufficient number arguments
 	}
 }
@@ -121,7 +121,7 @@ func TestMetaSum(t *testing.T) {
 	} else if val != "9995" {
 		t.Error("Received: ", val)
 	}
-	if _, err = metaSum(m, utils.ParseRSRFieldsMustCompile("Requested-Service-Unit>CC-Money>Unit-Value>Value-Digits;Requested-Service-Unit>CC-Money>Unit-Value>Exponent", utils.INFIELD_SEP), 0, 10); err == nil {
+	if _, err := metaSum(m, utils.ParseRSRFieldsMustCompile("Requested-Service-Unit>CC-Money>Unit-Value>Value-Digits;Requested-Service-Unit>CC-Money>Unit-Value>Exponent", utils.INFIELD_SEP), 0, 10); err == nil {
 		t.Error("Should have received error") // Insufficient number arguments
 	}
 }
@@ -143,7 +143,7 @@ func TestFieldOutVal(t *testing.T) {
 	m.NewAVP("Requested-Service-Unit", avp.Mbit, 0, &diam.GroupedAVP{
 		AVP: []*diam.AVP{
 			diam.NewAVP(420, avp.Mbit, 0, datatype.Unsigned32(360))}}) // CC-Time
-	cfgFld := &config.CfgCdrField{Tag: "StaticTest", Type: utils.META_COMPOSED, FieldId: utils.TOR,
+	cfgFld := &config.CdrField{Tag: "StaticTest", Type: utils.META_COMPOSED, FieldID: utils.TOR,
 		Value: utils.ParseRSRFieldsMustCompile("^*voice", utils.INFIELD_SEP), Mandatory: true}
 	eOut := "*voice"
 	if fldOut, err := fieldOutVal(m, cfgFld, time.Duration(0), nil); err != nil {
@@ -151,7 +151,7 @@ func TestFieldOutVal(t *testing.T) {
 	} else if fldOut != eOut {
 		t.Errorf("Expecting: %s, received: %s", eOut, fldOut)
 	}
-	cfgFld = &config.CfgCdrField{Tag: "ComposedTest", Type: utils.META_COMPOSED, FieldId: utils.DESTINATION,
+	cfgFld = &config.CdrField{Tag: "ComposedTest", Type: utils.META_COMPOSED, FieldID: utils.DESTINATION,
 		Value: utils.ParseRSRFieldsMustCompile("Requested-Service-Unit>CC-Time", utils.INFIELD_SEP), Mandatory: true}
 	eOut = "360"
 	if fldOut, err := fieldOutVal(m, cfgFld, time.Duration(0), nil); err != nil {
@@ -160,7 +160,7 @@ func TestFieldOutVal(t *testing.T) {
 		t.Errorf("Expecting: %s, received: %s", eOut, fldOut)
 	}
 	// With filter on ProcessorVars
-	cfgFld = &config.CfgCdrField{Tag: "ComposedTestWithProcessorVarsFilter", Type: utils.META_COMPOSED, FieldId: utils.DESTINATION,
+	cfgFld = &config.CdrField{Tag: "ComposedTestWithProcessorVarsFilter", Type: utils.META_COMPOSED, FieldID: utils.DESTINATION,
 		FieldFilter: utils.ParseRSRFieldsMustCompile("CGRError(INSUFFICIENT_CREDIT)", utils.INFIELD_SEP),
 		Value:       utils.ParseRSRFieldsMustCompile("Requested-Service-Unit>CC-Time", utils.INFIELD_SEP), Mandatory: true}
 	if _, err := fieldOutVal(m, cfgFld, time.Duration(0), nil); err == nil {
@@ -173,7 +173,7 @@ func TestFieldOutVal(t *testing.T) {
 		t.Errorf("Expecting: %s, received: %s", eOut, fldOut)
 	}
 	// Without filter, we shoud get always the first subscriptionId
-	cfgFld = &config.CfgCdrField{Tag: "Grouped1", Type: utils.MetaGrouped, FieldId: "Account",
+	cfgFld = &config.CdrField{Tag: "Grouped1", Type: utils.MetaGrouped, FieldID: "Account",
 		Value: utils.ParseRSRFieldsMustCompile("Subscription-Id>Subscription-Id-Data", utils.INFIELD_SEP), Mandatory: true}
 	eOut = "33708000003"
 	if fldOut, err := fieldOutVal(m, cfgFld, time.Duration(0), nil); err != nil {
@@ -182,7 +182,7 @@ func TestFieldOutVal(t *testing.T) {
 		t.Errorf("Expecting: %s, received: %s", eOut, fldOut)
 	}
 	// Without groupedAVP, we shoud get the first subscriptionId
-	cfgFld = &config.CfgCdrField{Tag: "Grouped2", Type: utils.MetaGrouped, FieldId: "Account",
+	cfgFld = &config.CdrField{Tag: "Grouped2", Type: utils.MetaGrouped, FieldID: "Account",
 		FieldFilter: utils.ParseRSRFieldsMustCompile("Subscription-Id>Subscription-Id-Type(1)", utils.INFIELD_SEP),
 		Value:       utils.ParseRSRFieldsMustCompile("Subscription-Id>Subscription-Id-Data", utils.INFIELD_SEP), Mandatory: true}
 	eOut = "208708000003"
@@ -357,13 +357,13 @@ func TestCCASetProcessorAVPs(t *testing.T) {
 		}})
 	ccr.debitInterval = time.Duration(300) * time.Second
 	cca := NewBareCCAFromCCR(ccr, "CGR-DA", "cgrates.org")
-	reqProcessor := &config.DARequestProcessor{Id: "UNIT_TEST", // Set template for tests
-		CCAFields: []*config.CfgCdrField{
-			&config.CfgCdrField{Tag: "Subscription-Id/Subscription-Id-Type", Type: utils.META_COMPOSED,
-				FieldId: "Subscription-Id>Subscription-Id-Type",
+	reqProcessor := &config.RequestProcessor{ID: utils.StringPointer("UNIT_TEST"), // Set template for tests
+		CcaFields: []*config.CdrField{
+			&config.CdrField{Tag: "Subscription-Id/Subscription-Id-Type", Type: utils.META_COMPOSED,
+				FieldID: "Subscription-Id>Subscription-Id-Type",
 				Value:   utils.ParseRSRFieldsMustCompile("Subscription-Id>Subscription-Id-Type", utils.INFIELD_SEP), Mandatory: true},
-			&config.CfgCdrField{Tag: "Subscription-Id/Subscription-Id-Data", Type: utils.META_COMPOSED,
-				FieldId: "Subscription-Id>Subscription-Id-Data",
+			&config.CdrField{Tag: "Subscription-Id/Subscription-Id-Data", Type: utils.META_COMPOSED,
+				FieldID: "Subscription-Id>Subscription-Id-Data",
 				Value:   utils.ParseRSRFieldsMustCompile("Subscription-Id>Subscription-Id-Data", utils.INFIELD_SEP), Mandatory: true},
 		},
 	}
@@ -413,20 +413,20 @@ func TestCCRAsSMGenericEvent(t *testing.T) {
 		},
 	})
 	ccr.diamMessage.NewAVP("FramedIPAddress", avp.Mbit, 0, datatype.OctetString("0AE40041"))
-	cfgFlds := make([]*config.CfgCdrField, 0)
+	cfgFlds := make([]*config.CdrField, 0)
 	eSMGEv := sessionmanager.SMGenericEvent{"EventName": "DIAMETER_CCR"}
 	if rSMGEv, err := ccr.AsSMGenericEvent(cfgFlds); err != nil {
 		t.Error(err)
 	} else if !reflect.DeepEqual(eSMGEv, rSMGEv) {
 		t.Errorf("Expecting: %+v, received: %+v", eSMGEv, rSMGEv)
 	}
-	cfgFlds = []*config.CfgCdrField{
-		&config.CfgCdrField{
+	cfgFlds = []*config.CdrField{
+		&config.CdrField{
 			Tag:         "LastUsed",
 			FieldFilter: utils.ParseRSRFieldsMustCompile("~Multiple-Services-Credit-Control>Used-Service-Unit>CC-Input-Octets:s/^(.*)$/test/(test);Multiple-Services-Credit-Control>Rating-Group(1)", utils.INFIELD_SEP),
-			FieldId:     "LastUsed",
+			FieldID:     "LastUsed",
 			Type:        "*handler",
-			HandlerId:   "*sum",
+			HandlerID:   "*sum",
 			Value:       utils.ParseRSRFieldsMustCompile("Multiple-Services-Credit-Control>Used-Service-Unit>CC-Input-Octets;^|;Multiple-Services-Credit-Control>Used-Service-Unit>CC-Output-Octets", utils.INFIELD_SEP),
 			Mandatory:   true,
 		},
@@ -437,13 +437,13 @@ func TestCCRAsSMGenericEvent(t *testing.T) {
 	} else if !reflect.DeepEqual(eSMGEv, rSMGEv) {
 		t.Errorf("Expecting: %+v, received: %+v", eSMGEv, rSMGEv)
 	}
-	cfgFlds = []*config.CfgCdrField{
-		&config.CfgCdrField{
+	cfgFlds = []*config.CdrField{
+		&config.CdrField{
 			Tag:         "LastUsed",
 			FieldFilter: utils.ParseRSRFieldsMustCompile("~Multiple-Services-Credit-Control>Used-Service-Unit>CC-Input-Octets:s/^(.*)$/test/(test);Multiple-Services-Credit-Control>Rating-Group(99)", utils.INFIELD_SEP),
-			FieldId:     "LastUsed",
+			FieldID:     "LastUsed",
 			Type:        "*handler",
-			HandlerId:   "*sum",
+			HandlerID:   "*sum",
 			Value:       utils.ParseRSRFieldsMustCompile("Multiple-Services-Credit-Control>Used-Service-Unit>CC-Input-Octets;^|;Multiple-Services-Credit-Control>Used-Service-Unit>CC-Output-Octets", utils.INFIELD_SEP),
 			Mandatory:   true,
 		},

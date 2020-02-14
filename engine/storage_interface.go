@@ -1,58 +1,60 @@
 package engine
 
-import (
-	"bytes"
-	"encoding/gob"
-	"encoding/json"
-	"reflect"
-
-	"github.com/accurateproject/accurate/utils"
-	"github.com/ugorji/go/codec"
-	"gopkg.in/mgo.v2/bson"
-)
+import "github.com/accurateproject/accurate/utils"
 
 type Storage interface {
 	Close()
-	Flush(string) error
-	GetKeysForPrefix(string) ([]string, error)
+	Ping() error
+	Flush() error
+	EnsureIndexes() error
+	Count(col string) (int, error)
+	Iterator(col, sort string, filter map[string]interface{}) Iterator
+	GetAllPaged(tenant string, out interface{}, collection string, limit, offset int) error
+	GetByNames(tenant string, names []string, out interface{}, collection string) error
 	PreloadCacheForPrefix(string) error
-	RebuildReverseForPrefix(string) error
+	RemoveTenant(tenant string, collections ...string) error
 }
 
 // Interface for storage providers.
 type RatingStorage interface {
 	Storage
-	HasData(string, string) (bool, error)
 	PreloadRatingCache() error
-	GetRatingPlan(string, string) (*RatingPlan, error)
+	GetTiming(tenant, name string) (*Timing, error)
+	SetTiming(*Timing) error
+	GetRate(tenant, name string) (*Rate, error)
+	SetRate(*Rate) error
+	GetDestinationRate(tenant, name string) (*DestinationRate, error)
+	SetDestinationRate(*DestinationRate) error
+	GetRatingPlan(tenant, name, cacheParam string) (*RatingPlan, error)
 	SetRatingPlan(*RatingPlan) error
-	GetRatingProfile(string, string) (*RatingProfile, error)
+	GetRatingProfile(direction, tenant, category, subject string, prefixMatching bool, cacheParam string) (*RatingProfile, error)
+	GetRatingProfiles(direction, tenant, category, subject, cacheParam string) ([]*RatingProfile, error)
 	SetRatingProfile(*RatingProfile) error
-	RemoveRatingProfile(string) error
-	GetDestination(string, string) (*Destination, error)
+	RemoveRatingProfile(direction, tenant, category, subject string) error
+	GetDestinations(tenant, code, name, strategy, cacheParam string) (Destinations, error)
 	SetDestination(*Destination) error
-	RemoveDestination(string) error
-	SetReverseDestination(*Destination) error
-	GetReverseDestination(string, string) ([]string, error)
-	UpdateReverseDestination(*Destination, *Destination) error
-	GetLCR(string, string) (*LCR, error)
+	RemoveDestination(*Destination) error
+	RemoveDestinations(tenant, code, name string) error
+	GetLCR(direction, tenant, category, account, subject string, prefixMatching bool, cacheParam string) (*LCR, error)
 	SetLCR(*LCR) error
 	SetCdrStats(*CdrStats) error
-	GetCdrStats(string) (*CdrStats, error)
-	GetAllCdrStats() ([]*CdrStats, error)
-	GetDerivedChargers(string, string) (*utils.DerivedChargers, error)
-	SetDerivedChargers(string, *utils.DerivedChargers) error
-	GetActions(string, string) (Actions, error)
-	SetActions(string, Actions) error
-	RemoveActions(string) error
-	GetSharedGroup(string, string) (*SharedGroup, error)
+	GetCdrStats(tenant, name string) (*CdrStats, error)
+	RemoveCdrStats(tenant, name string) error
+	GetDerivedChargers(direction, tenant, category, account, subject, cacheParam string) (utils.DerivedChargers, error)
+	SetDerivedChargers(*utils.DerivedChargerGroup) error
+	GetActionGroup(tenant, name, cacheParam string) (*ActionGroup, error)
+	SetActionGroup(*ActionGroup) error
+	RemoveActionGroup(tenant, name string) error
+	GetSharedGroup(tenant, name, cacheParam string) (*SharedGroup, error)
 	SetSharedGroup(*SharedGroup) error
-	GetActionTriggers(string, string) (ActionTriggers, error)
-	SetActionTriggers(string, ActionTriggers) error
-	RemoveActionTriggers(string) error
-	GetActionPlan(string, string) (*ActionPlan, error)
-	SetActionPlan(string, *ActionPlan, bool) error
-	GetAllActionPlans() (map[string]*ActionPlan, error)
+	GetActionTriggers(tenant, name, cacheParam string) (*ActionTriggerGroup, error)
+	SetActionTriggers(*ActionTriggerGroup) error
+	RemoveActionTriggers(tenant, name string) error
+	GetActionPlanBinding(tenant, accountName, actionPlanName string) (*ActionPlanBinding, error)
+	SetActionPlanBinding(apb *ActionPlanBinding) error
+	RemoveActionPlanBindings(tenant, accountName, actionPlanName string) error
+	GetActionPlan(tenant, name, cacheParam string) (*ActionPlan, error)
+	SetActionPlan(*ActionPlan) error
 	PushTask(*Task) error
 	PopTask() (*Task, error)
 }
@@ -60,179 +62,48 @@ type RatingStorage interface {
 type AccountingStorage interface {
 	Storage
 	PreloadAccountingCache() error
-	GetAccount(string) (*Account, error)
+	GetAccount(tenant, name string) (*Account, error)
 	SetAccount(*Account) error
-	RemoveAccount(string) error
-	GetCdrStatsQueue(string) (*StatsQueue, error)
+	RemoveAccount(tenant, name string) error
+	SetSimpleAccount(*SimpleAccount) error
+	RemoveSimpleAccount(tenant, name string) error
+	GetCdrStatsQueue(tenant, name string) (*StatsQueue, error)
 	SetCdrStatsQueue(*StatsQueue) error
+	RemoveCdrStatsQueue(tenant, name string) error
+	PushQCDR(qcdr *QCDR) error
+	PopQCDR(tenant, name string, filter map[string]interface{}, limit int) ([]*QCDR, error)
+	RemoveQCDRs(tenant, name string) error
 	GetSubscribers() (map[string]*SubscriberData, error)
 	SetSubscriber(string, *SubscriberData) error
 	RemoveSubscriber(string) error
 	SetUser(*UserProfile) error
-	GetUser(string) (*UserProfile, error)
-	GetUsers() ([]*UserProfile, error)
-	RemoveUser(string) error
+	GetUser(tenant, name string) (*UserProfile, error)
+	RemoveUser(tenant, user string) error
 	SetAlias(*Alias) error
-	GetAlias(string, string) (*Alias, error)
-	RemoveAlias(string) error
-	SetReverseAlias(*Alias) error
-	GetReverseAlias(string, string) ([]string, error)
-	UpdateReverseAlias(*Alias, *Alias) error
-	GetResourceLimit(string, string) (*ResourceLimit, error)
-	SetResourceLimit(*ResourceLimit) error
-	RemoveResourceLimit(string) error
-	GetLoadHistory(int, string) ([]*utils.LoadInstance, error)
-	AddLoadHistory(*utils.LoadInstance, int) error
+	GetAlias(direction, tenant, category, account, subject, context, cacheParam string) (*Alias, error)
+	RemoveAlias(direction, tenant, category, account, subject, context string) error
+	GetReverseAlias(tenant, context, target, alias, cacheParam string) ([]*Alias, error)
+	GetResourceLimit(string, bool, string) (*ResourceLimit, error)
+	SetResourceLimit(*ResourceLimit, string) error
+	RemoveResourceLimit(string, string) error
+	AddLoadHistory(*utils.LoadInstance) error
 	GetStructVersion() (*StructVersion, error)
 	SetStructVersion(*StructVersion) error
 }
 
 type CdrStorage interface {
 	Storage
-	SetCDR(*CDR, bool) error
+	SetCDR(cdr *CDR, update bool) error
 	SetSMCost(smc *SMCost) error
-	GetSMCosts(cgrid, runid, originHost, originIDPrfx string) ([]*SMCost, error)
+	GetSMCosts(uniqueid, runid, originHost, originIDPrfx string) ([]*SMCost, error)
 	GetCDRs(*utils.CDRsFilter, bool) ([]*CDR, int64, error)
 }
 
-type LoadStorage interface {
-	Storage
-	LoadReader
-	LoadWriter
-}
-
-// LoadReader reads from .csv or TP tables and provides the data ready for the tp_db or data_db.
-type LoadReader interface {
-	GetTpIds() ([]string, error)
-	GetTpTableIds(string, string, utils.TPDistinctIds, map[string]string, *utils.Paginator) ([]string, error)
-	GetTpTimings(string, string) ([]TpTiming, error)
-	GetTpDestinations(string, string) ([]TpDestination, error)
-	GetTpRates(string, string) ([]TpRate, error)
-	GetTpDestinationRates(string, string, *utils.Paginator) ([]TpDestinationRate, error)
-	GetTpRatingPlans(string, string, *utils.Paginator) ([]TpRatingPlan, error)
-	GetTpRatingProfiles(*TpRatingProfile) ([]TpRatingProfile, error)
-	GetTpSharedGroups(string, string) ([]TpSharedGroup, error)
-	GetTpCdrStats(string, string) ([]TpCdrstat, error)
-	GetTpLCRs(*TpLcrRule) ([]TpLcrRule, error)
-	GetTpUsers(*TpUser) ([]TpUser, error)
-	GetTpAliases(*TpAlias) ([]TpAlias, error)
-	GetTpDerivedChargers(*TpDerivedCharger) ([]TpDerivedCharger, error)
-	GetTpActions(string, string) ([]TpAction, error)
-	GetTpActionPlans(string, string) ([]TpActionPlan, error)
-	GetTpActionTriggers(string, string) ([]TpActionTrigger, error)
-	GetTpAccountActions(*TpAccountAction) ([]TpAccountAction, error)
-	GetTpResourceLimits(string, string) (TpResourceLimits, error)
-}
-
-type LoadWriter interface {
-	RemTpData(string, string, map[string]string) error
-	SetTpTimings([]TpTiming) error
-	SetTpDestinations([]TpDestination) error
-	SetTpRates([]TpRate) error
-	SetTpDestinationRates([]TpDestinationRate) error
-	SetTpRatingPlans([]TpRatingPlan) error
-	SetTpRatingProfiles([]TpRatingProfile) error
-	SetTpSharedGroups([]TpSharedGroup) error
-	SetTpCdrStats([]TpCdrstat) error
-	SetTpUsers([]TpUser) error
-	SetTpAliases([]TpAlias) error
-	SetTpDerivedChargers([]TpDerivedCharger) error
-	SetTpLCRs([]TpLcrRule) error
-	SetTpActions([]TpAction) error
-	SetTpActionPlans([]TpActionPlan) error
-	SetTpActionTriggers([]TpActionTrigger) error
-	SetTpAccountActions([]TpAccountAction) error
-}
-
-type Marshaler interface {
-	Marshal(v interface{}) ([]byte, error)
-	Unmarshal(data []byte, v interface{}) error
-}
-
-type JSONMarshaler struct{}
-
-func (jm *JSONMarshaler) Marshal(v interface{}) ([]byte, error) {
-	return json.Marshal(v)
-}
-
-func (jm *JSONMarshaler) Unmarshal(data []byte, v interface{}) error {
-	return json.Unmarshal(data, v)
-}
-
-type BSONMarshaler struct{}
-
-func (jm *BSONMarshaler) Marshal(v interface{}) ([]byte, error) {
-	return bson.Marshal(v)
-}
-
-func (jm *BSONMarshaler) Unmarshal(data []byte, v interface{}) error {
-	return bson.Unmarshal(data, v)
-}
-
-type JSONBufMarshaler struct{}
-
-func (jbm *JSONBufMarshaler) Marshal(v interface{}) (data []byte, err error) {
-	buf := new(bytes.Buffer)
-	err = json.NewEncoder(buf).Encode(v)
-	data = buf.Bytes()
-	return
-}
-
-func (jbm *JSONBufMarshaler) Unmarshal(data []byte, v interface{}) error {
-	return json.NewDecoder(bytes.NewBuffer(data)).Decode(v)
-}
-
-type CodecMsgpackMarshaler struct {
-	mh *codec.MsgpackHandle
-}
-
-func NewCodecMsgpackMarshaler() *CodecMsgpackMarshaler {
-	cmm := &CodecMsgpackMarshaler{new(codec.MsgpackHandle)}
-	mh := cmm.mh
-	mh.MapType = reflect.TypeOf(map[string]interface{}(nil))
-	mh.RawToString = true
-	return cmm
-}
-
-func (cmm *CodecMsgpackMarshaler) Marshal(v interface{}) (b []byte, err error) {
-	enc := codec.NewEncoderBytes(&b, cmm.mh)
-	err = enc.Encode(v)
-	return
-}
-
-func (cmm *CodecMsgpackMarshaler) Unmarshal(data []byte, v interface{}) error {
-	dec := codec.NewDecoderBytes(data, cmm.mh)
-	return dec.Decode(&v)
-}
-
-type BincMarshaler struct {
-	bh *codec.BincHandle
-}
-
-func NewBincMarshaler() *BincMarshaler {
-	return &BincMarshaler{new(codec.BincHandle)}
-}
-
-func (bm *BincMarshaler) Marshal(v interface{}) (b []byte, err error) {
-	enc := codec.NewEncoderBytes(&b, bm.bh)
-	err = enc.Encode(v)
-	return
-}
-
-func (bm *BincMarshaler) Unmarshal(data []byte, v interface{}) error {
-	dec := codec.NewDecoderBytes(data, bm.bh)
-	return dec.Decode(&v)
-}
-
-type GOBMarshaler struct{}
-
-func (gm *GOBMarshaler) Marshal(v interface{}) (data []byte, err error) {
-	buf := new(bytes.Buffer)
-	err = gob.NewEncoder(buf).Encode(v)
-	data = buf.Bytes()
-	return
-}
-
-func (gm *GOBMarshaler) Unmarshal(data []byte, v interface{}) error {
-	return gob.NewDecoder(bytes.NewBuffer(data)).Decode(v)
+type Iterator interface {
+	All(result interface{}) error
+	Close() error
+	Done() bool
+	Err() error
+	Next(result interface{}) bool
+	Timeout() bool
 }

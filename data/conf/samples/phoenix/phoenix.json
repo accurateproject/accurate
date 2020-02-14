@@ -1,0 +1,121 @@
+{
+  "general": {
+    "internal_ttl": "30m",
+    "default_request_type": "*rated",
+    "default_category": "",
+    "default_tenant": ""
+  },
+
+
+
+  "listen": {
+    "rpc_json": ":2012",
+    "rpc_gob": ":2013",
+    "http": "2080"
+  },
+
+  "tariffplan_db": {
+    "db_host": "localhost",
+    "db_port": "27017",
+    "db_name": "tpdb",
+    "db_user": "",
+    "db_password": ""
+  },
+
+  "data_db": {
+    "db_host": "localhost",
+    "db_port": "27017",
+    "db_name": "datadb",
+    "db_user": "",
+    "db_password": ""
+  },
+
+  "cdr_db": {
+    "db_host": "localhost",
+    "db_port": "27017",
+    "db_name": "cdrdb",
+    "db_user": "",
+    "db_password": ""
+  },
+
+  "rals": {
+    "enabled": true,
+    "pubsubs_conns": [{
+      "address": "*internal"
+    }],
+    "users_conns": [{
+      "address": "*internal"
+    }]
+  },
+
+  "cdrs": {
+    "enabled": true,
+    "extra_fields": ["direction", "sip_from_host", "sip_to_host", "sip_from_user", "sip_to_user"],
+    "store_cdrs": true,
+    "account_summary": false,
+    "sm_cost_retries": 0,
+    "cdrstats_conns": [{
+      "address": "*internal"
+    }]
+  },
+
+  "cdrc": [{
+    "id": "*default",
+    "enabled": true,
+    "dry_run": false,
+    "cdr_in_dir": "/tmp/cdr/in",
+    "cdr_out_dir": "/tmp/cdr/out",
+    "timezone": "",
+    "field_separator": ",",
+    "max_open_files": 1024,
+    "cdr_source_id": "csv-cdr1",
+    "partial_record_cache": "10s",
+    "cdrs_conns": [{
+      "address": "*internal"
+    }],
+    "cdr_format": "freeswitch_csv",
+    "run_delay": 0,
+    "data_usage_multiply_factor": 1024,
+    "failed_calls_prefix": "missed_calls",
+    "cdr_path": "",
+    "cdr_filter": "",
+    "continue_on_success": false,
+    "partial_cache_expiry_action": "*dump_to_file",
+    "header_fields": [],
+    "content_fields": [
+      {"tag": "TOR","field_id": "ToR","type": "*composed","value": "^*voice", "mandatory": true },
+      {"tag": "OriginHost", "field_id": "OriginHost", "type": "*composed", "value": "22", "mandatory": true },
+      {"tag": "OriginID", "field_id": "OriginID", "type": "*composed", "value": "12", "mandatory": true },
+      {"tag": "Direction", "field_id": "Direction", "type": "*composed", "value": "^*out", "mandatory": true },
+      {"tag": "Tenant", "field_id": "Tenant", "type": "*composed", "value": "^*users", "mandatory": true },
+      {"tag": "Category", "field_id": "Category", "type": "*composed", "value": "^*users", "mandatory": true },
+      {"tag": "Account", "field_id": "Account", "type": "*composed", "value": "^*users", "mandatory": true },
+      {"tag": "Subject", "field_id": "Subject", "type": "*composed", "value": "^*users", "mandatory": true },
+      {"tag": "Destination", "field_id": "Destination", "type": "*composed", "value": "4", "mandatory": true },
+      {"tag": "SetupTime", "field_id": "SetupTime", "type": "*composed", "value": "6", "mandatory": true },
+      {"tag": "AnswerTime", "field_id": "AnswerTime", "type": "*composed", "value": "7", "mandatory": true },
+      {"tag": "Usage", "field_id": "Usage", "type": "*composed", "value": "~10:s/^(\\d+)$/${1}ms/", "mandatory": true },
+      {"tag": "DisconnectCause", "field_id": "DisconnectCause", "type": "*composed", "value": "11", "mandatory": true },
+      {"tag": "direction", "field_id": "direction", "type": "*composed", "value": "1", "mandatory": true },
+      {"tag": "sip_from_host", "field_id": "sip_from_host", "type": "*composed", "value": "22", "mandatory": true },
+      {"tag": "sip_to_host", "field_id": "sip_to_host", "type": "*composed", "value": "23", "mandatory": true },
+      {"tag": "sip_to_user", "field_id": "sip_to_user", "type": "*composed", "value": "4", "mandatory": true },
+      {"tag": "sip_profile_name", "field_id": "sip_profile_name", "type": "*composed", "value": "20", "mandatory": true }
+    ],
+    "trailer_fields": [],
+    "cache_dump_fields": []
+  }],
+
+  "users": {
+    "enabled": true,
+    "indexes": ["direction"]
+  },
+
+  "pubsubs": {
+    "enabled": true
+  },
+
+  "cdrstats": {
+    "enabled": true
+  }
+}

@@ -1,7 +1,7 @@
 Rating history 
 ==============
 
-Enhances CGRateS with ability to archive rates modifications.
+Enhances AccuRate with ability to archive rates modifications.
 
 Large scaling posibility using server-agents approach. 
 In a distributed environment, there will be a single server (which can be backed up using technologies such as Linux-HA) and more agents sending the modifications to be archived.

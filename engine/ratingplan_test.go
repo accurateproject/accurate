@@ -3,6 +3,7 @@ package engine
 import (
 	"encoding/json"
 
+	"github.com/accurateproject/accurate/dec"
 	"github.com/accurateproject/accurate/utils"
 
 	"reflect"
@@ -10,13 +11,13 @@ import (
 	"time"
 )
 
-func TestApRestoreFromStorage(t *testing.T) {
+func TestRPApRestoreFromStorage(t *testing.T) {
 	cd := &CallDescriptor{
 		TimeStart:   time.Date(2013, 10, 21, 18, 34, 0, 0, time.UTC),
 		TimeEnd:     time.Date(2013, 10, 21, 18, 35, 0, 0, time.UTC),
 		Direction:   utils.OUT,
 		Category:    "0",
-		Tenant:      "CUSTOMER_1",
+		Tenant:      "test",
 		Subject:     "rif:from:tm",
 		Destination: "49"}
 	cd.LoadRatingPlans()
@@ -25,15 +26,15 @@ func TestApRestoreFromStorage(t *testing.T) {
 	}
 }
 
-func TestApStoreRestoreJson(t *testing.T) {
+func TestRPApStoreRestoreJson(t *testing.T) {
 	i := &RateInterval{Timing: &RITiming{
 		Months:    []time.Month{time.February},
 		MonthDays: []int{1},
 		WeekDays:  []time.Weekday{time.Wednesday, time.Thursday},
 		StartTime: "14:30:00",
 		EndTime:   "15:00:00"}}
-	ap := &RatingPlan{Id: "test"}
-	ap.AddRateInterval("NAT", i)
+	ap := &RatingPlan{Name: "test"}
+	ap.AddRateInterval("0723", "NAT", i)
 	result, _ := json.Marshal(ap)
 	ap1 := &RatingPlan{}
 	json.Unmarshal(result, ap1)
@@ -42,10 +43,10 @@ func TestApStoreRestoreJson(t *testing.T) {
 	}
 }
 
-func TestApStoreRestoreBlank(t *testing.T) {
+func TestRPApStoreRestoreBlank(t *testing.T) {
 	i := &RateInterval{}
-	ap := &RatingPlan{Id: "test"}
-	ap.AddRateInterval("NAT", i)
+	ap := &RatingPlan{Name: "test"}
+	ap.AddRateInterval("0723", "NAT", i)
 	result, _ := json.Marshal(ap)
 	ap1 := RatingPlan{}
 	json.Unmarshal(result, &ap1)
@@ -54,13 +55,13 @@ func TestApStoreRestoreBlank(t *testing.T) {
 	}
 }
 
-func TestFallbackDirect(t *testing.T) {
+func TestRPFallbackDirect(t *testing.T) {
 	cd := &CallDescriptor{
 		TimeStart:   time.Date(2013, 10, 21, 18, 34, 0, 0, time.UTC),
 		TimeEnd:     time.Date(2013, 10, 21, 18, 35, 0, 0, time.UTC),
 		Category:    "0",
 		Direction:   utils.OUT,
-		Tenant:      "CUSTOMER_2",
+		Tenant:      "test",
 		Subject:     "danb:87.139.12.167",
 		Destination: "41"}
 	cd.LoadRatingPlans()
@@ -69,13 +70,13 @@ func TestFallbackDirect(t *testing.T) {
 	}
 }
 
-func TestFallbackMultiple(t *testing.T) {
+func TestRPFallbackMultiple(t *testing.T) {
 	cd := &CallDescriptor{
 		TimeStart:   time.Date(2013, 10, 21, 18, 34, 0, 0, time.UTC),
 		TimeEnd:     time.Date(2013, 10, 21, 18, 35, 0, 0, time.UTC),
 		Category:    "0",
 		Direction:   utils.OUT,
-		Tenant:      "vdf",
+		Tenant:      "test",
 		Subject:     "fall",
 		Destination: "0723045"}
 	cd.LoadRatingPlans()
@@ -84,13 +85,13 @@ func TestFallbackMultiple(t *testing.T) {
 	}
 }
 
-func TestFallbackWithBackTrace(t *testing.T) {
+func TestRPFallbackWithBackTrace(t *testing.T) {
 	cd := &CallDescriptor{
 		TimeStart:   time.Date(2013, 10, 21, 18, 34, 0, 0, time.UTC),
 		TimeEnd:     time.Date(2013, 10, 21, 18, 35, 0, 0, time.UTC),
 		Category:    "0",
 		Direction:   utils.OUT,
-		Tenant:      "CUSTOMER_2",
+		Tenant:      "test",
 		Subject:     "danb:87.139.12.167",
 		Destination: "4123"}
 	cd.LoadRatingPlans()
@@ -99,13 +100,13 @@ func TestFallbackWithBackTrace(t *testing.T) {
 	}
 }
 
-func TestFallbackNoDefault(t *testing.T) {
+func TestRPFallbackNoDefault(t *testing.T) {
 	cd := &CallDescriptor{
 		TimeStart:   time.Date(2013, 10, 21, 18, 34, 0, 0, time.UTC),
 		TimeEnd:     time.Date(2013, 10, 21, 18, 35, 0, 0, time.UTC),
 		Category:    "0",
 		Direction:   utils.OUT,
-		Tenant:      "vdf",
+		Tenant:      "test",
 		Subject:     "one",
 		Destination: "0723"}
 	cd.LoadRatingPlans()
@@ -114,23 +115,23 @@ func TestFallbackNoDefault(t *testing.T) {
 	}
 }
 
-func TestFallbackNoInfiniteLoop(t *testing.T) {
-	cd := &CallDescriptor{Category: "0", Direction: utils.OUT, Tenant: "vdf", Subject: "rif", Destination: "0721"}
+func TestRPFallbackNoInfiniteLoop(t *testing.T) {
+	cd := &CallDescriptor{Category: "0", Direction: utils.OUT, Tenant: "test", Subject: "rif", Destination: "0721"}
 	cd.LoadRatingPlans()
 	if len(cd.RatingInfos) != 0 {
 		t.Error("Error restoring activation periods: ", len(cd.RatingInfos))
 	}
 }
 
-func TestFallbackNoInfiniteLoopSelf(t *testing.T) {
-	cd := &CallDescriptor{Category: "0", Direction: utils.OUT, Tenant: "vdf", Subject: "inf", Destination: "0721"}
+func TestRPFallbackNoInfiniteLoopSelf(t *testing.T) {
+	cd := &CallDescriptor{Category: "0", Direction: utils.OUT, Tenant: "test", Subject: "inf", Destination: "0721"}
 	cd.LoadRatingPlans()
 	if len(cd.RatingInfos) != 0 {
 		t.Error("Error restoring activation periods: ", len(cd.RatingInfos))
 	}
 }
 
-func TestApAddIntervalIfNotPresent(t *testing.T) {
+func TestRPApAddIntervalIfNotPresent(t *testing.T) {
 	i1 := &RateInterval{
 		Timing: &RITiming{
 			Months:    utils.Months{time.February},
@@ -151,40 +152,40 @@ func TestApAddIntervalIfNotPresent(t *testing.T) {
 		StartTime: "14:30:00",
 		EndTime:   "15:00:00"}}
 	rp := &RatingPlan{}
-	rp.AddRateInterval("NAT", i1)
-	rp.AddRateInterval("NAT", i2)
-	if len(rp.DestinationRates["NAT"]) != 1 {
+	rp.AddRateInterval("0723", "NAT", i1)
+	rp.AddRateInterval("0723", "NAT", i2)
+	if len(rp.DestinationRates["0723"].DRateKeys) != 1 {
 		t.Error("Wronfullyrppended interval ;)")
 	}
-	rp.AddRateInterval("NAT", i3)
-	if len(rp.DestinationRates["NAT"]) != 2 {
-		t.Error("Wronfully not appended interval ;)", rp.DestinationRates)
+	rp.AddRateInterval("0723", "NAT", i3)
+	if len(rp.DestinationRates["0723"].DRateKeys) != 2 {
+		t.Error("Wronfully not appended interval ;)", utils.ToIJSON(rp.DestinationRates))
 	}
 }
 
-func TestApAddRateIntervalGroups(t *testing.T) {
+func TestRPApAddRateIntervalGroups(t *testing.T) {
 	i1 := &RateInterval{
-		Rating: &RIRate{Rates: RateGroups{&Rate{0, 1, 1 * time.Second, 1 * time.Second}}},
+		Rating: &RIRate{Rates: RateGroups{&RateInfo{0, dec.NewFloat(1), 1 * time.Second, 1 * time.Second}}},
 	}
 	i2 := &RateInterval{
-		Rating: &RIRate{Rates: RateGroups{&Rate{30 * time.Second, 2, 1 * time.Second, 1 * time.Second}}},
+		Rating: &RIRate{Rates: RateGroups{&RateInfo{30 * time.Second, dec.NewFloat(2), 1 * time.Second, 1 * time.Second}}},
 	}
 	i3 := &RateInterval{
-		Rating: &RIRate{Rates: RateGroups{&Rate{30 * time.Second, 2, 1 * time.Second, 1 * time.Second}}},
+		Rating: &RIRate{Rates: RateGroups{&RateInfo{30 * time.Second, dec.NewFloat(2), 1 * time.Second, 1 * time.Second}}},
 	}
 	ap := &RatingPlan{}
-	ap.AddRateInterval("NAT", i1)
-	ap.AddRateInterval("NAT", i2)
-	ap.AddRateInterval("NAT", i3)
+	ap.AddRateInterval("0723", "NAT", i1)
+	ap.AddRateInterval("0723", "NAT", i2)
+	ap.AddRateInterval("0723", "NAT", i3)
 	if len(ap.DestinationRates) != 1 {
-		t.Error("Wronfully appended interval ;)")
+		t.Error("Wronfully appended interval ;)", utils.ToIJSON(ap.DestinationRates))
 	}
-	if len(ap.RateIntervalList("NAT")[0].Rating.Rates) != 1 {
+	if len(ap.RateIntervalList("0723")[0].Rating.Rates) != 1 {
 		t.Errorf("Group prices not formed: %#v", ap.RateIntervalList("NAT")[0].Rating.Rates[0])
 	}
 }
 
-func TestGetActiveForCall(t *testing.T) {
+func TestRPGetActiveForCall(t *testing.T) {
 	rpas := RatingPlanActivations{
 		&RatingPlanActivation{ActivationTime: time.Date(2013, 1, 1, 0, 0, 0, 0, time.UTC)},
 		&RatingPlanActivation{ActivationTime: time.Date(2013, 11, 12, 11, 40, 0, 0, time.UTC)},
@@ -200,14 +201,14 @@ func TestGetActiveForCall(t *testing.T) {
 	}
 }
 
-func TestRatingPlanIsContinousEmpty(t *testing.T) {
+func TestRPRatingPlanIsContinousEmpty(t *testing.T) {
 	rpl := &RatingPlan{}
 	if rpl.isContinous() {
 		t.Errorf("Error determining rating plan's valididty: %+v", rpl)
 	}
 }
 
-func TestRatingPlanIsContinousBlank(t *testing.T) {
+func TestRPRatingPlanIsContinousBlank(t *testing.T) {
 	rpl := &RatingPlan{
 		Timings: map[string]*RITiming{
 			"blank": &RITiming{StartTime: "00:00:00"},
@@ -219,7 +220,7 @@ func TestRatingPlanIsContinousBlank(t *testing.T) {
 	}
 }
 
-func TestRatingPlanIsContinousGood(t *testing.T) {
+func TestRPRatingPlanIsContinousGood(t *testing.T) {
 	rpl := &RatingPlan{
 		Timings: map[string]*RITiming{
 			"first":  &RITiming{WeekDays: utils.WeekDays{1, 2, 3}, StartTime: "00:00:00"},
@@ -232,7 +233,7 @@ func TestRatingPlanIsContinousGood(t *testing.T) {
 	}
 }
 
-func TestRatingPlanisContinousBad(t *testing.T) {
+func TestRPRatingPlanisContinousBad(t *testing.T) {
 	rpl := &RatingPlan{
 		Timings: map[string]*RITiming{
 			"first":  &RITiming{WeekDays: utils.WeekDays{1, 2, 3}, StartTime: "00:00:00"},
@@ -244,7 +245,7 @@ func TestRatingPlanisContinousBad(t *testing.T) {
 	}
 }
 
-func TestRatingPlanIsContinousSpecial(t *testing.T) {
+func TestRPRatingPlanIsContinousSpecial(t *testing.T) {
 	rpl := &RatingPlan{
 		Timings: map[string]*RITiming{
 			"special": &RITiming{Years: utils.Years{2015}, Months: utils.Months{5}, MonthDays: utils.MonthDays{1}, StartTime: "00:00:00"},
@@ -258,7 +259,7 @@ func TestRatingPlanIsContinousSpecial(t *testing.T) {
 	}
 }
 
-func TestRatingPlanIsContinousMultiple(t *testing.T) {
+func TestRPRatingPlanIsContinousMultiple(t *testing.T) {
 	rpl := &RatingPlan{
 		Timings: map[string]*RITiming{
 			"special":  &RITiming{Years: utils.Years{2015}, Months: utils.Months{5}, MonthDays: utils.MonthDays{1}, StartTime: "00:00:00"},
@@ -273,7 +274,7 @@ func TestRatingPlanIsContinousMultiple(t *testing.T) {
 	}
 }
 
-func TestRatingPlanIsContinousMissing(t *testing.T) {
+func TestRPRatingPlanIsContinousMissing(t *testing.T) {
 	rpl := &RatingPlan{
 		Timings: map[string]*RITiming{
 			"special":  &RITiming{Years: utils.Years{2015}, Months: utils.Months{5}, MonthDays: utils.MonthDays{1}, StartTime: "00:00:00"},
@@ -287,10 +288,10 @@ func TestRatingPlanIsContinousMissing(t *testing.T) {
 	}
 }
 
-func TestRatingPlanSaneTimingsBad(t *testing.T) {
+func TestRPRatingPlanSaneTimingsBad(t *testing.T) {
 	rpl := &RatingPlan{
 		Timings: map[string]*RITiming{
-			"one": &RITiming{Years: utils.Years{2015}, WeekDays: utils.WeekDays{time.Monday}, tag: "first"},
+			"one": &RITiming{Years: utils.Years{2015}, WeekDays: utils.WeekDays{time.Monday}},
 		},
 	}
 	if crazyTiming := rpl.getFirstUnsaneTiming(); crazyTiming == "" {
@@ -298,11 +299,11 @@ func TestRatingPlanSaneTimingsBad(t *testing.T) {
 	}
 }
 
-func TestRatingPlanSaneTimingsGood(t *testing.T) {
+func TestRPRatingPlanSaneTimingsGood(t *testing.T) {
 	rpl := &RatingPlan{
 		Timings: map[string]*RITiming{
-			"one": &RITiming{Years: utils.Years{2015}, tag: "first"},
-			"two": &RITiming{WeekDays: utils.WeekDays{0, 1, 2, 3, 4}, StartTime: "00:00:00", tag: "second"},
+			"one": &RITiming{Years: utils.Years{2015}},
+			"two": &RITiming{WeekDays: utils.WeekDays{0, 1, 2, 3, 4}, StartTime: "00:00:00"},
 		},
 	}
 	if crazyTiming := rpl.getFirstUnsaneTiming(); crazyTiming != "" {
@@ -310,17 +311,16 @@ func TestRatingPlanSaneTimingsGood(t *testing.T) {
 	}
 }
 
-func TestRatingPlanSaneRatingsEqual(t *testing.T) {
+func TestRPRatingPlanSaneRatingsEqual(t *testing.T) {
 	rpl := &RatingPlan{
 		Ratings: map[string]*RIRate{
 			"one": &RIRate{
-				tag: "first",
 				Rates: RateGroups{
-					&Rate{
+					&RateInfo{
 						GroupIntervalStart: 0 * time.Second,
 						RateIncrement:      30 * time.Second,
 					},
-					&Rate{
+					&RateInfo{
 						GroupIntervalStart: 0 * time.Second,
 						RateIncrement:      30 * time.Second,
 					},
@@ -333,17 +333,16 @@ func TestRatingPlanSaneRatingsEqual(t *testing.T) {
 	}
 }
 
-func TestRatingPlanSaneRatingsNotMultiple(t *testing.T) {
+func TestRPRatingPlanSaneRatingsNotMultiple(t *testing.T) {
 	rpl := &RatingPlan{
 		Ratings: map[string]*RIRate{
 			"one": &RIRate{
-				tag: "first",
 				Rates: RateGroups{
-					&Rate{
+					&RateInfo{
 						GroupIntervalStart: 0 * time.Second,
 						RateIncrement:      30 * time.Second,
 					},
-					&Rate{
+					&RateInfo{
 						GroupIntervalStart: 15 * time.Second,
 						RateIncrement:      30 * time.Second,
 					},
@@ -356,18 +355,17 @@ func TestRatingPlanSaneRatingsNotMultiple(t *testing.T) {
 	}
 }
 
-func TestRatingPlanSaneRatingsGoot(t *testing.T) {
+func TestRPRatingPlanSaneRatingsGoot(t *testing.T) {
 	rpl := &RatingPlan{
 		Ratings: map[string]*RIRate{
 			"one": &RIRate{
-				tag: "first",
 				Rates: RateGroups{
-					&Rate{
+					&RateInfo{
 						GroupIntervalStart: 60 * time.Second,
 						RateIncrement:      30 * time.Second,
 						RateUnit:           1 * time.Second,
 					},
-					&Rate{
+					&RateInfo{
 						GroupIntervalStart: 0 * time.Second,
 						RateIncrement:      30 * time.Second,
 						RateUnit:           1 * time.Second,
@@ -383,7 +381,7 @@ func TestRatingPlanSaneRatingsGoot(t *testing.T) {
 
 /**************************** Benchmarks *************************************/
 
-func BenchmarkRatingPlanMarshalJson(b *testing.B) {
+func BenchmarkRPMarshalJson(b *testing.B) {
 	b.StopTimer()
 	i := &RateInterval{
 		Timing: &RITiming{
@@ -392,8 +390,8 @@ func BenchmarkRatingPlanMarshalJson(b *testing.B) {
 			WeekDays:  []time.Weekday{time.Wednesday, time.Thursday},
 			StartTime: "14:30:00",
 			EndTime:   "15:00:00"}}
-	ap := &RatingPlan{Id: "test"}
-	ap.AddRateInterval("NAT", i)
+	ap := &RatingPlan{Name: "test"}
+	ap.AddRateInterval("0723", "NAT", i)
 
 	ap1 := RatingPlan{}
 	b.StartTimer()
@@ -403,37 +401,18 @@ func BenchmarkRatingPlanMarshalJson(b *testing.B) {
 	}
 }
 
-func BenchmarkRatingPlanMarshal(b *testing.B) {
-	b.StopTimer()
+func BenchmarkRPRestore(b *testing.B) {
 	i := &RateInterval{
 		Timing: &RITiming{Months: []time.Month{time.February},
 			MonthDays: []int{1},
 			WeekDays:  []time.Weekday{time.Wednesday, time.Thursday},
 			StartTime: "14:30:00",
 			EndTime:   "15:00:00"}}
-	ap := &RatingPlan{Id: "test"}
-	ap.AddRateInterval("NAT", i)
-
-	ap1 := &RatingPlan{}
-	b.StartTimer()
-	for i := 0; i < b.N; i++ {
-		result, _ := marsh.Marshal(ap)
-		marsh.Unmarshal(result, ap1)
-	}
-}
-
-func BenchmarkRatingPlanRestore(b *testing.B) {
-	i := &RateInterval{
-		Timing: &RITiming{Months: []time.Month{time.February},
-			MonthDays: []int{1},
-			WeekDays:  []time.Weekday{time.Wednesday, time.Thursday},
-			StartTime: "14:30:00",
-			EndTime:   "15:00:00"}}
-	rp := &RatingPlan{Id: "test"}
-	rp.AddRateInterval("NAT", i)
+	rp := &RatingPlan{Tenant: "test", Name: "test"}
+	rp.AddRateInterval("0723", "NAT", i)
 	ratingStorage.SetRatingPlan(rp)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		ratingStorage.GetRatingPlan(rp.Id, utils.CACHE_SKIP)
+		ratingStorage.GetRatingPlan(rp.Tenant, rp.Name, utils.CACHE_SKIP)
 	}
 }

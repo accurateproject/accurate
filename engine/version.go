@@ -2,9 +2,9 @@ package engine
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/accurateproject/accurate/utils"
+	"go.uber.org/zap"
 )
 
 func CheckVersion(acntDB AccountingStorage) error {
@@ -14,15 +14,22 @@ func CheckVersion(acntDB AccountingStorage) error {
 	}
 	dbVersion, err := acntDB.GetStructVersion()
 	if err != nil {
-		if lhList, err := acntDB.GetLoadHistory(1, utils.CACHE_SKIP); err != nil || len(lhList) == 0 {
+		lhIter := acntDB.Iterator(ColLht, "-$natural", nil)
+		loadHistory := make([]*utils.LoadInstance, 0)
+		lhIter.All(&loadHistory)
+		if err := lhIter.Close(); err != nil {
+			return err
+		}
+		utils.Logger.Info("Load history: ", zap.Any("lhist", loadHistory))
+		if len(loadHistory) == 0 {
 			// no data, write version
 			if err := acntDB.SetStructVersion(CurrentVersion); err != nil {
-				utils.Logger.Warning(fmt.Sprintf("Could not write current version to db: %v", err))
+				utils.Logger.Warn("could not write current version to db", zap.Error(err))
 			}
-		} else {
+		} else if loadHistory[0].LoadID == "" {
 			// has data but no version => run migration
 			msg := "Could not detect data structures version: run appropriate migration"
-			utils.Logger.Crit(msg)
+			utils.Logger.Panic(msg)
 			return errors.New(msg)
 		}
 	} else {
@@ -30,7 +37,7 @@ func CheckVersion(acntDB AccountingStorage) error {
 		if len(CurrentVersion.CompareAndMigrate(dbVersion)) > 0 {
 			// write the new values
 			msg := "Migration needed: please backup cgr data and run cgr-cloader -migrate"
-			utils.Logger.Crit(msg)
+			utils.Logger.Panic(msg)
 			return errors.New(msg)
 		}
 	}
@@ -62,26 +69,26 @@ var (
 
 type StructVersion struct {
 	//  rating
-	Destinations    string
-	RatingPlans     string
-	RatingProfiles  string
-	Lcrs            string
-	DerivedChargers string
-	Actions         string
-	ActionPlans     string
-	ActionTriggers  string
-	SharedGroups    string
+	Destinations    string `bson:"destinations"`
+	RatingPlans     string `bson:"rating_plans"`
+	RatingProfiles  string `bson:"rating_profiles"`
+	Lcrs            string `bson:"lcrs"`
+	DerivedChargers string `bson:"derived_chargers"`
+	Actions         string `bson:"actions"`
+	ActionPlans     string `bson:"action_plans"`
+	ActionTriggers  string `bson:"action_triggers"`
+	SharedGroups    string `bson:"shared_groups"`
 	// accounting
-	Accounts    string
-	CdrStats    string
-	Users       string
-	Alias       string
-	PubSubs     string
-	LoadHistory string
+	Accounts    string `bson:"accounts"`
+	CdrStats    string `bson:"cdr_stats"`
+	Users       string `bson:"users"`
+	Alias       string `bson:"alias"`
+	PubSubs     string `bson:"pub_subs"`
+	LoadHistory string `bson:"load_history"`
 	// cdr
-	Cdrs           string
-	SMCosts        string
-	ResourceLimits string
+	Cdrs           string `bson:"cdrs"`
+	SMCosts        string `bson:"sm_costs"`
+	ResourceLimits string `bson:"resource_limits"`
 }
 
 type MigrationInfo struct {

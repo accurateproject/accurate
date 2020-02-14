@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/accurateproject/accurate/dec"
 	"github.com/accurateproject/accurate/utils"
 )
 
@@ -23,9 +24,9 @@ func NewCgrCdrFromHttpReq(req *http.Request, timezone string) (CgrCdr, error) {
 
 type CgrCdr map[string]string
 
-func (cgrCdr CgrCdr) getCGRID(timezone string) string {
-	if CGRID, hasIt := cgrCdr[utils.CGRID]; hasIt {
-		return CGRID
+func (cgrCdr CgrCdr) getUniqueID(timezone string) string {
+	if UniqueID, hasIt := cgrCdr[utils.UniqueID]; hasIt {
+		return UniqueID
 	}
 	setupTime, _ := utils.ParseTimeDetectLayout(cgrCdr[utils.SETUP_TIME], timezone)
 	return utils.Sha1(cgrCdr[utils.ACCID], setupTime.UTC().String())
@@ -43,7 +44,7 @@ func (cgrCdr CgrCdr) getExtraFields() map[string]string {
 
 func (cgrCdr CgrCdr) AsStoredCdr(timezone string) *CDR {
 	storCdr := new(CDR)
-	storCdr.CGRID = cgrCdr.getCGRID(timezone)
+	storCdr.UniqueID = cgrCdr.getUniqueID(timezone)
 	storCdr.ToR = cgrCdr[utils.TOR]
 	storCdr.OriginID = cgrCdr[utils.ACCID]
 	storCdr.OriginHost = cgrCdr[utils.CDRHOST]
@@ -62,9 +63,9 @@ func (cgrCdr CgrCdr) AsStoredCdr(timezone string) *CDR {
 	storCdr.Supplier = cgrCdr[utils.SUPPLIER]
 	storCdr.DisconnectCause = cgrCdr[utils.DISCONNECT_CAUSE]
 	storCdr.ExtraFields = cgrCdr.getExtraFields()
-	storCdr.Cost = -1
+	storCdr.Cost = dec.NewVal(-1, 0)
 	if costStr, hasIt := cgrCdr[utils.COST]; hasIt {
-		storCdr.Cost, _ = strconv.ParseFloat(costStr, 64)
+		storCdr.Cost, _ = dec.New().SetString(costStr)
 	}
 	if ratedStr, hasIt := cgrCdr[utils.RATED]; hasIt {
 		storCdr.Rated, _ = strconv.ParseBool(ratedStr)

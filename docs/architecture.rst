@@ -1,22 +1,22 @@
 2. Architecture
 ===============
-The CGRateS suite consists of **four** software applications described below.
+The AccuRate suite consists of **four** software applications described below.
 
 .. hlist::
    :columns: 4
 
    - cgr-engine
-   - cgr-loader  
+   - cgr-loader
    - cgr-console
    - cgr-tester
 
-CGRateS has an internal cache.
+AccuRate has an internal cache.
 
 ::
 
    "internal_cache" - cache2go
 
-Operates with different external databases mentioned below. 
+Operates with different external databases mentioned below.
 
 ::
 
@@ -34,17 +34,17 @@ Operates with different external databases mentioned below.
 
 
 .. figure::  images/cgrates-arch.png
-   :alt: CGRateS Architecture
+   :alt: AccuRate Architecture
    :align: Center
    :scale: 75 %
-   
-   
-   CGRateS high level design
+
+
+   AccuRate high level design
 
 2.1. cgr-engine
 ---------------
-Is the most important and complex component. 
-Customisable through the use of *json* configuration file(s), 
+Is the most important and complex component.
+Customisable through the use of *json* configuration file(s),
 it will start on demand **one or more** service(s), outlined below.
 
 ::
@@ -74,7 +74,7 @@ it will start on demand **one or more** service(s), outlined below.
 
 2.1.1. Balancer service
 ~~~~~~~~~~~~~~~~~~~~~~~
-*Optional* component, used as proxy/balancer to a pool of RAL workers. 
+*Optional* component, used as proxy/balancer to a pool of RAL workers.
 The RALs will register their availability to the Balancer thus implementing **dynamic HA functionality**.
 **HA functionality** can be archived also *without* the **Balancer**.
 
@@ -82,11 +82,11 @@ The RALs will register their availability to the Balancer thus implementing **dy
    - RPC
    - internal/in-process *within the same running* **cgr-engine** process.
 
-- Operates with the following CGRateS database(s): ::
+- Operates with the following AccuRate database(s): ::
 
    - none
 
-- Config section in the CGRateS configuration file:
+- Config section in the AccuRate configuration file:
    - ``"balancer": {...}``
 
 2.1.2. RALs service
@@ -102,13 +102,13 @@ Responsible with the following tasks:
    - RPC
    - internal/in-process *within the same running* **cgr-engine** process.
 
-- Operates with the following CGRateS database(s): ::
+- Operates with the following AccuRate database(s): ::
 
    "tariffplan_db" - (ratingDb)
    "data_db"       - (accountDb)
    "stor_db"       - (cdrDb, loadDb)
 
-- Config section in the CGRateS configuration file:
+- Config section in the AccuRate configuration file:
    - ``"rals": {...}``
 
 2.1.3. Scheduler service
@@ -118,11 +118,11 @@ Used to execute periodic/scheduled tasks.
 - Communicates via:
    - internal/in-process *within the same running* **cgr-engine** process.
 
-- Operates with the following CGRateS database(s): ::
+- Operates with the following AccuRate database(s): ::
 
    "tariffplan_db" - (ratingDb)
 
-- Config section in the CGRateS configuration file:
+- Config section in the AccuRate configuration file:
    - ``"scheduler": {...}``
 
 2.1.4. SessionManager service
@@ -141,7 +141,7 @@ Responsible with call control on the Telecommunication Switch side. Operates in 
 - POSTPAID
    - Executes balance debit on call-stop.
 
-All call actions are logged into CGRateS's LogDB.
+All call actions are logged into AccuRate's LogDB.
 
 Right now there are **four** session manager types.
    - sm_freeswitch
@@ -153,12 +153,12 @@ Right now there are **four** session manager types.
    - RPC
    - internal/in-process *within the same running* **cgr-engine** process.
 
-- Operates with the following CGRateS database(s): ::
+- Operates with the following AccuRate database(s): ::
 
    "stor_db" - (cdrDb)
 
-- Config section in the CGRateS configuration file:
-   - ``"sm_freeswitch": {...}`` 
+- Config section in the AccuRate configuration file:
+   - ``"sm_freeswitch": {...}``
    - ``"sm_kamailio": {...}``
    - ``"sm_opensips": {...}``
    - ``"sm_generic": {...}``
@@ -172,11 +172,11 @@ Despite the name it is a flexible **Diameter Server**.
    - RPC
    - internal/in-process *within the same running* **cgr-engine** process.
 
-- Operates with the following CGRateS database(s): ::
+- Operates with the following AccuRate database(s): ::
 
    - none
 
-- Config section in the CGRateS configuration file:
+- Config section in the AccuRate configuration file:
    - ``"diameter_agent": {...}``
 
 2.1.6. CDRS service
@@ -187,11 +187,11 @@ Centralized CDR server and CDR (raw or rated) **replicator**.
    - RPC
    - internal/in-process *within the same running* **cgr-engine** process.
 
-- Operates with the following CGRateS database(s): ::
+- Operates with the following AccuRate database(s): ::
 
    "stor_db" - (cdrDb)
 
-- Config section in the CGRateS configuration file:
+- Config section in the AccuRate configuration file:
    - ``"cdrs": {...}``
 
 2.1.7. CDRStats service
@@ -202,12 +202,12 @@ Computes real-time CDR stats. Capable with real-time fraud detection and mitigat
    - RPC
    - internal/in-process *within the same running* **cgr-engine** process.
 
-- Operates with the following CGRateS database(s): ::
+- Operates with the following AccuRate database(s): ::
 
    "tariffplan_db" - (ratingDb)
    "data_db"       - (accountDb)
 
-- Config section in the CGRateS configuration file:
+- Config section in the AccuRate configuration file:
    - ``"cdrstats": {...}``
 
 2.1.8. CDRC service
@@ -218,26 +218,26 @@ Gathers offline CDRs and post them to CDR Server - (CDRS component)
    - RPC
    - internal/in-process *within the same running* **cgr-engine** process.
 
-- Operates with the following CGRateS database(s): ::
+- Operates with the following AccuRate database(s): ::
 
    - none
 
-- Config section in the CGRateS configuration file:
+- Config section in the AccuRate configuration file:
    - ``"cdrc": {...}``
 
 2.1.9. History service
 ~~~~~~~~~~~~~~~~~~~~~~
-Archives rate changes in human readable JSON format using **GIT**. 
+Archives rate changes in human readable JSON format using **GIT**.
 
 - Communicates via:
    - RPC
    - internal/in-process *within the same running* **cgr-engine** process.
 
-- Operates with the following CGRateS database(s): ::
+- Operates with the following AccuRate database(s): ::
 
    - none
 
-- Config section in the CGRateS configuration file:
+- Config section in the AccuRate configuration file:
    - ``"historys": {...}``
 
 2.1.10. Aliases service
@@ -253,11 +253,11 @@ Possible applications:
    - RPC
    - internal/in-process *within the same running* **cgr-engine** process.
 
-- Operates with the following CGRateS database(s): ::
+- Operates with the following AccuRate database(s): ::
 
    "data_db" - (accountDb)
 
-- Config section in the CGRateS configuration file:
+- Config section in the AccuRate configuration file:
    - ``"aliases": {...}``
 
 2.1.11. User service
@@ -268,11 +268,11 @@ Generic purpose **user** system to maintain user profiles (LDAP similarity).
    - RPC
    - internal/in-process *within the same running* **cgr-engine** process.
 
-- Operates with the following CGRateS database(s): ::
-  
+- Operates with the following AccuRate database(s): ::
+
    "data_db" - (accountDb)
 
-- Config section in the CGRateS configuration file:
+- Config section in the AccuRate configuration file:
    - ``"users": {...}``
 
 2.1.12. PubSub service
@@ -283,11 +283,11 @@ PubSub service used to expose internal events to interested external components 
    - RPC
    - internal/in-process *within the same running* **cgr-engine** process.
 
-- Operates with the following CGRateS database(s): ::
+- Operates with the following AccuRate database(s): ::
 
    "data_db" - (accountDb)
 
-- Config section in the CGRateS configuration file:
+- Config section in the AccuRate configuration file:
    - ``"pubsubs": {...}``
 
 
@@ -299,11 +299,11 @@ Resource Limiter service used to limit resources during authorization (eg: maxim
    - RPC
    - internal/in-process *within the same running* **cgr-engine** process.
 
-- Operates with the following CGRateS database(s): ::
+- Operates with the following AccuRate database(s): ::
 
    "data_db" - (accountDb)
 
-- Config section in the CGRateS configuration file:
+- Config section in the AccuRate configuration file:
    - ``"rls": {...}``
 
 2.1.14. APIER RPC service
@@ -321,11 +321,11 @@ Component to retrieve rated CDRs from internal CDRs database.
 
 - Communicates via:
 
-- Operates with the following CGRateS database(s): ::
+- Operates with the following AccuRate database(s): ::
 
    "stor_db" - (cdrDb)
 
-- Config section in the CGRateS configuration file:
+- Config section in the AccuRate configuration file:
    - ``"cdre": {...}``
 
 2.1.16. Mailer
@@ -334,9 +334,9 @@ TBD
 
 - Communicates via:
 
-- Operates with the following CGRateS database(s):
+- Operates with the following AccuRate database(s):
 
-- Config section in the CGRateS configuration file:
+- Config section in the AccuRate configuration file:
    - ``"mailer": {...}``
 
 2.1.17. Suretax
@@ -345,9 +345,9 @@ TBD
 
 - Communicates via:
 
-- Operates with the following CGRateS database(s):
+- Operates with the following AccuRate database(s):
 
-- Config section in the CGRateS configuration file:
+- Config section in the AccuRate configuration file:
    - ``"suretax": {...}``
 
 
@@ -356,7 +356,7 @@ TBD
 
 .. important:: This service is not valid anymore. Its functionality is replaced by CDRC and CDRS services.
 
-Responsible to mediate the CDRs generated by Telecommunication Switch. 
+Responsible to mediate the CDRs generated by Telecommunication Switch.
 
 Has the ability to combine CDR fields into rating subject and run multiple mediation processes on the same record.
 
@@ -365,7 +365,7 @@ On Linux machines, able to work with inotify kernel subsystem in order to proces
 
 2.2. cgr-loader
 ---------------
-Used for importing the rating information into the CGRateS database system. 
+Used for importing the rating information into the AccuRate database system.
 
 Can be used to:
    - Import information from **csv files** to **tariffplan_db**, **data_db**.
@@ -415,9 +415,9 @@ Can be used to:
    -stordb_host string
          The storDb host to connect to. (default "127.0.0.1")
    -stordb_name string
-         The name/number of the storDb to connect to. (default "cgrates")
+         The name/number of the storDb to connect to. (default "accurate")
    -stordb_passwd string
-         The storDb user's password. (default "CGRateS.org")
+         The storDb user's password. (default "accuRate")
    -stordb_port string
          The storDb port to bind to. (default "3306")
    -stordb_type string
@@ -457,7 +457,7 @@ Can be used to:
 
 2.3. cgr-console
 ----------------
-Command line tool used to interface with the RALs (and/or Balancer) service. Able to execute **sub-commands**. 
+Command line tool used to interface with the RALs (and/or Balancer) service. Able to execute **sub-commands**.
 
 ::
 
@@ -473,7 +473,7 @@ Command line tool used to interface with the RALs (and/or Balancer) service. Abl
          Prints the application version.
 
  rif@grace:~$ cgr-console help_more
- 2013/04/13 17:23:51 
+ 2013/04/13 17:23:51
  Usage: cgr-console [cfg_opts...{-h}] <status|get_balance>
 
 .. hint:: # cgr-console status
@@ -536,4 +536,3 @@ Command line stress testing tool.
         The type of record to use in queries. (default "*voice")
 
 .. hint:: # cgr-tester -runs=10000
-

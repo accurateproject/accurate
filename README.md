@@ -1,8 +1,6 @@
 <img src="https://github.com/accurateproject/accurate/blob/master/docs/images/accurate.png" alt="AccuRate" height="30px"/>
 ## Real-time Accounting and Rating System for Telecom & ISP environments ##
 
-[![Build Status](https://secure.travis-ci.org/accurateproject/accurate.png)](http://travis-ci.org/accurateproject/accurate)
-
 ### Features ###
 + Rates for prepaid and for postpaid
 + Rating for voice/data/sms
@@ -21,11 +19,11 @@
 The top priority at this moment is releasing a 1.0 release:
 
 - [x] stop adding new features
-- [ ] fix and refactor the engine (using the accumulated experience and feedback) 
-- [ ] make consistent API
+- [x] fix and refactor the engine (using the accumulated experience and feedback) 
+- [x] make consistent API
 - [ ] write propper documentation
 - [ ] unify installation packages (variants: static zip distribution and docker container)
-- [ ] create web administrative interface
+- [x] create web administrative interface
 
 NOTE: most of these changes are done on a private branch and will be merged as they are complete.
 
